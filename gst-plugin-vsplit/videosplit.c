@@ -736,7 +736,10 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
   GstVideoSplit *vsplit = GST_VIDEO_SPLIT (parent);
   GstVSplitRequest *request = NULL;
   GArray *compositions = NULL;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
+
+  time = gst_util_get_timestamp ();
 
   GST_TRACE_OBJECT (pad, "Received %" GST_PTR_FORMAT, inbuffer);
 
@@ -770,9 +773,6 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
     goto cleanup;
   }
 
-  // Get start time for performance measurements.
-  request->time = gst_util_get_timestamp ();
-
   if (compositions->len != 0) {
     success = gst_video_converter_engine_compose (vsplit->converter,
         (GstVideoComposition*) compositions->data, compositions->len,
@@ -786,6 +786,12 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
 
   g_array_free (compositions, TRUE);
   gst_data_queue_push_object (sinkpad->requests, GST_MINI_OBJECT (request));
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (vsplit, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: %s", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000), vsplit->hw_util);
 
   return GST_FLOW_OK;
 
@@ -1314,6 +1320,11 @@ gst_video_split_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_ENGINE_BACKEND:
       vsplit->backend = g_value_get_enum (value);
+        if (vsplit->backend == GST_VCE_BACKEND_GLES) {
+          g_strlcpy(vsplit->hw_util, "GPU", sizeof(vsplit->hw_util));
+        } else {
+          g_strlcpy(vsplit->hw_util, "CPU", sizeof(vsplit->hw_util));
+        }
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1402,6 +1413,12 @@ gst_video_split_init (GstVideoSplit * vsplit)
   vsplit->worktask = NULL;
 
   vsplit->backend = DEFAULT_PROP_ENGINE_BACKEND;
+
+  if (vsplit->backend == GST_VCE_BACKEND_GLES) {
+    g_strlcpy(vsplit->hw_util, "GPU", sizeof(vsplit->hw_util));
+  } else {
+    g_strlcpy(vsplit->hw_util, "CPU", sizeof(vsplit->hw_util));
+  }
 
   template = gst_video_split_sink_template ();
   vsplit->sinkpad = g_object_new (GST_TYPE_VIDEO_SPLIT_SINKPAD, "name", "sink",

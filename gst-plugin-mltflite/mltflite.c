@@ -519,9 +519,10 @@ gst_ml_tflite_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 {
   GstMLTFLite *tflite = GST_ML_TFLITE (base);
   GstMLFrame inframe, outframe;
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
+
+  time = gst_util_get_timestamp ();
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
   if (gst_buffer_get_size (outbuffer) == 0 &&
@@ -541,8 +542,6 @@ gst_ml_tflite_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     return GST_FLOW_ERROR;
   }
 
-  ts_begin = gst_util_get_timestamp ();
-
   for (guint i = 0; i < RETRY_ON_FAILURE_CNT && success == FALSE; i++) {
     success = gst_ml_tflite_engine_execute (tflite->engine, &inframe, &outframe);
 
@@ -552,8 +551,6 @@ gst_ml_tflite_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     }
   }
 
-  ts_end = gst_util_get_timestamp ();
-
   gst_ml_frame_unmap (&outframe);
   gst_ml_frame_unmap (&inframe);
 
@@ -562,11 +559,11 @@ gst_ml_tflite_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     return GST_FLOW_ERROR;
   }
 
-  tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
-  GST_LOG_OBJECT (tflite, "Execute took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
-      (GST_TIME_AS_USECONDS (tsdelta) % 1000));
+  GST_LOG_OBJECT (tflite, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: %s", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000), tflite->hw_util);
 
   return GST_FLOW_OK;
 }
@@ -584,6 +581,14 @@ gst_ml_tflite_set_property (GObject * object, guint prop_id,
       break;
     case PROP_DELEGATE:
       tflite->delegate = g_value_get_enum (value);
+      if (tflite->delegate == GST_ML_TFLITE_DELEGATE_NONE ||
+          tflite->delegate == GST_ML_TFLITE_DELEGATE_XNNPACK) {
+        g_strlcpy(tflite->hw_util, "CPU", sizeof(tflite->hw_util));
+      } else if (tflite->delegate == GST_ML_TFLITE_DELEGATE_GPU) {
+        g_strlcpy(tflite->hw_util, "GPU", sizeof(tflite->hw_util));
+      } else if (tflite->delegate == GST_ML_TFLITE_DELEGATE_EXTERNAL) {
+        g_strlcpy(tflite->hw_util, "NPU", sizeof(tflite->hw_util));
+      }
       break;
     case PROP_THREADS:
       tflite->n_threads = g_value_get_uint (value);
@@ -767,6 +772,8 @@ gst_ml_tflite_init (GstMLTFLite * tflite)
   tflite->ext_delegate_opts = DEFAULT_PROP_EXT_DELEGATE_OPTS;
 #endif // HAVE_EXTERNAL_DELEGATE_H
   tflite->n_threads = DEFAULT_PROP_THREADS;
+
+  g_strlcpy (tflite->hw_util, "N/A", sizeof (tflite->hw_util));
 
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (tflite), TRUE);

@@ -79,6 +79,8 @@ struct _GstMLTFLite {
   GstMLTFLiteDelegate delegate;
   GstMLTFLitePriority priority;
   guint               n_threads;
+
+  gchar hw_util[10];
 };
 
 struct _GstMLTFLiteClass {

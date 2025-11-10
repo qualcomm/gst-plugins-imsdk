@@ -72,6 +72,8 @@ struct _GstMLSnpe {
 
   /// Properties.
   GstMLSnpeSettings settings;
+
+  gchar hw_util[10];
 };
 
 struct _GstMLSnpeClass {

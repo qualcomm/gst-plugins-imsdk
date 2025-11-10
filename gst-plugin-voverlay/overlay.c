@@ -2018,12 +2018,12 @@ gst_overlay_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
       GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
+  time = gst_util_get_timestamp ();
+
   if (!gst_buffer_is_writable (buffer)) {
     GST_WARNING_OBJECT (overlay, "Buffer %p not writable, skipping!", buffer);
     return GST_FLOW_OK;
   }
-
-  time = gst_util_get_timestamp ();
 
   composition.buffer = buffer;
   const GstVideoMeta *meta = gst_buffer_get_video_meta (buffer);
@@ -2058,8 +2058,9 @@ gst_overlay_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
 
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
-  GST_LOG_OBJECT (overlay, "Process took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+  GST_LOG_OBJECT (overlay, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: CPU, GPU",
+      GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
 
   GST_OBJECT_LOCK (overlay);

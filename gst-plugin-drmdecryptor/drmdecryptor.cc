@@ -139,6 +139,9 @@ gst_drm_decryptor_sinkpad_chain (GstPad *pad, GstObject *parent, GstBuffer *in_b
 {
   GstDrmDecryptor *decryptor = GST_DRM_DECRYPTOR (parent);
   GstBuffer *out_buffer = NULL;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
+
+  time = gst_util_get_timestamp ();
 
   // TODO: Video backend is failing to handle vp9 clear content on secure path.
   // Added this temporary check to skip clear content until the issue is fixed.
@@ -173,6 +176,12 @@ gst_drm_decryptor_sinkpad_chain (GstPad *pad, GstObject *parent, GstBuffer *in_b
 
   gst_buffer_copy_into (out_buffer, in_buffer,
       GstBufferCopyFlags (GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS), 0, -1);
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (decryptor, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: CPU", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   return gst_pad_push (decryptor->srcpad, out_buffer);
 }

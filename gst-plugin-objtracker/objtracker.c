@@ -183,9 +183,12 @@ gst_objtracker_transform (GstBaseTransform *base, GstBuffer *inbuffer,
 
   success = gst_objtracker_algo_execute_text (objtracker->algo, input_text,
       &output_text);
+
+  g_free (input_text);
+
   if (!success) {
     GST_ERROR_OBJECT (objtracker, "Failed to serialize output data!");
-    goto cleanup;
+    return GST_FLOW_ERROR;
   }
 
   // Increase the length by 1 byte for the '\0' character.
@@ -198,14 +201,11 @@ gst_objtracker_transform (GstBaseTransform *base, GstBuffer *inbuffer,
 
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
-  GST_LOG_OBJECT (objtracker, "Execute took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+  GST_LOG_OBJECT (objtracker, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: CPU", GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
 
-cleanup:
-  g_free (input_text);
-
-  return success ? GST_FLOW_OK : GST_FLOW_ERROR;
+  return GST_FLOW_OK;
 }
 
 static GstFlowReturn
@@ -230,8 +230,8 @@ gst_objtracker_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
 
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
-  GST_LOG_OBJECT (objtracker, "Process took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+  GST_LOG_OBJECT (objtracker, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: CPU", GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
 
   return GST_FLOW_OK;

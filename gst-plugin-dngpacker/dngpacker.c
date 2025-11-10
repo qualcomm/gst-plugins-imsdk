@@ -209,6 +209,8 @@ gst_dngpacker_task (gpointer userdata)
   if (!gst_data_queue_peek (packer->raw_buf_queue, &raw_item))
       return;
 
+  time = gst_util_get_timestamp ();
+
   raw_buf = GST_BUFFER (raw_item->object);
   vmeta = gst_buffer_get_video_meta (raw_buf);
 
@@ -253,21 +255,17 @@ gst_dngpacker_task (gpointer userdata)
   gst_dngpacker_update_packer_request (packer, vmeta, raw_map_info.size,
       raw_map_info.data, image_data_size, image_data, &request);
 
-  // Get start time for performance measurements.
-  time = gst_util_get_timestamp ();
-
   dng_ret = dngpacker_utils_pack_dng (packer->packer_utils, &request);
 
   if (dng_ret == 0) {
+    out_buf = gst_buffer_new_wrapped (request.output, request.output_size);
 
-    // Get time difference between current time and start.
     time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
-    GST_LOG_OBJECT (packer, "Dng Pack Done, consuming %" G_GINT64_FORMAT ".%03"
-        G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+    GST_LOG_OBJECT (packer, "Performance time %" G_GINT64_FORMAT ".%03"
+        G_GINT64_FORMAT " ms, HW utilization: CPU", GST_TIME_AS_MSECONDS (time),
         (GST_TIME_AS_USECONDS (time) % 1000));
 
-    out_buf = gst_buffer_new_wrapped (request.output, request.output_size);
     gst_pad_push (packer->dng_src_pad, out_buf);
   } else {
     g_log("GstDngPacker", G_LOG_LEVEL_WARNING,

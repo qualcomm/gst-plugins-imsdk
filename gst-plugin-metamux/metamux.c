@@ -685,7 +685,7 @@ gst_metamux_worker_task (gpointer userdata)
   GstMetaMux *muxer = GST_METAMUX (userdata);
   GstDataQueueItem *item = NULL;
   GstBuffer *buffer = NULL;
-  GstClockTime timestamp = GST_CLOCK_TIME_NONE;
+  GstClockTime timestamp = GST_CLOCK_TIME_NONE, time = GST_CLOCK_TIME_NONE;
   gint64 timeout = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
 
@@ -749,10 +749,18 @@ gst_metamux_worker_task (gpointer userdata)
     goto cleanup;
   }
 
+  time = gst_util_get_timestamp ();
+
   // Iterate over all of the data pad queues and extract available data.
   success = gst_metamux_process_meta_entries (muxer, buffer, timestamp);
 
   GST_METAMUX_UNLOCK (muxer);
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (muxer, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: CPU", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   if (!success)
     goto cleanup;

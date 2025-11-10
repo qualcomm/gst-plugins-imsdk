@@ -2470,12 +2470,13 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
+  time = gst_util_get_timestamp ();
+
   if (!gst_ml_video_converter_prepare_buffer_queues (mlconverter, inbuffer)) {
     GST_TRACE_OBJECT (mlconverter, "Internal buffer queues not yet ready");
     return GST_BASE_TRANSFORM_FLOW_DROPPED;
   }
 
-  time = gst_util_get_timestamp ();
   success = gst_ml_video_converter_setup_composition (mlconverter, outbuffer);
 
   if (!success) {
@@ -2501,16 +2502,18 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   }
 
   gst_ml_video_converter_cleanup_composition (mlconverter);
-  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
   if (!success) {
     GST_ERROR_OBJECT (mlconverter, "Failed to process buffers!");
     return GST_FLOW_ERROR;
   }
 
-  GST_LOG_OBJECT (mlconverter, "Conversion took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
-      (GST_TIME_AS_USECONDS (time) % 1000));
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (mlconverter, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: %s", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000),
+      mlconverter->hw_util);
 
   return GST_FLOW_OK;
 }
@@ -2527,6 +2530,11 @@ gst_ml_video_converter_set_property (GObject * object, guint prop_id,
       break;
     case PROP_ENGINE_BACKEND:
       mlconverter->backend = g_value_get_enum (value);
+      if (mlconverter->backend == GST_VCE_BACKEND_GLES) {
+        g_strlcpy(mlconverter->hw_util, "GPU", sizeof(mlconverter->hw_util));
+      } else {
+        g_strlcpy(mlconverter->hw_util, "CPU", sizeof(mlconverter->hw_util));
+      }
       break;
     case PROP_IMAGE_DISPOSITION:
       mlconverter->disposition = g_value_get_enum (value);
@@ -2766,6 +2774,12 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
   mlconverter->pixlayout = DEFAULT_PROP_SUBPIXEL_LAYOUT;
   mlconverter->mean = g_array_new (FALSE, FALSE, sizeof (gdouble));
   mlconverter->sigma = g_array_new (FALSE, FALSE, sizeof (gdouble));
+
+  if (mlconverter->backend == GST_VCE_BACKEND_GLES) {
+    g_strlcpy(mlconverter->hw_util, "GPU", sizeof(mlconverter->hw_util));
+  } else {
+    g_strlcpy(mlconverter->hw_util, "CPU", sizeof(mlconverter->hw_util));
+  }
 
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (mlconverter), TRUE);

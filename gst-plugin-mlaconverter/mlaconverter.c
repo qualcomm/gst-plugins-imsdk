@@ -595,6 +595,8 @@ gst_ml_audio_converter_transform (GstBaseTransform * base,
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
+  time = gst_util_get_timestamp ();
+
   if (!gst_audio_buffer_map (&inframe, mlconverter->audio_info,
         inbuffer, GST_MAP_READ)) {
     GST_ERROR ("audio frame map failure");
@@ -623,11 +625,7 @@ gst_ml_audio_converter_transform (GstBaseTransform * base,
     goto unmap_audio;
   }
 
-  time = gst_util_get_timestamp ();
-
   success = gst_mlaconverter_engine_process (mlconverter->engine, &inframe, &outframe);
-
-  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
 #ifdef HAVE_LINUX_DMA_BUF_H
   if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
@@ -650,16 +648,18 @@ gst_ml_audio_converter_transform (GstBaseTransform * base,
     goto unmap_ml;
   }
 
-  GST_LOG ("Execute took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
-      (GST_TIME_AS_USECONDS (time) % 1000));
-
   ret = GST_FLOW_OK;
 
 unmap_ml:
   gst_ml_frame_unmap (&outframe);
 unmap_audio:
   gst_audio_buffer_unmap (&inframe);
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (mlconverter, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: CPU", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   return ret;
 }

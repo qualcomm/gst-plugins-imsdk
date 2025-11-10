@@ -141,6 +141,8 @@ struct _GstMLVideoConverter {
   GstVideoPixelLayout  pixlayout;
   GArray               *mean;
   GArray               *sigma;
+
+  gchar hw_util[10];
 };
 
 struct _GstMLVideoConverterClass {

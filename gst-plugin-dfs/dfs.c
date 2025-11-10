@@ -549,8 +549,9 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
   DfsInitSettings settings;
   GstVideoFrame inframe;
   GstMapInfo out_info0;
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
+
+  time = gst_util_get_timestamp ();
 
   vmeta = gst_buffer_get_video_meta (inbuffer);
 
@@ -571,20 +572,11 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
     settings.gpu_rect = dfs->gpu_rect;
     settings.stereo_parameter = dfs->stereo_parameter;
 
-    ts_begin = gst_util_get_timestamp ();
-
     dfs->engine = gst_dfs_engine_new (&settings);
     if (dfs->engine == NULL) {
       GST_ERROR_OBJECT (dfs, "Failed to create DFS engine!");
       return GST_FLOW_ERROR;
     }
-
-    ts_end = gst_util_get_timestamp ();
-    tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
-
-    GST_INFO ("DFS init time: %" G_GINT64_FORMAT ".%03"
-        G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
-        (GST_TIME_AS_USECONDS (tsdelta) % 1000));
   }
 
   if (!gst_video_frame_map (&inframe, dfs->ininfo, inbuffer,
@@ -599,20 +591,18 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
     return GST_FLOW_ERROR;
   }
 
-  ts_begin = gst_util_get_timestamp ();
   if (!gst_dfs_engine_execute (dfs->engine, &inframe, out_info0.data, out_info0.size)) {
     GST_ERROR_OBJECT (dfs, "Failed to execute engine");;
   }
 
-  ts_end = gst_util_get_timestamp ();
-  tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
-
-  GST_INFO ("DFS time: %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
-      (GST_TIME_AS_USECONDS (tsdelta) % 1000));
-
   gst_buffer_unmap (outbuffer, &out_info0);
   gst_video_frame_unmap (&inframe);
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (dfs, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: DSP", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   return GST_FLOW_OK;
 }

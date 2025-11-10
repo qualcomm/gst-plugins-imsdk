@@ -261,8 +261,11 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
   GstMLDemux *demux = GST_ML_DEMUX (parent);
   GstMLDemuxSrcPad *srcpad = NULL;
   GstProtectionMeta *pmeta = NULL;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
   const GValue *value = NULL;
   guint batch_idx = 0, num = 0, n_batch = 0, n_memory = 0;
+
+  time = gst_util_get_timestamp ();
 
   GST_TRACE_OBJECT (pad, "Received %" GST_PTR_FORMAT, inbuffer);
 
@@ -397,6 +400,12 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 
   // Reduce the reference count of the input buffer, it is no longer needed.
   gst_buffer_unref (inbuffer);
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (srcpad, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: CPU", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   return GST_FLOW_OK;
 }

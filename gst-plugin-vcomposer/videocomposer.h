@@ -79,6 +79,8 @@ struct _GstVideoComposer {
   /// Properties.
   GstVideoConvBackend  backend;
   guint                background;
+
+  gchar hw_util[10];
 };
 
 struct _GstVideoComposerClass {

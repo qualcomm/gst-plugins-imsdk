@@ -57,6 +57,8 @@ struct _GstVideoSplit
 
   /// Properties.
   GstVideoConvBackend  backend;
+
+  gchar hw_util[10];
 };
 
 struct _GstVideoSplitClass {

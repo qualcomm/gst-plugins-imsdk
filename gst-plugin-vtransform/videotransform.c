@@ -1715,18 +1715,16 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   GST_VIDEO_TRANSFORM_UNLOCK (vtrans);
 
-  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
-
-  GST_LOG_OBJECT (vtrans, "Conversion took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
-      (GST_TIME_AS_USECONDS (time) % 1000));
-
-  GST_TRACE_OBJECT (vtrans, "Output %" GST_PTR_FORMAT, outbuffer);
-
   if (!success) {
     GST_ERROR_OBJECT (vtrans, "Failed to process composition!");
     return GST_FLOW_ERROR;
   }
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (vtrans, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: %s", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000), vtrans->hw_util);
 
   return GST_FLOW_OK;
 }
@@ -1750,6 +1748,11 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_ENGINE_BACKEND:
       vtrans->backend = g_value_get_enum (value);
+      if (vtrans->backend == GST_VCE_BACKEND_GLES) {
+        g_strlcpy(vtrans->hw_util, "GPU", sizeof(vtrans->hw_util));
+      } else {
+        g_strlcpy(vtrans->hw_util, "CPU", sizeof(vtrans->hw_util));
+      }
       break;
     case PROP_BACKEND_PARAM:
     {
@@ -2050,6 +2053,12 @@ gst_video_transform_init (GstVideoTransform * vtrans)
   vtrans->destination.y = DEFAULT_PROP_DESTINATION_Y;
   vtrans->destination.w = DEFAULT_PROP_DESTINATION_WIDTH;
   vtrans->destination.h = DEFAULT_PROP_DESTINATION_HEIGHT;
+
+  if (vtrans->backend == GST_VCE_BACKEND_GLES) {
+    g_strlcpy(vtrans->hw_util, "GPU", sizeof(vtrans->hw_util));
+  } else {
+    g_strlcpy(vtrans->hw_util, "CPU", sizeof(vtrans->hw_util));
+  }
 
   vtrans->ininfo = NULL;
   vtrans->outinfo = NULL;

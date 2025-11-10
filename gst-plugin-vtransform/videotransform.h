@@ -98,6 +98,8 @@ struct _GstVideoTransform {
   GstVideoRectangle       crop;
   GstVideoRectangle       destination;
   guint                   background;
+
+  gchar hw_util[10];
 };
 
 struct _GstVideoTransformClass {

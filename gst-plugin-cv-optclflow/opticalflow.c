@@ -401,6 +401,8 @@ gst_cv_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = TRUE;
 
+  time = gst_util_get_timestamp ();
+
   inbuffer = gst_buffer_ref (inbuffer);
   optclflow->buffers = g_list_append (optclflow->buffers, inbuffer);
 
@@ -439,19 +441,11 @@ gst_cv_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     return GST_FLOW_ERROR;
   }
 
-  time = gst_util_get_timestamp ();
-
   success = gst_cv_optclflow_engine_execute (optclflow->engine, inframes, 2,
       outbuffer);
 
-  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
-
   if (!success)
     GST_ERROR_OBJECT (optclflow, "Failed to process buffers!");
-
-  GST_LOG_OBJECT (optclflow, "Execution took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
-      (GST_TIME_AS_USECONDS (time) % 1000));
 
   // Ummap current frame without releasing the buffer reference.
   gst_video_frame_unmap (&inframes[1]);
@@ -476,6 +470,12 @@ gst_cv_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
         "stats-sad-threshold", G_TYPE_UINT, optclflow->sad,
         NULL);
   }
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (optclflow, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: EVA", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   return success ? GST_FLOW_OK : GST_FLOW_ERROR;
 }

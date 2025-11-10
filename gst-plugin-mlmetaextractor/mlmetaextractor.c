@@ -675,6 +675,9 @@ gst_mlmeta_extractor_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   gint string_len = 0;
   gint n_entries = 0, seq_index = 1;
   GstClockTime timestamp = GST_BUFFER_PTS (inbuffer);
+  GstClockTime time = GST_CLOCK_TIME_NONE;
+
+  time = gst_util_get_timestamp ();
 
   GST_TRACE_OBJECT (extractor, "Received %" GST_PTR_FORMAT, inbuffer);
 
@@ -742,6 +745,12 @@ gst_mlmeta_extractor_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   gst_buffer_append_memory (outbuffer, mem);
 
   GST_MLMETA_EXTRACTOR_UNLOCK (extractor);
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (extractor, "Performance time %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms, HW utilization: CPU", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   return GST_FLOW_OK;
 }
