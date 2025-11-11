@@ -720,6 +720,7 @@ GstGlesVideoConverter *
 gst_gles_video_converter_new (GstStructure * settings)
 {
   GstGlesVideoConverter *convert = NULL;
+  const gchar* vendor = NULL, *renderer = NULL;
 
   convert = g_slice_new0 (GstGlesVideoConverter);
   g_return_val_if_fail (convert != NULL, NULL);
@@ -727,7 +728,7 @@ gst_gles_video_converter_new (GstStructure * settings)
   g_mutex_init (&convert->lock);
 
   try {
-    convert->engine = ::ib2c::NewGlEngine();
+    convert->engine = ::ib2c::NewGlEngine(&vendor, &renderer);
   } catch (std::exception& e) {
     GST_ERROR ("Failed to create and init new engine, error: '%s'!", e.what());
     goto cleanup;
@@ -751,7 +752,8 @@ gst_gles_video_converter_new (GstStructure * settings)
     goto cleanup;
   }
 
-  GST_INFO ("Created GLES Converter %p", convert);
+  GST_INFO ("Created GLES Converter %p - Vendor: %s, Renderer: %s", convert,
+      vendor, renderer);
   return convert;
 
 cleanup:

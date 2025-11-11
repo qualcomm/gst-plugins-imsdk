@@ -364,6 +364,7 @@ GlesLib::GlesLib() {
   LOAD_GL_SYMBOL(handle_, UniformMatrix4fv);
   LOAD_GL_SYMBOL(handle_, GetIntegerv);
   LOAD_GL_SYMBOL(handle_, GetStringi);
+  LOAD_GL_SYMBOL(handle_, GetString);
   LOAD_GL_SYMBOL(handle_, Viewport);
   LOAD_GL_SYMBOL(handle_, DrawBuffers);
   LOAD_GL_SYMBOL(handle_, DrawArrays);
