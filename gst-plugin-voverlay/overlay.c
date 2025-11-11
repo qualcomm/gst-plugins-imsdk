@@ -565,6 +565,9 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
   gboolean success = TRUE;
   guint track_id = -1;
 
+  if (EXTRACT_FLOAT_ALPHA_COLOR (label->color) == 0.0)
+    return success;
+
   gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
   destination = &(blit->destination);
 
@@ -633,6 +636,9 @@ gst_overlay_handle_landmarks_entry (GstVOverlay * overlay, cairo_t * context,
   for (idx = 0; idx < keypoints->len; idx++) {
     GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
 
+    if (EXTRACT_FLOAT_ALPHA_COLOR (kp->color) == 0.0)
+      continue;
+
     x = (kp->x - destination->x) / scale;
     y = (kp->y - destination->y) / scale;
 
@@ -651,6 +657,9 @@ gst_overlay_handle_landmarks_entry (GstVOverlay * overlay, cairo_t * context,
     link = &(g_array_index (links, GstVideoKeypointLink, idx));
     s_kp = &(g_array_index (keypoints, GstVideoKeypoint, link->s_kp_idx));
     d_kp = &(g_array_index (keypoints, GstVideoKeypoint, link->d_kp_idx));
+
+    if (EXTRACT_FLOAT_ALPHA_COLOR (s_kp->color) == 0.0)
+      continue;
 
     x = (s_kp->x - destination->x) / scale;
     y = (s_kp->y - destination->y) / scale;
@@ -729,6 +738,14 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
   guint color = 0x000000FF;
   gboolean success = TRUE;
 
+  // Extract the structure containing ROI parameters.
+  objparam = gst_video_region_of_interest_meta_get_param (roimeta,
+      "ObjectDetection");
+  gst_structure_get_uint (objparam, "color", &color);
+
+  if (EXTRACT_FLOAT_ALPHA_COLOR (color) == 0.0)
+    return success;
+
   gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
   destination = &(blit->destination);
 
@@ -741,11 +758,6 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
 
   destination->x = roimeta->x;
   destination->y = roimeta->y;
-
-  // Extract the structure containing ROI parameters.
-  objparam = gst_video_region_of_interest_meta_get_param (roimeta,
-      "ObjectDetection");
-  gst_structure_get_uint (objparam, "color", &color);
 
   // Set the most appropriate box line width based on frame and box dimensions.
   gst_util_fraction_to_double (destination->w, source.w, &scale);
@@ -1288,13 +1300,19 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
     // Fetch the top label from classification derived from this ROI.
     while ((submeta = gst_buffer_iterate_meta_filtered (outbuffer, &substate,
                 GST_VIDEO_CLASSIFICATION_META_API_TYPE)) != NULL) {
+      GstClassLabel *label = NULL;
       classmeta = GST_VIDEO_CLASSIFICATION_META_CAST (submeta);
 
       if (classmeta->parent_id != roimeta->id)
         continue;
 
+      label = &(g_array_index (classmeta->labels, GstClassLabel, 0));
+
+      if (EXTRACT_FLOAT_ALPHA_COLOR (label->color) == 0.0)
+        continue;
+
       success &= gst_overlay_handle_classification_entry (overlay, context,
-          blit, &(g_array_index (classmeta->labels, GstClassLabel, 0)), objparam);
+          blit, label, objparam);
 
       haslabel = TRUE;
       break;
@@ -1309,8 +1327,10 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
       gst_structure_get_uint (objparam, "color", &(label.color));
       gst_structure_get_double (objparam, "confidence", &(label.confidence));
 
-      success &= gst_overlay_handle_classification_entry (overlay, context,
-          blit, &label, objparam);
+      if (EXTRACT_FLOAT_ALPHA_COLOR (label.color) != 0.0) {
+        success &= gst_overlay_handle_classification_entry (overlay, context,
+            blit, &label, objparam);
+      }
     }
 
     gst_cairo_draw_cleanup (&frame, surface, context);
@@ -1363,6 +1383,9 @@ gst_overlay_draw_classification_entries (GstVOverlay * overlay,
     for (num = 0; num < classmeta->labels->len; num++) {
       label = &(g_array_index (classmeta->labels, GstClassLabel, num));
       blit = &(composition->blits[(*index) + num]);
+
+      if (EXTRACT_FLOAT_ALPHA_COLOR (label->color) == 0.0)
+        continue;
 
       success = gst_overlay_video_blit_initialize (overlay,
           GST_OVERLAY_TYPE_CLASSIFICATION, blit);
@@ -1510,8 +1533,8 @@ gst_overlay_draw_bbox_entries (GstVOverlay * overlay,
   for (num = 0; num < overlay->bboxes->len; num++) {
     GstOverlayBBox *bbox = &g_array_index (overlay->bboxes, GstOverlayBBox, num);
 
-    // Skip this bounding box entry as it has been disabled.
-    if (!bbox->enable)
+    // Skip this bounding box entry as it has been disabled or alpha is 0.
+    if (!bbox->enable || EXTRACT_FLOAT_ALPHA_COLOR (bbox->color) == 0.0)
       continue;
 
     if (bbox->blit.buffer != NULL) {
@@ -1556,8 +1579,8 @@ gst_overlay_draw_timestamp_entries (GstVOverlay * overlay,
     GstOverlayTimestamp *timestamp =
         &g_array_index (overlay->timestamps, GstOverlayTimestamp, num);
 
-    // Skip this timstamp entry as it has been disabled.
-    if (!timestamp->enable)
+    // Skip this timstamp entry as it has been disabled or alpha is 0.
+    if (!timestamp->enable || EXTRACT_FLOAT_ALPHA_COLOR (timestamp->color) == 0.0)
       continue;
 
     blit = &(composition->blits[(*index)]);
@@ -1594,8 +1617,8 @@ gst_overlay_draw_string_entries (GstVOverlay * overlay,
     GstOverlayString *string =
         &g_array_index (overlay->strings, GstOverlayString, num);
 
-    // Skip this text entry as it has been disabled.
-    if (!string->enable)
+    // Skip this text entry as it has been disabled or alpha is 0.
+    if (!string->enable || EXTRACT_FLOAT_ALPHA_COLOR (string->color) == 0.0)
       continue;
 
     if (string->blit.buffer != NULL) {
@@ -1638,8 +1661,8 @@ gst_overlay_draw_mask_entries (GstVOverlay * overlay,
   for (num = 0; num < overlay->masks->len; num++) {
     GstOverlayMask *mask = &g_array_index (overlay->masks, GstOverlayMask, num);
 
-    // Skip this privacy mask entry as it has been disabled.
-    if (!mask->enable)
+    // Skip this privacy mask entry as it has been disabled or alpha is 0.
+    if (!mask->enable || EXTRACT_FLOAT_ALPHA_COLOR (mask->color) == 0.0)
       continue;
 
     if (mask->blit.buffer != NULL) {
