@@ -90,10 +90,6 @@ enum {
   GST_FCV_FLAG_RGB    = (1 << 1),
   GST_FCV_FLAG_YUV    = (1 << 2),
   GST_FCV_FLAG_STAGED = (1 << 3),
-  GST_FCV_FLAG_I32    = (1 << 4),
-  GST_FCV_FLAG_U32    = (1 << 5),
-  GST_FCV_FLAG_F16    = (1 << 6),
-  GST_FCV_FLAG_F32    = (1 << 7),
 };
 
 /**
@@ -511,40 +507,37 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
     const guint flip, const guint rotate, const guint64 flags)
 {
   const gchar *mode = NULL;
-  gint x = 0, y = 0, width = 0, height = 0;
+  gint x = 0, y = 0, width = 0, height = 0, bpp = 0;
 
   width = GST_VIDEO_FRAME_WIDTH (frame);
   height = GST_VIDEO_FRAME_HEIGHT (frame);
 
-  // Take the region values only if they are valid.
-  if ((region->w != 0) && (region->h != 0) &&
-      (width >= (region->x + region->w)) && (height >= (region->y + region->h))) {
-    x = region->x;
-    y = region->y;
-    width = region->w;
-    height = region->h;
-  }
+  // Clip out of bounds regions so they don't go outside the full frame.
+  x = MAX (region->x, 0);
+  y = MAX (region->y, 0);
+  width = MIN (((region->x + region->w) - x), (width - x));
+  height = MIN (((region->y + region->h) - y), (height - y));
 
-  switch (flags) {
-    case GST_VCE_FLAG_F16_FORMAT:
-      object->flags = GST_FCV_FLAG_F16;
-      mode = "FLOAT16";
-      break;
-    case GST_VCE_FLAG_F32_FORMAT:
-      object->flags = GST_FCV_FLAG_F32;
-      mode = "FLOAT32";
-      break;
-    case GST_VCE_FLAG_I32_FORMAT:
-      object->flags = GST_FCV_FLAG_I32;
-      mode = "INT32";
-      break;
-    case GST_VCE_FLAG_U32_FORMAT:
-      object->flags = GST_FCV_FLAG_U32;
-      mode = "UINT32";
-      break;
-    default:
-      break;
-  }
+  if (flags == GST_VCE_FLAG_I8_FORMAT)
+    mode = " INT8";
+  else if (flags == GST_VCE_FLAG_U16_FORMAT)
+    mode = " UINT16";
+  else if (flags == GST_VCE_FLAG_I16_FORMAT)
+    mode = " INT16";
+  else if (flags == GST_VCE_FLAG_U32_FORMAT)
+    mode = " UINT32";
+  else if (flags == GST_VCE_FLAG_I32_FORMAT)
+    mode = " INT32";
+  else if (flags == GST_VCE_FLAG_U64_FORMAT)
+    mode = " UINT64";
+  else if (flags == GST_VCE_FLAG_I64_FORMAT)
+    mode = " INT64";
+  else if (flags == GST_VCE_FLAG_F16_FORMAT)
+    mode = " FLOAT16";
+  else if (flags == GST_VCE_FLAG_F32_FORMAT)
+    mode = " FLOAT32";
+  else
+    mode = " UINT8";
 
   GST_TRACE ("%s Buffer %p - %ux%u %s%s", type, frame->buffer,
       GST_VIDEO_FRAME_WIDTH (frame), GST_VIDEO_FRAME_HEIGHT (frame),
@@ -577,10 +570,12 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
   object->planes[0].width = width;
   object->planes[0].height = height;
 
+  bpp = GST_VIDEO_INFO_COMP_PSTRIDE(&(frame->info), 0);
+
   // Add the offset to the region of interest to the data pointer.
   object->planes[0].data =
       (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 0) +
-          (y * object->planes[0].stride) + x);
+          (y * object->planes[0].stride) + x * bpp);
   object->planes[0].stgid = GST_FCV_INVALID_STAGE_ID;
 
   // Initialize the secondary plane depending on the format.
@@ -2027,7 +2022,6 @@ gst_fcv_video_converter_process (GstFcvVideoConverter * convert,
   guint idx = 0, flip = 0, rotate = 0;
   gfloat w_scale = 0.0, h_scale = 0.0, scale = 0.0;
   gboolean downscale = FALSE, upscale = FALSE, aligned = FALSE, add = FALSE;
-  gboolean normalize = FALSE;
 
   for (idx = 0; idx < n_objects; idx += 2) {
     s_obj = &(objects[idx]);
@@ -2068,11 +2062,6 @@ gst_fcv_video_converter_process (GstFcvVideoConverter * convert,
     // Unaligned output RGB formats require additional processing at the end.
     aligned = ((d_obj->planes[0].width % GST_FCV_WIDTH_ALIGN) == 0) ?
         TRUE : FALSE;
-
-    // None 8-bit unsigned integer RGB formats require normalization.
-    normalize = (d_obj->flags & GST_FCV_FLAG_F16) ||
-        (d_obj->flags & GST_FCV_FLAG_F32) || (d_obj->flags & GST_FCV_FLAG_I32) ||
-        (d_obj->flags & GST_FCV_FLAG_U32);
 
     // First, check if we need to do color conversion to YUV on the source.
     // Upcscale/Downscale/Rotate/Flip require non-RGB input and output.
@@ -2124,7 +2113,7 @@ gst_fcv_video_converter_process (GstFcvVideoConverter * convert,
 
     // Lastly, perform unaligned conversion or normalization if necessary.
     if ((d_obj->flags & GST_FCV_FLAG_RGB || d_obj->flags & GST_FCV_FLAG_GRAY) &&
-        (!aligned || normalize))
+        !aligned)
       gst_fcv_video_converter_compute_conversion (convert, s_obj, d_obj);
   }
 

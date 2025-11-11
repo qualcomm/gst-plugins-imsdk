@@ -270,7 +270,7 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   GstMemory *memory = NULL;
   const gchar *format = NULL, *mode = "";
   ::ib2c::Surface surface;
-  uint32_t type = 0;
+  uint32_t type = 0, idx = 0;
   guint64 surface_id = 0;
 
   type |= (g_quark_from_static_string (direction) == GST_GLES_INPUT_QUARK) ?
@@ -293,16 +293,24 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   surface.format =
       gst_video_format_to_ib2c_format (GST_VIDEO_FRAME_FORMAT (frame), flags);
 
-  if (flags == GST_VCE_FLAG_F16_FORMAT)
+  if (flags == GST_VCE_FLAG_I8_FORMAT)
+    mode = " INT8";
+  else if (flags == GST_VCE_FLAG_U16_FORMAT)
+    mode = " UINT16";
+  else if (flags == GST_VCE_FLAG_I16_FORMAT)
+    mode = " INT16";
+  else if (flags == GST_VCE_FLAG_U32_FORMAT)
+    mode = " UINT32";
+  else if (flags == GST_VCE_FLAG_I32_FORMAT)
+    mode = " INT32";
+  else if (flags == GST_VCE_FLAG_U64_FORMAT)
+    mode = " UINT64";
+  else if (flags == GST_VCE_FLAG_I64_FORMAT)
+    mode = " INT64";
+  else if (flags == GST_VCE_FLAG_F16_FORMAT)
     mode = " FLOAT16";
   else if (flags == GST_VCE_FLAG_F32_FORMAT)
     mode = " FLOAT32";
-  else if (flags == GST_VCE_FLAG_I16_FORMAT)
-    mode = " INT16";
-  else if (flags == GST_VCE_FLAG_U16_FORMAT)
-    mode = " UINT16";
-  else if (flags == GST_VCE_FLAG_I8_FORMAT)
-    mode = " INT8";
   else
     mode = " UINT8";
 
@@ -312,27 +320,13 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
 
   surface.planes.resize (GST_VIDEO_FRAME_N_PLANES (frame));
 
-  surface.planes[0].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
-  surface.planes[0].offset = GST_VIDEO_FRAME_PLANE_OFFSET (frame, 0);
+  for (idx = 0; idx < GST_VIDEO_FRAME_N_PLANES (frame); idx++) {
+    surface.planes[idx].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, idx);
+    surface.planes[idx].offset = GST_VIDEO_FRAME_PLANE_OFFSET (frame, idx);
 
-  GST_TRACE ("%s surface FD[%d] - Stride0[%u] Offset0[%u]", direction,
-      surface.fd, surface.planes[0].stride, surface.planes[0].offset);
-
-  surface.planes[1].stride = (surface.planes.size() >= 2) ?
-      GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1) : 0;
-  surface.planes[1].offset = (surface.planes.size() >= 2) ?
-      GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1) : 0;
-
-  GST_TRACE ("%s surface FD[%d] - Stride1[%u] Offset1[%u]", direction,
-      surface.fd, surface.planes[1].stride, surface.planes[1].offset);
-
-  surface.planes[2].stride = (surface.planes.size() >= 3) ?
-      GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2) : 0;
-  surface.planes[2].offset = (surface.planes.size() >= 3) ?
-      GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2) : 0;
-
-  GST_TRACE ("%s surface FD[%d] - Stride2[%u] Offset2[%u]", direction,
-      surface.fd, surface.planes[2].stride, surface.planes[2].offset);
+    GST_TRACE ("%s surface FD[%d] - Plane[%u] Stride[%u] Offset[%u]", direction,
+        surface.fd, idx, surface.planes[idx].stride, surface.planes[idx].offset);
+  }
 
   try {
     surface_id = convert->engine->CreateSurface (surface, type);
@@ -393,14 +387,6 @@ gst_gles_remove_input_surfaces (GstGlesVideoConverter * convert, GArray * fds)
     g_hash_table_remove (convert->insurfaces, GUINT_TO_POINTER (fd));
     g_slice_free (GstGlesSurface, glsurface);
   }
-}
-
-static void
-gst_gles_free_cache (gpointer key, gpointer value, gpointer userdata)
-{
-  GArray *fds = (GArray *) (value);
-
-  g_array_free(fds, TRUE);
 }
 
 static void
@@ -538,9 +524,10 @@ gboolean
 gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
     GstVideoComposition * compositions, guint n_compositions, gpointer * fence)
 {
+  GArray *fds = NULL;
   guint idx = 0, num = 0, n_blits = 0;
   guint64 surface_id = 0;
-  GArray *fds = NULL;
+  gboolean success = TRUE;
 
   std::vector<::ib2c::Composition> comps;
 
@@ -549,10 +536,11 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
   g_return_val_if_fail (fds != NULL, FALSE);
 
   for (idx = 0; idx < n_compositions; idx++) {
-    GstVideoFrame *outframe = compositions[idx].frame;
-    GstVideoBlit *blits = compositions[idx].blits;
+    GstVideoComposition *composition = &(compositions[idx]);
+    GstVideoFrame *outframe = composition->frame;
+    GstVideoBlit *blits = composition->blits;
 
-    n_blits = compositions[idx].n_blits;
+    n_blits = composition->n_blits;
 
     // Sanity checks, output frame and blit entries must not be NULL.
     g_return_val_if_fail (outframe != NULL, FALSE);
@@ -571,10 +559,10 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
 
       GST_GLES_UNLOCK (convert);
 
-      if (surface_id == 0) {
+      if (!(success = (surface_id != 0))) {
         GST_ERROR ("Failed to get surface ID for input buffer %p at index %u "
             "in composition %u!", blit->frame->buffer, num, idx);
-        return FALSE;
+        goto cleanup;
       }
 
       if (blit->frame->buffer->pool == NULL) {
@@ -595,29 +583,29 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
     GST_GLES_LOCK (convert);
 
     surface_id = gst_gles_retrieve_surface_id (convert, convert->outsurfaces,
-        "Output", outframe, compositions[idx].flags);
+        "Output", outframe, composition->flags);
 
     GST_GLES_UNLOCK (convert);
 
-    if (surface_id == 0) {
+    if (!(success = (surface_id != 0))) {
       GST_ERROR ("Failed to get surface ID for output buffer %p in "
           "composition %u!", outframe->buffer, idx);
-      return FALSE;
+      goto cleanup;
     }
 
-    uint32_t color = compositions[idx].bgcolor;
-    bool clear = compositions[idx].bgfill;
+    uint32_t color = composition->bgcolor;
+    bool clear = composition->bgfill;
 
     std::vector<::ib2c::Normalize> normalization;
 
     normalization.push_back(::ib2c::Normalize (
-        compositions[idx].scales[0], compositions[idx].offsets[0]));
+        composition->scales[0], composition->offsets[0]));
     normalization.push_back(::ib2c::Normalize (
-        compositions[idx].scales[1], compositions[idx].offsets[1]));
+        composition->scales[1], composition->offsets[1]));
     normalization.push_back(::ib2c::Normalize (
-        compositions[idx].scales[2], compositions[idx].offsets[2]));
+        composition->scales[2], composition->offsets[2]));
     normalization.push_back(::ib2c::Normalize (
-        compositions[idx].scales[3], compositions[idx].offsets[3]));
+        composition->scales[3], composition->offsets[3]));
 
     comps.push_back(std::move(
         std::make_tuple(surface_id, color, clear, normalization, objects)));
@@ -630,8 +618,10 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
       *fence = reinterpret_cast<gpointer>(id);
 
       GST_GLES_LOCK (convert);
+
       convert->fences = g_list_append (convert->fences, *fence);
-      g_hash_table_insert (convert->nocache, GUINT_TO_POINTER (*fence), fds);
+      g_hash_table_insert (convert->nocache, *fence, g_steal_pointer (&fds));
+
       GST_GLES_UNLOCK (convert);
     } else {
       // Call IB2C Compose API with synchronous set to true.
@@ -641,16 +631,19 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
 
       // Destroy the surfaces which doesn't need cache
       gst_gles_remove_input_surfaces (convert, fds);
-      g_array_free (fds, TRUE);
 
       GST_GLES_UNLOCK (convert);
     }
   } catch (std::exception& e) {
     GST_ERROR ("Failed to submit draw objects, error: '%s'!", e.what());
-    return FALSE;
+    success = FALSE;
   }
 
-  return TRUE;
+cleanup:
+  if (fds != NULL)
+    g_array_unref (fds);
+
+  return success;
 }
 
 gboolean
@@ -658,7 +651,6 @@ gst_gles_video_converter_wait_fence (GstGlesVideoConverter * convert,
     gpointer fence)
 {
   GArray *fds = NULL;
-  gboolean success = FALSE;
 
   try {
     convert->engine->Finish (reinterpret_cast<std::intptr_t>(fence));
@@ -670,12 +662,11 @@ gst_gles_video_converter_wait_fence (GstGlesVideoConverter * convert,
   GST_GLES_LOCK (convert);
   convert->fences = g_list_remove (convert->fences, fence);
 
-  success = g_hash_table_lookup_extended (convert->nocache,
-      GUINT_TO_POINTER (fence), NULL, (gpointer *) &fds);
-  if (success) {
-    // Destroy the surfaces which doesn't need cache
+  // Destroy the surfaces which doesn't need cache
+  fds = (GArray*) g_hash_table_lookup (convert->nocache, GUINT_TO_POINTER (fence));
+
+  if (fds != NULL) {
     gst_gles_remove_input_surfaces (convert, fds);
-    g_array_free (fds, TRUE);
     g_hash_table_remove (convert->nocache, GUINT_TO_POINTER (fence));
   }
 
@@ -717,10 +708,8 @@ gst_gles_video_converter_flush (GstGlesVideoConverter * convert)
     g_hash_table_remove_all (convert->outsurfaces);
   }
 
-  if (convert->nocache != NULL) {
-    g_hash_table_foreach (convert->nocache, gst_gles_free_cache, NULL);
+  if (convert->nocache != NULL)
     g_hash_table_remove_all (convert->nocache);
-  }
 
   GST_GLES_UNLOCK (convert);
 
@@ -754,7 +743,10 @@ gst_gles_video_converter_new (GstStructure * settings)
     goto cleanup;
   }
 
-  if ((convert->nocache = g_hash_table_new (NULL, NULL)) == NULL) {
+  convert->nocache = g_hash_table_new_full (NULL, NULL, NULL,
+      (GDestroyNotify) g_array_unref);
+
+  if (convert->nocache == NULL) {
     GST_ERROR ("Failed to create hash table for cache surfaces!");
     goto cleanup;
   }
@@ -786,10 +778,8 @@ gst_gles_video_converter_free (GstGlesVideoConverter * convert)
     g_hash_table_destroy (convert->outsurfaces);
   }
 
-  if (convert->nocache != NULL) {
-    g_hash_table_foreach (convert->nocache, gst_gles_free_cache, NULL);
+  if (convert->nocache != NULL)
     g_hash_table_destroy (convert->nocache);
-  }
 
   if (convert->engine != NULL)
     delete convert->engine;
