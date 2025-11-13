@@ -61,6 +61,7 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
   gpointer state = NULL;
   guint cx = 0, cy = 0, w = 0, h = 0;
   gdouble x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0, angle = 0.0, a = 1.3, b = 1.3;
+  double denom = 0.0;
 
   // Iterate over the metas available in the buffer and process them.
   while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (buffer, state)) != NULL) {
@@ -92,7 +93,13 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
     x2 = kp->x;
     y2 = kp->y;
 
-    angle = acos ((y1 - y2) / sqrt (pow ((x2 - x1), 2) + pow ((y1 - y2), 2)));
+    g_array_unref (keypoints);
+
+    denom = sqrt (pow ((x2 - x1), 2) + pow ((y1 - y2), 2));
+    if (denom != 0) {
+      angle = acos ((y1 - y2) / denom);
+    }
+
     if (x1 > x2)
       angle = -angle;
 
@@ -145,6 +152,8 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
     g_value_init(&boxed, GST_TYPE_STRUCTURE);
     g_value_set_boxed(&boxed, xtraparams);
     gst_structure_set_value (objparam, "xtraparams", &boxed);
+
+    gst_structure_free(xtraparams);
 
     g_value_unset (&boxed);
     g_value_unset (&value);
