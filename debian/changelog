@@ -5423,4 +5423,4 @@ gst-plugins-qti-oss (1.7.0-qcom0) noble; urgency=medium
   [ Git User ]
   * Initial empty repository
 
- -- Bala Sai Kosuri <bkosuri@qti.qualcomm.com>  Thu Oct 16 01:06:11 PM +0530 2025
+ -- Bala Sai Kosuri <bkosuri@qti.qualcomm.com>  Fri, 14 Nov 2025 12:09:27 +0530
