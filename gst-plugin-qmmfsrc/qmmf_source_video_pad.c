@@ -179,6 +179,8 @@ video_pad_worker_task (GstPad * pad)
 {
   GstDataQueue *buffers;
   GstDataQueueItem *item;
+  GstFlowReturn ret;
+  gboolean success;
 
   buffers = GST_QMMFSRC_VIDEO_PAD (pad)->buffers;
 
@@ -186,7 +188,26 @@ video_pad_worker_task (GstPad * pad)
     GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
     item->destroy (item);
 
-    gst_pad_push (pad, buffer);
+    ret = gst_pad_push (pad, buffer);
+    GST_INFO_OBJECT (pad, "pad %s: gst_pad_push returned %d",
+        gst_pad_get_name (pad), ret);
+
+    if (ret == GST_FLOW_EOS) {
+      GST_DEBUG_OBJECT (pad, "EOS received on pad %s", gst_pad_get_name (pad));
+
+      success = gst_pad_push_event (pad, gst_event_new_eos ());
+      if (success == FALSE) {
+        GST_ERROR_OBJECT (pad, "Failed to push EOS event on pad %s",
+            gst_pad_get_name (pad));
+
+        gst_pad_pause_task (pad);
+      }
+    } else if (ret != GST_FLOW_OK) {
+      GST_ERROR_OBJECT (pad, "Error pushing buffer to pad %s: %s",
+          gst_pad_get_name (pad), gst_flow_get_name (ret));
+
+      gst_pad_pause_task (pad);
+    }
   } else {
     GST_INFO_OBJECT (pad, "Pause video pad worker thread");
     gst_pad_pause_task (pad);

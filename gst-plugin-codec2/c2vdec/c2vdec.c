@@ -120,13 +120,17 @@ gst_c2_vdec_get_output_format (GstC2VDecoder * c2vdec,
   }
 
   if (bit_depth_luma == 8 && bit_depth_chroma == 8) {
-    if (format != GST_VIDEO_FORMAT_NV12 &&
+    if (format == GST_VIDEO_FORMAT_UNKNOWN) {
+      return GST_VIDEO_FORMAT_NV12;
+    } else if (format != GST_VIDEO_FORMAT_NV12 &&
         format != GST_VIDEO_FORMAT_NV12_Q08C) {
       GST_ERROR_OBJECT (c2vdec, "Unsupported 8 bit-depth format, use NV12");
-      return GST_VIDEO_FORMAT_NV12;
+      return GST_VIDEO_FORMAT_UNKNOWN;
     }
   } else if (bit_depth_luma == 10 && bit_depth_chroma == 10) {
-    if (format != GST_VIDEO_FORMAT_P010_10LE &&
+    if (format == GST_VIDEO_FORMAT_UNKNOWN) {
+      return GST_VIDEO_FORMAT_P010_10LE;
+    } else if (format != GST_VIDEO_FORMAT_P010_10LE &&
         format != GST_VIDEO_FORMAT_NV12_Q10LE32C) {
       GST_ERROR_OBJECT (c2vdec, "Unsupported 10-bit depth format");
       return GST_VIDEO_FORMAT_UNKNOWN;

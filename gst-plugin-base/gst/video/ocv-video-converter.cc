@@ -47,10 +47,6 @@ enum {
   GST_OCV_FLAG_RGB    = (1 << 1),
   GST_OCV_FLAG_YUV    = (1 << 2),
   GST_OCV_FLAG_STAGED = (1 << 3),
-  GST_OCV_FLAG_I32    = (1 << 4),
-  GST_OCV_FLAG_U32    = (1 << 5),
-  GST_OCV_FLAG_F16    = (1 << 6),
-  GST_OCV_FLAG_F32    = (1 << 7),
 };
 
 typedef enum {
@@ -67,6 +63,7 @@ typedef enum {
  * @height: Height of the plane in pixels.
  * @data: Pointer to bytes of data.
  * @stride: Aligned width of the plane in bytes.
+ * @type: The OpenCV matrix type of the plane.
  *
  * Blit plane.
  */
@@ -77,7 +74,7 @@ struct _GstOcvPlane
   guint32  height;
   gpointer data;
   guint32  stride;
-  gint     channels;
+  gint     type;
 };
 
 /**
@@ -86,6 +83,7 @@ struct _GstOcvPlane
  * @flags: Bit mask containing format family.
  * @flip: Flip direction or 0 if none.
  * @rotate: Clockwise rotation degrees or 0 if none.
+ * @resize: Whether the object needs to be upscaled or downscaled.
  * @planes: Array of blit planes.
  * @n_planes: Number of used planes based on format.
  *
@@ -98,9 +96,7 @@ struct _GstOcvObject
 
   GstOpenCVFlip      flip;
   GstVideoConvRotate rotate;
-
   gboolean           resize;
-  gboolean           cvt_color;
 
   GstOcvPlane        planes[GST_VIDEO_MAX_PLANES];
   guint8             n_planes;
@@ -163,41 +159,37 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
     const guint64 flags)
 {
   const gchar *mode = NULL;
-  gint x = 0, y = 0, width = 0, height = 0;
-  guint bpp = 0;
+  gint x = 0, y = 0, width = 0, height = 0, bpp = 0;
 
   width = GST_VIDEO_FRAME_WIDTH (frame);
   height = GST_VIDEO_FRAME_HEIGHT (frame);
 
-  // Take the region values only if they are valid.
-  if ((region->w != 0) && (region->h != 0) &&
-      (width >= (region->x + region->w)) && (height >= (region->y + region->h))) {
-    x = region->x;
-    y = region->y;
-    width = region->w;
-    height = region->h;
-  }
+  // Clip out of bounds regions so they don't go outside the full frame.
+  x = MAX (region->x, 0);
+  y = MAX (region->y, 0);
+  width = MIN (((region->x + region->w) - x), (width - x));
+  height = MIN (((region->y + region->h) - y), (height - y));
 
-  switch (flags) {
-    case GST_VCE_FLAG_F16_FORMAT:
-      object->flags = GST_OCV_FLAG_F16;
-      mode = "FLOAT16";
-      break;
-    case GST_VCE_FLAG_F32_FORMAT:
-      object->flags = GST_OCV_FLAG_F32;
-      mode = "FLOAT32";
-      break;
-    case GST_VCE_FLAG_I32_FORMAT:
-      object->flags = GST_OCV_FLAG_I32;
-      mode = "INT32";
-      break;
-    case GST_VCE_FLAG_U32_FORMAT:
-      object->flags = GST_OCV_FLAG_U32;
-      mode = "UINT32";
-      break;
-    default:
-      break;
-  }
+  if (flags == GST_VCE_FLAG_I8_FORMAT)
+    mode = " INT8";
+  else if (flags == GST_VCE_FLAG_U16_FORMAT)
+    mode = " UINT16";
+  else if (flags == GST_VCE_FLAG_I16_FORMAT)
+    mode = " INT16";
+  else if (flags == GST_VCE_FLAG_U32_FORMAT)
+    mode = " UINT32";
+  else if (flags == GST_VCE_FLAG_I32_FORMAT)
+    mode = " INT32";
+  else if (flags == GST_VCE_FLAG_U64_FORMAT)
+    mode = " UINT64";
+  else if (flags == GST_VCE_FLAG_I64_FORMAT)
+    mode = " INT64";
+  else if (flags == GST_VCE_FLAG_F16_FORMAT)
+    mode = " FLOAT16";
+  else if (flags == GST_VCE_FLAG_F32_FORMAT)
+    mode = " FLOAT32";
+  else
+    mode = " UINT8";
 
   GST_TRACE ("%s Buffer %p - %ux%u %s%s", type, frame->buffer,
       GST_VIDEO_FRAME_WIDTH (frame), GST_VIDEO_FRAME_HEIGHT (frame),
@@ -240,9 +232,9 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
   object->planes[0].stgid = GST_OCV_INVALID_STAGE_ID;
 
   if (GST_OCV_OBJ_IS_YUV (object) || GST_OCV_OBJ_IS_GRAY (object))
-    object->planes[0].channels = CV_8UC1;
+    object->planes[0].type = CV_8UC1;
   else if (GST_OCV_OBJ_IS_RGB (object))
-    object->planes[0].channels = CV_8UC3;
+    object->planes[0].type = CV_8UC3;
 
   // Initialize the secondary plane depending on the format.
   switch (object->format) {
@@ -251,13 +243,12 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
       object->planes[1].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
       object->planes[1].width = object->planes[0].width / 2;
       object->planes[1].height = object->planes[0].height / 2;
-      object->planes[1].channels = CV_8UC2;
+      object->planes[1].type = CV_8UC2;
 
-      bpp = GST_VIDEO_INFO_COMP_PSTRIDE(&(frame->info), 1);
       object->planes[1].data =
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 1) +
               ((GST_ROUND_UP_2 (y) / 2) * object->planes[1].stride) +
-                  GST_ROUND_UP_2 (x * bpp));
+                  GST_ROUND_UP_2 (x));
       object->planes[1].stgid = GST_OCV_INVALID_STAGE_ID;
       break;
     case GST_VIDEO_FORMAT_NV16:
@@ -265,19 +256,18 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
       object->planes[1].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
       object->planes[1].width = object->planes[0].width / 2;
       object->planes[1].height = object->planes[0].height;
-      object->planes[1].channels = CV_8UC2;
+      object->planes[1].type = CV_8UC2;
 
-      bpp = GST_VIDEO_INFO_COMP_PSTRIDE(&(frame->info), 1);
       object->planes[1].data =
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 1) +
-              (y * object->planes[1].stride) + GST_ROUND_UP_2 (x * bpp));
+              (y * object->planes[1].stride) + GST_ROUND_UP_2 (x));
       object->planes[1].stgid = GST_OCV_INVALID_STAGE_ID;
       break;
     case GST_VIDEO_FORMAT_NV24:
       object->planes[1].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
       object->planes[1].width = object->planes[0].width * 2;
       object->planes[1].height = object->planes[0].height;
-      object->planes[1].channels = CV_8UC2;
+      object->planes[1].type = CV_8UC2;
       object->planes[1].data =
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 1) +
               (y * object->planes[1].stride) + (x * 2));
@@ -291,7 +281,7 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
       object->planes[1].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
       object->planes[1].width = object->planes[0].width;
       object->planes[1].height = object->planes[0].height / 2;
-      object->planes[1].channels = CV_8UC2;
+      object->planes[1].type = CV_8UC2;
       object->planes[1].data =
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 1) +
               ((GST_ROUND_UP_2 (y) / 2) * object->planes[1].stride) + (x * 2));
@@ -374,7 +364,7 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
       obj->planes[0].stride = GST_ROUND_UP_8 (width);
-      obj->planes[0].channels = CV_8UC1;
+      obj->planes[0].type = CV_8UC1;
       obj->n_planes = 1;
       obj->flags = GST_OCV_FLAG_GRAY;
       break;
@@ -383,7 +373,7 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
       obj->planes[0].stride = GST_ROUND_UP_8 (width) * 2;
-      obj->planes[0].channels = CV_8UC3;
+      obj->planes[0].type = CV_8UC3;
       obj->n_planes = 1;
       obj->flags = GST_OCV_FLAG_RGB;
       break;
@@ -392,7 +382,7 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
       obj->planes[0].stride = GST_ROUND_UP_8 (width) * 3;
-      obj->planes[0].channels = CV_8UC3;
+      obj->planes[0].type = CV_8UC3;
       obj->n_planes = 1;
       obj->flags = GST_OCV_FLAG_RGB;
       break;
@@ -403,7 +393,7 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
       obj->planes[0].stride = GST_ROUND_UP_8 (width) * 4;
-      obj->planes[0].channels = CV_8UC3;
+      obj->planes[0].type = CV_8UC3;
       obj->n_planes = 1;
       obj->flags = GST_OCV_FLAG_RGB;
       break;
@@ -412,11 +402,11 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
       obj->planes[0].stride = GST_ROUND_UP_8 (width);
-      obj->planes[0].channels = CV_8UC1;
+      obj->planes[0].type = CV_8UC1;
       obj->planes[1].width = GST_ROUND_UP_8 (width) / 2;
       obj->planes[1].height =  GST_ROUND_UP_2 (height) / 2;
       obj->planes[1].stride = GST_ROUND_UP_8 (width);
-      obj->planes[1].channels = CV_8UC2;
+      obj->planes[1].type = CV_8UC2;
       obj->n_planes = 2;
       obj->flags = GST_OCV_FLAG_YUV;
       break;
@@ -425,11 +415,11 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
       obj->planes[0].stride = GST_ROUND_UP_8 (width);
-      obj->planes[0].channels = CV_8UC1;
+      obj->planes[0].type = CV_8UC1;
       obj->planes[1].width = GST_ROUND_UP_8 (width) / 2;
       obj->planes[1].height =  height;
       obj->planes[1].stride = GST_ROUND_UP_8 (width);
-      obj->planes[1].channels = CV_8UC2;
+      obj->planes[1].type = CV_8UC2;
       obj->n_planes = 2;
       obj->flags = GST_OCV_FLAG_YUV;
       break;
@@ -437,11 +427,11 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
       obj->planes[0].stride = GST_ROUND_UP_8 (width);
-      obj->planes[0].channels = CV_8UC1;
+      obj->planes[0].type = CV_8UC1;
       obj->planes[1].width = GST_ROUND_UP_8 (width) * 2;
       obj->planes[1].height =  height;
       obj->planes[1].stride = GST_ROUND_UP_8 (width) * 2;
-      obj->planes[1].channels = CV_8UC2;
+      obj->planes[1].type = CV_8UC2;
       obj->n_planes = 2;
       obj->flags = GST_OCV_FLAG_YUV;
       break;
@@ -449,11 +439,11 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
       obj->planes[0].stride = GST_ROUND_UP_8 (width) * 2;
-      obj->planes[0].channels = CV_8UC1;
+      obj->planes[0].type = CV_8UC1;
       obj->planes[1].width = GST_ROUND_UP_8 (width);
       obj->planes[1].height =  GST_ROUND_UP_2 (height) / 2;
       obj->planes[1].stride = GST_ROUND_UP_8 (width) * 2;
-      obj->planes[1].channels = CV_8UC2;
+      obj->planes[1].type = CV_8UC2;
       obj->n_planes = 2;
       obj->flags = GST_OCV_FLAG_YUV;
       break;
@@ -659,20 +649,17 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
   GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
   GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
   guint8 idx = 0;
-  gboolean resize = false, cvt_color = false;
+  gboolean resize = false;
 
   // Cache the flip, rotation, resize and color convert flags.
-  flip = s_obj->flip;
   rotate = s_obj->rotate;
+  flip = s_obj->flip;
   resize = s_obj->resize;
-  cvt_color = s_obj->cvt_color;
 
   // Use stage object if other operations are pending
-  if (s_obj->resize || s_obj->flip || s_obj->cvt_color) {
+  if (resize || (flip != GST_OCV_FLIP_NONE) || (s_obj->format != d_obj->format)) {
     guint width = 0, height = 0;
     gboolean success = false;
-
-    GST_TRACE ("Using stage object for rotation");
 
     width = s_obj->planes[0].width;
     height = s_obj->planes[0].height;
@@ -703,10 +690,10 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
   for (idx = 0; idx < s_obj->n_planes; idx++) {
     GstOcvPlane *s_plane = &s_obj->planes[idx], *d_plane = &d_obj->planes[idx];
 
-    cv::Mat src_mat (s_plane->height, s_plane->width, s_plane->channels,
+    cv::Mat src_mat (s_plane->height, s_plane->width, s_plane->type,
         s_plane->data, s_plane->stride);
 
-    cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->channels,
+    cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->type,
         d_plane->data, d_plane->stride);
 
     cv::rotate (src_mat, dst_mat, GST_OCV_GET_ROTATE (rotate));
@@ -724,7 +711,6 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
   // Transfer any pending resize, flip and color convert and reset rotate
   s_obj->flip = flip;
   s_obj->rotate = GST_VCE_ROTATE_0;
-  s_obj->cvt_color = cvt_color;
   s_obj->resize = resize;
 
   // Restore the original destination object in case a stage was used.
@@ -742,20 +728,17 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
   GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
   GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
   guint8 idx = 0;
-  gboolean resize = false, cvt_color = false;
+  gboolean resize = false;
 
   // Cache the flip, rotation, resize and color convert flags.
-  flip = s_obj->flip;
   rotate = s_obj->rotate;
+  flip = s_obj->flip;
   resize = s_obj->resize;
-  cvt_color = s_obj->cvt_color;
 
   // Use stage object if other operations are pending
-  if (s_obj->resize || s_obj->rotate || s_obj->cvt_color) {
+  if (resize || (rotate != GST_VCE_ROTATE_0) || (s_obj->format != d_obj->format)) {
     guint width = 0, height = 0;
     gboolean success = false;
-
-    GST_TRACE ("Using stage object for flip");
 
     width = s_obj->planes[0].width;
     height = s_obj->planes[0].height;
@@ -787,10 +770,10 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
   for (idx = 0; idx < s_obj->n_planes; idx++) {
     GstOcvPlane *s_plane = &s_obj->planes[idx], *d_plane = &d_obj->planes[idx];
 
-    cv::Mat src_mat (s_plane->height, s_plane->width, s_plane->channels,
+    cv::Mat src_mat (s_plane->height, s_plane->width, s_plane->type,
         s_plane->data, s_plane->stride);
 
-    cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->channels,
+    cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->type,
         d_plane->data, d_plane->stride);
 
     cv::flip (src_mat, dst_mat, GST_OCV_GET_FLIP (flip));
@@ -808,7 +791,6 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
   // Transfer any pending resize, rotate and color convert and reset flip
   s_obj->flip = GST_OCV_FLIP_NONE;
   s_obj->rotate = rotate;
-  s_obj->cvt_color = cvt_color;
   s_obj->resize = resize;
 
   // Restore the original destination object in case a stage was used.
@@ -826,19 +808,16 @@ gst_ocv_video_converter_resize (GstOcvVideoConverter * convert,
   GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
   GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
   guint8 idx = 0;
-  gboolean cvt_color = false;
 
   // Cache the flip, rotation, resize and color convert flags.
   flip = s_obj->flip;
   rotate = s_obj->rotate;
-  cvt_color = s_obj->cvt_color;
 
   // Use stage object if other operations are pending
-  if (s_obj->flip || s_obj->rotate || s_obj->cvt_color) {
+  if ((flip != GST_OCV_FLIP_NONE) || (rotate != GST_VCE_ROTATE_0) ||
+      (s_obj->format != d_obj->format)) {
     guint width = 0, height = 0;
     gboolean success = false;
-
-    GST_TRACE ("Using stage object for resize");
 
     width = d_obj->planes[0].width;
     height = d_obj->planes[0].height;
@@ -869,10 +848,10 @@ gst_ocv_video_converter_resize (GstOcvVideoConverter * convert,
   for (idx = 0; idx < s_obj->n_planes; idx++) {
     GstOcvPlane *s_plane = &s_obj->planes[idx], *d_plane = &d_obj->planes[idx];
 
-    cv::Mat src_mat (s_plane->height, s_plane->width, s_plane->channels,
+    cv::Mat src_mat (s_plane->height, s_plane->width, s_plane->type,
         s_plane->data, s_plane->stride);
 
-    cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->channels,
+    cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->type,
         d_plane->data, d_plane->stride);
 
     cv::resize (src_mat, dst_mat, dst_mat.size(), 0, 0);
@@ -891,7 +870,6 @@ gst_ocv_video_converter_resize (GstOcvVideoConverter * convert,
   // Transfer any pending rotate, flip and color convert and reset resize
   s_obj->flip = flip;
   s_obj->rotate = rotate;
-  s_obj->cvt_color = cvt_color;
   s_obj->resize = false;
 
   // Restore the original destination object in case a stage was used.
@@ -920,14 +898,11 @@ gst_ocv_video_converter_cvt_color (GstOcvVideoConverter * convert,
 
   if (GST_OCV_OBJ_IS_YUV (s_obj) && GST_OCV_OBJ_IS_RGB (d_obj)) {
     cv::Mat y_plane (s_obj->planes[0].height, s_obj->planes[0].width,
-        s_obj->planes[0].channels, s_obj->planes[0].data,
-        s_obj->planes[0].stride);
+        s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
     cv::Mat uv_plane (s_obj->planes[1].height, s_obj->planes[1].width,
-        s_obj->planes[1].channels, s_obj->planes[1].data,
-        s_obj->planes[1].stride);
+        s_obj->planes[1].type, s_obj->planes[1].data, s_obj->planes[1].stride);
     cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
-        d_obj->planes[0].channels, d_obj->planes[0].data,
-        d_obj->planes[0].stride);
+        d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
 
     cv::cvtColorTwoPlane (y_plane, uv_plane, output_matrix, conversion_mode);
 
@@ -945,22 +920,18 @@ gst_ocv_video_converter_cvt_color (GstOcvVideoConverter * convert,
     GST_ERROR ("RGB to YUV conversion is currently unsupported!");
   } else if (GST_OCV_OBJ_IS_RGB (s_obj) && GST_OCV_OBJ_IS_RGB (d_obj)) {
     cv::Mat input_matrix (s_obj->planes[0].height, s_obj->planes[0].width,
-        s_obj->planes[0].channels, s_obj->planes[0].data,
-        s_obj->planes[0].stride);
+        s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
     cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
-        d_obj->planes[0].channels, d_obj->planes[0].data,
-        d_obj->planes[0].stride);
+        d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
 
     cv::cvtColor (input_matrix, output_matrix, conversion_mode);
 
     success = true;
   } else if (GST_OCV_OBJ_IS_RGB (s_obj) && GST_OCV_OBJ_IS_GRAY (d_obj)) {
     cv::Mat input_matrix (s_obj->planes[0].height, s_obj->planes[0].width,
-        s_obj->planes[0].channels, s_obj->planes[0].data,
-        s_obj->planes[0].stride);
+        s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
     cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
-        d_obj->planes[0].channels, d_obj->planes[0].data,
-        d_obj->planes[0].stride);
+        d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
 
     cv::cvtColor (input_matrix, output_matrix, conversion_mode);
 
@@ -970,11 +941,9 @@ gst_ocv_video_converter_cvt_color (GstOcvVideoConverter * convert,
     GST_ERROR ("GRAY to YUV conversion is currently unsupported!");
   } else if (GST_OCV_OBJ_IS_GRAY (s_obj) && GST_OCV_OBJ_IS_RGB (d_obj)) {
     cv::Mat input_matrix (s_obj->planes[0].height, s_obj->planes[0].width,
-        s_obj->planes[0].channels, s_obj->planes[0].data,
-        s_obj->planes[0].stride);
+        s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
     cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
-        d_obj->planes[0].channels, d_obj->planes[0].data,
-        d_obj->planes[0].stride);
+        d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
 
     cv::cvtColor (input_matrix, output_matrix, conversion_mode);
 
@@ -1041,7 +1010,6 @@ gst_ocv_video_converter_process (GstOcvVideoConverter * convert,
       s_obj->resize = ((s_obj->planes[0].width != d_obj->planes[0].width) ||
           (s_obj->planes[0].height != d_obj->planes[0].height)) ? true : false;
     }
-    s_obj->cvt_color = cvt_color;
 
     // First, do downscale if required so that next operations are less costly.
     if (downscale && !gst_ocv_video_converter_resize (convert, s_obj, d_obj)) {
@@ -1050,13 +1018,13 @@ gst_ocv_video_converter_process (GstOcvVideoConverter * convert,
     }
 
     // Second, perform image rotate if necessary.
-    if (rotate && !gst_ocv_video_converter_rotate (convert, s_obj, d_obj)) {
+    if ((rotate != 0) && !gst_ocv_video_converter_rotate (convert, s_obj, d_obj)) {
       GST_ERROR ("Failed to rotate image!");
       return false;
     }
 
     // Third, perform image flip if necessary.
-    if (flip && !gst_ocv_video_converter_flip (convert, s_obj, d_obj)) {
+    if ((flip != 0) && !gst_ocv_video_converter_flip (convert, s_obj, d_obj)) {
       GST_ERROR ("Failed to flip image!");
       return false;
     }

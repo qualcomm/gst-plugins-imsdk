@@ -44,7 +44,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
   $<$<BOOL:${GLES_FOUND}>:HAVE_GLES2_H>
   $<$<BOOL:${HAVE_FASTCV_H}>:HAVE_FASTCV_H>
   $<$<BOOL:${FASTCV_FOUND}>:FASTCV_PKG_FOUND>
-  FASTCV_VERSION_MAJOR="${FASTCV_VERSION_MAJOR}"
+  $<$<BOOL:${FASTCV_FOUND}>:FASTCV_VERSION_MAJOR="${FASTCV_VERSION_MAJOR}">
   $<$<BOOL:${OPEN_CV_FOUND}>:HAVE_OPENCV_H>
   $<$<BOOL:${HAVE_GBM_PRIV_H}>:HAVE_GBM_PRIV_H>
 )
@@ -52,7 +52,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
 target_include_directories(${TARGET_NAME} PRIVATE
   ${GST_INCLUDE_DIRS}
   ${KERNEL_BUILDDIR}/usr/include
-  ${SYSROOT_INCDIR}/opencv4
+  $<$<BOOL:${OPEN_CV_FOUND}>:${OPEN_CV_INCLUDE_DIRS}>
 )
 
 # Path for some headers in msm-5.4 kernel.
@@ -69,9 +69,9 @@ target_link_libraries(${TARGET_NAME} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  ${OPEN_CV_LIBRARIES}
   gstqtiallocatorsbase
   gstqtigfxbase
+  $<$<BOOL:${OPEN_CV_FOUND}>:${OPEN_CV_LIBRARIES}>
 )
 
 install(
