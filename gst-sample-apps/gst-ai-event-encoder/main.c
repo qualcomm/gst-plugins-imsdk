@@ -211,11 +211,19 @@ interrupt_handler (gpointer userdata)
   }
 
   if (state1 == GST_STATE_PLAYING) {
-    gst_element_send_event (appctx->pipeline_main, gst_event_new_eos ());
+    if (!gst_element_send_event (appctx->pipeline_main, gst_event_new_eos ())) {
+      g_printerr ("WARNING: Failed to send EOS to main pipeline, "
+          "forcing NULL state\n");
+      gst_element_set_state (appctx->pipeline_main, GST_STATE_NULL);
+    }
   }
 
   if (state2 == GST_STATE_PLAYING) {
-    gst_element_send_event (appctx->pipeline_recoding, gst_event_new_eos ());
+    if (!gst_element_send_event (appctx->pipeline_recoding, gst_event_new_eos ())) {
+      g_printerr ("WARNING: Failed to send EOS to recording pipeline, "
+          "forcing NULL state\n");
+      gst_element_set_state (appctx->pipeline_recoding, GST_STATE_NULL);
+    }
   }
 
   g_main_loop_quit (appctx->mloop);
@@ -241,6 +249,54 @@ recording_eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
       gst_element_set_state (appctx->pipeline_recoding, GST_STATE_NULL)) {
     wait_for_state_change (appctx->pipeline_recoding);
   }
+}
+
+/**
+* Pipeline end-of-stream. Call-back function
+*
+* @param bus pipeline bus.
+* @param message eos Message
+* @param userdata Userdata
+*/
+void
+pipeline_eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
+{
+  GstAppsContext *appctx = (GstAppsContext *) userdata;
+  GstState state, pending;
+
+  g_print ("\nReceived Pipeline End-of-Stream from '%s' ...\n",
+      GST_MESSAGE_SRC_NAME (message));
+
+  g_mutex_lock (&appctx->lock);
+  if (appctx->pipeline_recoding != NULL) {
+    if (!gst_element_get_state (appctx->pipeline_recoding, &state, &pending,
+        GST_CLOCK_TIME_NONE)) {
+      gst_printerr ("ERROR: get current state!\n");
+      g_mutex_unlock (&appctx->lock);
+      if (GST_STATE_CHANGE_ASYNC ==
+          gst_element_set_state (appctx->pipeline_recoding, GST_STATE_NULL)) {
+        wait_for_state_change (appctx->pipeline_recoding);
+      }
+      g_main_loop_quit (appctx->mloop);
+      return;
+  } else if (state == GST_STATE_PLAYING || state == GST_STATE_PAUSED) {
+      if (!gst_element_send_event (appctx->pipeline_recoding,
+          gst_event_new_eos ())) {
+        g_printerr ("WARNING: Failed to send EOS event to recording pipeline,"
+            "forcing NULL state\n");
+        g_mutex_unlock (&appctx->lock);
+        if (GST_STATE_CHANGE_ASYNC ==
+            gst_element_set_state (appctx->pipeline_recoding, GST_STATE_NULL)) {
+          wait_for_state_change (appctx->pipeline_recoding);
+        }
+        g_main_loop_quit (appctx->mloop);
+        return;
+      }
+    }
+  }
+  g_mutex_unlock (&appctx->lock);
+
+  g_main_loop_quit (appctx->mloop);
 }
 
 /**
@@ -518,8 +574,9 @@ exit:
 static void
 sample_release (GstSample * sample)
 {
-  gst_sample_unref (sample);
-  gst_sample_set_buffer (sample, NULL);
+  if (sample) {
+    gst_sample_unref (sample);
+  }
 }
 
 /**
@@ -547,33 +604,49 @@ appsink_recording (GstElement * appsink, gpointer user_data)
   }
 
   g_mutex_lock (&appctx->lock);
-  if (appctx->recording_pipeline_state == PAUSED) {
-    sample_release (sample);
+  if (appctx->pipeline_recoding == NULL) {
     g_mutex_unlock (&appctx->lock);
-    return GST_FLOW_OK;
-  }
-  g_mutex_unlock (&appctx->lock);
-
-  appsrc = gst_bin_get_by_name (GST_BIN (appctx->pipeline_recoding), "appsrc");
-  if (appsrc == NULL) {
-    g_printerr ("ERROR: Failed to get appsrc.\n");
     sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
+  if (appctx->recording_pipeline_state == PAUSED) {
+    g_mutex_unlock (&appctx->lock);
+    sample_release (sample);
+    return GST_FLOW_OK;
+  }
+
+  appsrc = gst_bin_get_by_name (GST_BIN (appctx->pipeline_recoding), "appsrc");
+  if (appsrc == NULL) {
+    g_mutex_unlock (&appctx->lock);
+    g_printerr ("ERROR: Failed to get appsrc.\n");
+    sample_release (sample);
+    return GST_FLOW_ERROR;
+  }
+  g_mutex_unlock (&appctx->lock);
+
   buffer = gst_sample_get_buffer (sample);
   if (!buffer) {
     g_printerr ("ERROR: Failed to get buffer from sample.\n");
+    gst_object_unref (appsrc);
     sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
   copybuffer = gst_buffer_copy (buffer);
+  if (!copybuffer) {
+    g_printerr ("ERROR: Failed to copy buffer.\n");
+    gst_object_unref (appsrc);
+    sample_release (sample);
+    return GST_FLOW_ERROR;
+  }
   sample_release (sample);
 
   g_signal_emit_by_name (appsrc, "push-buffer", copybuffer, &ret);
   if (ret != GST_FLOW_OK) {
     g_printerr ("ERROR: Failed to emit push-buffer signal.\n");
+    gst_buffer_unref (copybuffer);
+    gst_object_unref (appsrc);
     return GST_FLOW_ERROR;
   }
 
@@ -1698,13 +1771,13 @@ main (gint argc, gchar * argv[])
   g_signal_connect (bus1, "message::error", G_CALLBACK (error_cb), mloop);
   g_signal_connect (bus1, "message::warning", G_CALLBACK (warning_cb), mloop);
 
-  g_signal_connect (bus1, "message::eos", G_CALLBACK (eos_cb), mloop);
+  g_signal_connect (bus1, "message::eos", G_CALLBACK (pipeline_eos_cb), &appctx);
   gst_object_unref (bus1);
 
   // Retrieve reference to the pipeline's bus.
   // Bus is message queue for getting callback from gstreamer pipeline
   if ((bus2 = gst_pipeline_get_bus (GST_PIPELINE (pipeline_recoding))) == NULL) {
-    g_printerr ("ERROR: Failed to retrieve pipeline bus1!\n");
+    g_printerr ("ERROR: Failed to retrieve pipeline bus2!\n");
     gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
