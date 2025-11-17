@@ -427,11 +427,13 @@ class IEngine {
 };
 
 /* NewGlEngine
+ * @vendor: The company responsible for this GL implementation.
+ * @renderer: The name of the renderer.
  *
  * Main API for loading an instance of OpenGLES based engine.
  *
  * return: Pointer to new engine instance.
  **/
-IEngine* NewGlEngine();
+IEngine* NewGlEngine(const char** vendor, const char** renderer);
 
 } // namespace ib2c

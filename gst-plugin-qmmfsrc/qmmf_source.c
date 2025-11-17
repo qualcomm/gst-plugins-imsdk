@@ -456,7 +456,11 @@ qmmfsrc_pad_push_event (GstElement * element, GstPad * pad, gpointer data)
   GstEvent *event = GST_EVENT (data);
 
   GST_DEBUG_OBJECT (qmmfsrc, "Event: %s", GST_EVENT_TYPE_NAME (event));
-  return gst_pad_push_event (pad, gst_event_copy (event));
+  if (GST_EVENT_TYPE (event) == GST_EVENT_EOS && GST_PAD_IS_EOS (pad)) {
+    return TRUE;
+  } else {
+    return gst_pad_push_event (pad, gst_event_copy (event));
+  }
 }
 
 static gboolean

@@ -199,6 +199,8 @@ gst_dngpacker_task (gpointer userdata)
   GstMapInfo raw_map_info, image_map_info;
   GstVideoMeta *vmeta;
   DngPackRequest request;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
+  int dng_ret = 0;
 
   raw_item = image_item = NULL;
   raw_buf = img_buf = NULL;
@@ -251,7 +253,20 @@ gst_dngpacker_task (gpointer userdata)
   gst_dngpacker_update_packer_request (packer, vmeta, raw_map_info.size,
       raw_map_info.data, image_data_size, image_data, &request);
 
-  if (dngpacker_utils_pack_dng (packer->packer_utils, &request) == 0) {
+  // Get start time for performance measurements.
+  time = gst_util_get_timestamp ();
+
+  dng_ret = dngpacker_utils_pack_dng (packer->packer_utils, &request);
+
+  if (dng_ret == 0) {
+
+    // Get time difference between current time and start.
+    time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+    GST_LOG_OBJECT (packer, "Dng Pack Done, consuming %" G_GINT64_FORMAT ".%03"
+        G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+        (GST_TIME_AS_USECONDS (time) % 1000));
+
     out_buf = gst_buffer_new_wrapped (request.output, request.output_size);
     gst_pad_push (packer->dng_src_pad, out_buf);
   } else {
