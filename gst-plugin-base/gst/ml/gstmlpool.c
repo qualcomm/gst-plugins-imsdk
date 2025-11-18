@@ -93,19 +93,20 @@ struct _GstMLBufferPoolPrivate
   // Allocation memory type.
   GQuark memtype;
 
-  GstAllocator *allocator;
+  GstAllocator        *allocator;
   GstAllocationParams params;
-  GstMLInfo info;
+  GstMLInfo           info;
 
-  gboolean addmeta;
-  gboolean continuous;
+  gboolean            addmeta;
+  gboolean            continuous;
+  GstFdMemoryFlags    memflags;
 
   // DMA/ION device FD.
-  gint devfd;
+  gint                devfd;
 
 #if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
   // Map of data FDs and ION handles on case ION memory is used.
-  GHashTable *datamap;
+  GHashTable          *datamap;
 #endif
 };
 
@@ -224,7 +225,7 @@ dma_device_alloc (GstMLBufferPool * mlpool, gsize size)
 
   // Wrap the allocated FD in FD backed allocator.
   return gst_fd_allocator_alloc (priv->allocator, fd, size,
-      GST_FD_MEMORY_FLAG_DONT_CLOSE);
+      priv->memflags);
 }
 
 static void
@@ -252,6 +253,7 @@ gst_ml_buffer_pool_get_options (GstBufferPool * pool)
   static const gchar *options[] = {
     GST_ML_BUFFER_POOL_OPTION_TENSOR_META,
     GST_ML_BUFFER_POOL_OPTION_CONTINUOUS,
+    GST_ML_BUFFER_POOL_OPTION_KEEP_MAPPED,
     NULL
   };
   return options;
@@ -268,7 +270,7 @@ gst_ml_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   GstMLInfo info;
   GstAllocator *allocator;
   GstAllocationParams params;
-  gboolean success;
+  gboolean success, keepmapped = FALSE;
 
   success = gst_buffer_pool_config_get_params (config, &caps, &maxsize,
       &minbuffers, &maxbuffers);
@@ -291,6 +293,15 @@ gst_ml_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
         G_GSIZE_FORMAT, maxsize, gst_ml_info_size (&info));
     return FALSE;
   }
+
+  // Check whether we should keep buffer memory mapped.
+  keepmapped = gst_buffer_pool_config_has_option (config,
+      GST_ML_BUFFER_POOL_OPTION_KEEP_MAPPED);
+
+  if (keepmapped)
+    priv->memflags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
+  else
+    priv->memflags &= ~GST_FD_MEMORY_FLAG_KEEP_MAPPED;
 
   if (!gst_buffer_pool_config_get_allocator (config, &allocator, &params)) {
     GST_ERROR_OBJECT (mlpool, "Allocator missing from configuration");
@@ -441,6 +452,7 @@ static void
 gst_ml_buffer_pool_init (GstMLBufferPool * mlpool)
 {
   mlpool->priv = gst_ml_buffer_pool_get_instance_private (mlpool);
+  mlpool->priv->memflags = GST_FD_MEMORY_FLAG_DONT_CLOSE;
 }
 
 GstBufferPool *
