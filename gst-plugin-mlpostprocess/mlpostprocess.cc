@@ -461,7 +461,7 @@ static GstBufferPool *
 gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
     GstCaps * caps)
 {
-  GstStructure *structure = gst_caps_get_structure (caps, 0);
+  GstStructure *config = NULL;
   GstBufferPool *pool = NULL;
   GstAllocator *allocator = NULL;
 
@@ -505,18 +505,20 @@ gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
     return NULL;
   }
 
-  structure = gst_buffer_pool_get_config (pool);
+  config = gst_buffer_pool_get_config (pool);
 
-  gst_buffer_pool_config_set_allocator (structure, allocator, NULL);
+  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   g_object_unref (allocator);
 
   if (postprocess->mode == OUTPUT_MODE_TENSOR) {
-    gst_buffer_pool_config_add_option (structure,
+    gst_buffer_pool_config_add_option (config,
         GST_ML_BUFFER_POOL_OPTION_TENSOR_META);
+    gst_buffer_pool_config_add_option (config,
+        GST_ML_BUFFER_POOL_OPTION_KEEP_MAPPED);
   } else {
-    gst_buffer_pool_config_add_option (structure,
+    gst_buffer_pool_config_add_option (config,
         GST_BUFFER_POOL_OPTION_VIDEO_META);
-    gst_buffer_pool_config_add_option (structure,
+    gst_buffer_pool_config_add_option (config,
         GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
   }
 
@@ -528,9 +530,9 @@ gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
   }
 
   if (postprocess->mode == OUTPUT_MODE_VIDEO) {
-    gst_buffer_pool_config_add_option (structure,
+    gst_buffer_pool_config_add_option (config,
         GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-    gst_buffer_pool_config_set_video_alignment (structure, &align);
+    gst_buffer_pool_config_set_video_alignment (config, &align);
   }
 
   if (postprocess->mode == OUTPUT_MODE_TENSOR)
@@ -538,10 +540,10 @@ gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
   else
     size = video_info.size;
 
-  gst_buffer_pool_config_set_params (structure, caps, size, DEFAULT_MIN_BUFFERS,
+  gst_buffer_pool_config_set_params (config, caps, size, DEFAULT_MIN_BUFFERS,
       DEFAULT_MAX_BUFFERS);
 
-  if (!gst_buffer_pool_set_config (pool, structure)) {
+  if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (postprocess, "Failed to set pool configuration!");
     gst_clear_object (&pool);
   }
