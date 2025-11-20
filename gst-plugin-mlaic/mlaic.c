@@ -237,6 +237,8 @@ gst_ml_aic_create_pool (GstPad * pad, GstCaps * caps)
       config, GST_ML_BUFFER_POOL_OPTION_TENSOR_META);
   gst_buffer_pool_config_add_option (
       config, GST_ML_BUFFER_POOL_OPTION_CONTINUOUS);
+  gst_buffer_pool_config_add_option (
+      config, GST_ML_BUFFER_POOL_OPTION_KEEP_MAPPED);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (pad, "Failed to set pool configuration!");

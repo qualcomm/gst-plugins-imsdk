@@ -81,6 +81,16 @@ typedef struct _GstMLBufferPoolPrivate GstMLBufferPoolPrivate;
  */
 #define GST_ML_BUFFER_POOL_OPTION_CONTINUOUS "GstMLBufferPoolOptionContinuous"
 
+/**
+ * GST_ML_BUFFER_POOL_OPTION_KEEP_MAPPED:
+ *
+ * An option indicating that once the buffer memory is mapped it will be
+ * kept mapped until the memory is destroyed.
+ *
+ * Note: This setting has no effect on system memory.
+ */
+#define GST_ML_BUFFER_POOL_OPTION_KEEP_MAPPED "GstMLBufferPoolOptionKeepMapped"
+
 struct _GstMLBufferPool
 {
   GstBufferPool parent;
