@@ -97,6 +97,10 @@ struct _GstQmmfContext {
   /// User provided private data to be called with the callback.
   gpointer          userdata;
 
+  /// Device status change information
+  guint32           device_status_camera_id;
+  gboolean          device_status_is_present;
+
   /// QMMF Recorder camera device opened by this source.
   guint             camera_id;
 
@@ -1202,6 +1206,23 @@ camera_event_callback (GstQmmfContext * context,
         return;
 
       event = EVENT_INTERNAL_RECOVERY;
+      break;
+    }
+    case  ::qmmf::recorder::EventType::kCameraDeviceStatusChanged:
+    {
+      // Cast the payload to the named struct type
+      const CameraDeviceStatus* camera_status =
+          static_cast<const CameraDeviceStatus*>(payload);
+      g_assert (size == sizeof(CameraDeviceStatus));
+
+      gint camera_id = camera_status->camera_id;
+      gboolean is_present = camera_status->is_present;
+
+      // Store device status information in context
+      context->device_status_camera_id = camera_id;
+      context->device_status_is_present = is_present;
+
+      event = EVENT_DEVICE_STATUS_CHANGE;
       break;
     }
     default:
@@ -3333,4 +3354,18 @@ gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
 
   QMMFSRC_RETURN_IF_FAIL (NULL, status == 0,
       "QMMF Recorder SetVideoTrackParam/SetCameraParam Failed!");
+}
+
+guint32
+gst_qmmf_context_get_device_status_camera_id (GstQmmfContext * context)
+{
+  g_return_val_if_fail (context != NULL, 0);
+  return context->device_status_camera_id;
+}
+
+gboolean
+gst_qmmf_context_get_device_status_is_present (GstQmmfContext * context)
+{
+  g_return_val_if_fail (context != NULL, FALSE);
+  return context->device_status_is_present;
 }

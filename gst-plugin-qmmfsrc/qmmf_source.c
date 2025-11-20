@@ -123,6 +123,7 @@ enum
   SIGNAL_RESULT_METADATA,
   SIGNAL_URGENT_METADATA,
   SIGNAL_VIDEO_PADS_ACTIVATION,
+  SIGNAL_DEVICE_STATUS_CHANGE,
   LAST_SIGNAL
 };
 
@@ -892,6 +893,12 @@ qmmfsrc_event_callback (guint event, gpointer userdata)
       break;
     case EVENT_INTERNAL_RECOVERY:
       GST_LOG_OBJECT (qmmfsrc, "Internal Recovery occured");
+      break;
+    case EVENT_DEVICE_STATUS_CHANGE:
+      GST_LOG_OBJECT (qmmfsrc, "Camera device status change event received");
+      g_signal_emit_by_name (qmmfsrc, "device-status-change",
+          gst_qmmf_context_get_device_status_camera_id (qmmfsrc->context),
+          gst_qmmf_context_get_device_status_is_present (qmmfsrc->context));
       break;
     default:
       GST_WARNING_OBJECT (qmmfsrc, "Unknown camera device event");
@@ -2239,6 +2246,10 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   signals[SIGNAL_URGENT_METADATA] =
       g_signal_new ("urgent-metadata", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_POINTER);
+
+  signals[SIGNAL_DEVICE_STATUS_CHANGE] =
+      g_signal_new ("device-status-change", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_UINT, G_TYPE_BOOLEAN);
 
   gstelement->request_new_pad = GST_DEBUG_FUNCPTR (qmmfsrc_request_pad);
   gstelement->release_pad = GST_DEBUG_FUNCPTR (qmmfsrc_release_pad);
