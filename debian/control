@@ -27,6 +27,9 @@ Build-Depends:
  libopencv-dev,
  opencl-c-headers,
  libcairo2-dev,
+ libtensorflow-lite-qcom-dev,
+ libsnpe-dev,
+ libqnn-dev,
 Standards-Version: 4.6.2
 
 Package: gstreamer1.0-plugins-qcom
@@ -48,6 +51,9 @@ Depends:
  gstreamer1.0-plugins-qcom-mlvpose,
  gstreamer1.0-plugins-qcom-mlvsegmentation,
  gstreamer1.0-plugins-qcom-mlvsuperresolution,
+ gstreamer1.0-plugins-qcom-mltflite,
+ gstreamer1.0-plugins-qcom-mlsnpe,
+ gstreamer1.0-plugins-qcom-mlqnn,
  gstreamer1.0-plugins-qcom-msgbroker,
  gstreamer1.0-plugins-qcom-objtracker,
  gstreamer1.0-plugins-qcom-redissink,
@@ -198,6 +204,36 @@ Depends:
  ${misc:Depends},
  gstreamer1.0-plugins-qcom-base,
 Description: GStreamer plugin for Qualcomm: mlvsuperresolution.
+
+Package: gstreamer1.0-plugins-qcom-mltflite
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+ libtensorflow-lite-c-qcom2,
+Description: GStreamer plugin for Qualcomm ML: tflite.
+
+Package: gstreamer1.0-plugins-qcom-mlsnpe
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+ libsnpe1,
+Description: GStreamer plugin for Qualcomm ML: snpe.
+
+Package: gstreamer1.0-plugins-qcom-mlqnn
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+ libqnn1,
+Description: GStreamer plugin for Qualcomm ML: qnn.
 
 Package: gstreamer1.0-plugins-qcom-msgbroker
 Section: libs
