@@ -1,7 +1,7 @@
 /*
- Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- SPDX-License-Identifier: BSD-3-Clause-Clear
-*/
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef __GST_QTI_VIDEO_TEMPLATE_H__
 #define __GST_QTI_VIDEO_TEMPLATE_H__
