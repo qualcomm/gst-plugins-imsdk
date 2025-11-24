@@ -1,3 +1,103 @@
+gst-plugins-qti-oss (1.7.1-qcom0) noble; urgency=medium
+
+  [ QCTECMDR Service ]
+  * Merge "vtransform: Copy metadata from input to output buffer"
+
+  [ Tushar Patra Jamula ]
+  * vtransform: Copy metadata from input to output buffer
+
+  [ Linux Build Service Account ]
+  * Merge "Revert "gst-plugin-qmmfsrc: Add image colorimetry."" into le-gst.lnx.2.1
+
+  [ Girish K ]
+  * Revert "gst-plugin-qmmfsrc: Add image colorimetry."
+
+  [ QCTECMDR Service ]
+  * Merge "Add KEEP_MAPPED flag to all ml pools"
+  * Merge "base: ml: Add KEEP_MAPPED option to the pool"
+  * Merge "gst-plugin-qmmfsrc: Add image colorimetry."
+  * Merge "gst-ai-event-encoder: Updated pipeline EOS callback"
+  * Merge "gst-ai-python-apps: Update camera resolution"
+  * Merge "camera-img-reproc: add GST_VIDEO_METADATA support"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-event-encoder: Updated pipeline EOS callback
+
+  [ Tushar Patra Jamula ]
+  * base: video: Use OPEN_CV_INCLUDE_DIRS for opencv headers
+
+  [ QCTECMDR Service ]
+  * Merge "dngpacker: add dng pack measurement time"
+  * Merge "gst-plugin-codec2: avoid unnecessary GST ERROR print"
+  * Merge "metatransform: Palm detection module minor fixes"
+  * Merge "metatransform: Add module for palm detection"
+  * Merge "base: video: Accept video alignment only when using QTI allocator"
+
+  [ Jiadong Huang ]
+  * gst-plugin-codec2: avoid unnecessary GST ERROR print
+
+  [ Tushar Patra Jamula ]
+  * Add KEEP_MAPPED flag to all ml pools
+  * base: ml: Add KEEP_MAPPED option to the pool
+
+  [ QCTECMDR Service ]
+  * Merge "base: Add support for reporting GLES vendor and renderer"
+  * Merge "base: Small cleanup/improvement to FCV, OCV and GLES video engines"
+
+  [ Tushar Patra Jamula ]
+  * base: video: Accept video alignment only when using QTI allocator
+
+  [ Angel Krastev ]
+  * metatransform: Palm detection module minor fixes
+
+  [ Petar G. Georgiev ]
+  * base: Add support for reporting GLES vendor and renderer
+
+  [ Angel Krastev ]
+  * metatransform: Add module for palm detection
+
+  [ shukulk ]
+  * qmmfsrc: handle eos for specific stream when 'identity eos-after' is used in the pipeline
+
+  [ Hongyong Huang ]
+  * gst-plugin-qmmfsrc: Add image colorimetry.
+
+  [ FengChen ]
+  * camera-img-reproc: add GST_VIDEO_METADATA support
+  * dngpacker: add dng pack measurement time
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugins-qti-oss: Add support for QNN system context graph/bin for V3 type"
+
+  [ Petar G. Georgiev ]
+  * base: Small cleanup/improvement to FCV, OCV and GLES video engines
+
+  [ Angel Krastev ]
+  * mlpostprocess: fix typo in header file
+
+  [ aditsaur ]
+  * gst-ai-python-apps: Update camera resolution
+
+  [ QCTECMDR Service ]
+  * Merge "mlvdetection: Palm detection module"
+  * Merge "Kafka backend implementation"
+  * Merge "qtic2venc: qcs610: Correct ROI meta filter with ML"
+
+  [ Bala Sai Kosuri ]
+  * Kafka backend implementation
+  * Disable plugins with unavailable dependencies
+
+  [ Sanjay Chitroda ]
+  * qtic2venc: qcs610: Correct ROI meta filter with ML
+
+  [ Angel Krastev ]
+  * mlvdetection: Palm detection module
+
+  [ Tushar Darote ]
+  * gst-plugins-qti-oss: Add support for QNN system context graph/bin for V3 type
+
+ -- girish k <girik@qti.qualcomm.com>  Mon, 24 Nov 2025 10:35:58 +0530
+
 gst-plugins-qti-oss (1.7.0-qcom0) noble; urgency=medium
 
   [ Bala Sai Kosuri ]
