@@ -1142,8 +1142,7 @@ create_pipe (GstAppsContext * appctx, GstAppOptions * options)
       "interlace-mode", G_TYPE_STRING, "progressive",
       "colorimetry", G_TYPE_STRING, "bt601",
       "width", G_TYPE_INT, 1920,
-      "height", G_TYPE_INT, 1088,
-      "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
+      "height", G_TYPE_INT, 1088, NULL);
   g_object_set (G_OBJECT (appsrc_filter1), "caps", pad_filter, NULL);
   gst_caps_unref (pad_filter);
 
