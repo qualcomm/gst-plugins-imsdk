@@ -350,7 +350,6 @@ new_sample_callback (GstElement* appsink, gpointer userdata)
 {
   GstSample* sample = NULL;
   GstBuffer* buffer = NULL;
-  GstBuffer* copybuffer = NULL;
   GstAppContext* appctx = (GstAppContext*) userdata;
   GstElement* appsrc = NULL;
   GstFlowReturn ret = GST_FLOW_OK;
@@ -406,10 +405,10 @@ new_sample_callback (GstElement* appsink, gpointer userdata)
   */
   if (GST_TIME_AS_MSECONDS (buffer->pts) <= 0) {
     g_print ("FirstJpeg Capture timestamp: %" GST_TIME_FORMAT "\n", GST_TIME_ARGS (buffer->pts));
-    copybuffer = gst_buffer_copy (buffer);
+
+    g_signal_emit_by_name (appsrc, "push-buffer", buffer, &ret);
     sample_release (sample);
 
-    g_signal_emit_by_name (appsrc, "push-buffer", copybuffer, &ret);
     g_print ("push-buffer.\n");
     if (ret != GST_FLOW_OK) {
       g_printerr ("ERROR: Failed to emit push-buffer signal.\n");
@@ -417,14 +416,13 @@ new_sample_callback (GstElement* appsink, gpointer userdata)
     }
   } else if (GST_TIME_AS_MSECONDS (buffer->pts) >= DEFAULT_CAPTURE_DELAY) {
     g_print ("FirstJpeg Capture timestamp: %" GST_TIME_FORMAT "\n", GST_TIME_ARGS (buffer->pts));
-    copybuffer = gst_buffer_copy (buffer);
-    sample_release (sample);
 
     g_mutex_lock (&appctx->lock);
     --(appctx->num_jpeg);
     g_mutex_unlock (&appctx->lock);
 
-    g_signal_emit_by_name (appsrc, "push-buffer", copybuffer, &ret);
+    g_signal_emit_by_name (appsrc, "push-buffer", buffer, &ret);
+    sample_release (sample);
     if (ret != GST_FLOW_OK) {
       g_printerr ("ERROR: Failed to emit push-buffer signal.\n");
       return GST_FLOW_ERROR;
