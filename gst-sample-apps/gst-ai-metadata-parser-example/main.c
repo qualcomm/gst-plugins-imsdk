@@ -52,8 +52,8 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_MODEL "/etc/models/detection-model.tflite"
-#define DEFAULT_LABELS "/etc/labels/detection.labels"
+#define DEFAULT_TFLITE_MODEL "/etc/models/yolox_quantized.tflite"
+#define DEFAULT_LABELS "/etc/labels/yolox.json"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
