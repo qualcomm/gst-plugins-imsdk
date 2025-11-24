@@ -122,6 +122,7 @@
 
 #define DEFAULT_OPT_THREADS  1
 #define DEFAULT_OPT_DELEGATE GST_ML_TFLITE_DELEGATE_NONE
+#define DEFAULT_OPT_PRIORITY GST_ML_TFLITE_PRIORITY_MIN_LATENCY
 
 #define GET_OPT_MODEL(s) get_opt_string (s, \
     GST_ML_TFLITE_ENGINE_OPT_MODEL)
@@ -130,6 +131,9 @@
     DEFAULT_OPT_DELEGATE)
 #define GET_OPT_STHREADS(s) get_opt_uint (s, \
     GST_ML_TFLITE_ENGINE_OPT_THREADS, DEFAULT_OPT_THREADS)
+#define GET_OPT_PRIORITY(s) get_opt_enum (s, \
+    GST_ML_TFLITE_ENGINE_OPT_PRIORITY, GST_TYPE_ML_TFLITE_PRIORITY, \
+    DEFAULT_OPT_PRIORITY)
 
 #ifdef HAVE_EXTERNAL_DELEGATE_H
 #define GET_OPT_EXT_DELEGATE_PATH(s) get_opt_string (s, \
@@ -171,6 +175,28 @@ gst_ml_tflite_engine_debug_category (void)
     g_once_init_leave (&catonce, catdone);
   }
   return (GstDebugCategory *) catonce;
+}
+
+GType
+gst_ml_tflite_priority_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_ML_TFLITE_PRIORITY_MIN_LATENCY,
+        "MIN-LATENCY will be set on priority 1 and MAX-PRECISION will be set "
+        "on priority 3", "min-latency"
+    },
+    { GST_ML_TFLITE_PRIORITY_MAX_PRECISION,
+        "MAX-PRECISION will be set on priority 1 and MIN-LATENCY will be set "
+        "on priority 3", "max-precision"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+      gtype = g_enum_register_static ("GstMLTFLitePriority", variants);
+
+  return gtype;
 }
 
 GType
@@ -435,6 +461,7 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
 {
   TfLiteDelegate *delegate = NULL;
   gint type = GET_OPT_DELEGATE (settings);
+  gint priority = GET_OPT_PRIORITY (settings);
 
   switch (type) {
     case GST_ML_TFLITE_DELEGATE_NNAPI_DSP:
@@ -525,12 +552,27 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
     {
       TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
 
-      // Prefer minimum latency and memory usage with precision lower than fp32
-      options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+      switch (priority) {
+        case GST_ML_TFLITE_PRIORITY_MIN_LATENCY:
+        {
+          options.inference_priority1 =
+              TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+          options.inference_priority3 =
+              TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+          break;
+        }
+        case GST_ML_TFLITE_PRIORITY_MAX_PRECISION:
+        {
+          options.inference_priority1 =
+              TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+          options.inference_priority3 =
+              TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+          break;
+        }
+      }
+
       options.inference_priority2 =
           TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
-      options.inference_priority3 =
-          TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
       options.inference_preference =
           TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 

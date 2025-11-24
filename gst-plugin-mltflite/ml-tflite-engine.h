@@ -150,6 +150,30 @@ GST_API GType gst_ml_tflite_delegate_get_type (void);
 #define GST_ML_TFLITE_ENGINE_OPT_THREADS \
     "GstMLTFLiteEngine.threads"
 
+/**
+ * GstMLTFLitePriority:
+ * @GST_ML_TFLITE_PRIORITY_MAX_PRECISION : Model precision will be set to 32 bit (FP32)
+ * @GST_ML_TFLITE_PRIORITY_MIN_LATENCY   : Model precision will be set to 16 bit (FP16)
+ *
+ * Different inference precision priorities.
+ */
+typedef enum {
+  GST_ML_TFLITE_PRIORITY_MIN_LATENCY,
+  GST_ML_TFLITE_PRIORITY_MAX_PRECISION,
+} GstMLTFLitePriority;
+
+GST_API GType gst_ml_tflite_priority_get_type (void);
+#define GST_TYPE_ML_TFLITE_PRIORITY (gst_ml_tflite_priority_get_type())
+
+/**
+ * GST_ML_TFLITE_ENGINE_OPT_PRIORITY:
+ *
+ * #GST_TYPE_ML_TFLITE_PRIORITY, set inference priority for precision
+ * Default: #GST_ML_TFLITE_PRIORITY_MIN_LATENCY.
+ */
+#define GST_ML_TFLITE_ENGINE_OPT_PRIORITY \
+    "GstMLTFLiteEngine.priority"
+
 typedef struct _GstMLTFLiteEngine GstMLTFLiteEngine;
 
 GST_API GstMLTFLiteEngine *
