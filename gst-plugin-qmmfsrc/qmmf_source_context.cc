@@ -242,6 +242,9 @@ struct _GstQmmfContext {
   /// Sensor Switch Information
   GstQmmfCameraSwitchInfo camera_switch_info;
 
+  /// Super FrameRate Base
+  gint32            superframerate;
+
   /// QMMF Recorder instance.
   ::qmmf::recorder::Recorder *recorder;
 };
@@ -1284,6 +1287,8 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
   context->logical_cam_info.phy_cam_num = 0;
   context->camera_switch_info.input_req_id = -1;
 
+  context->superframerate = 60;
+
   status = gst_qmmf_context_get_cam_static_info (context);
   QMMFSRC_RETURN_VAL_IF_FAIL_WITH_CLEAN (NULL, status == 0,
       delete context->recorder; g_slice_free (GstQmmfContext, context);,
@@ -1540,6 +1545,21 @@ gst_qmmf_context_open (GstQmmfContext * context)
         meta.find (ANDROID_SENSOR_INFO_ACTIVE_ARRAY_SIZE).data.i32[3];
   }
 
+  // update context from static metadata
+  {
+    gint tag_id;
+
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.platformCapabilities", "HFRPreviewFPS");
+
+    if (meta.exists(tag_id)) {
+      context->superframerate = meta.find(tag_id).data.i32[0];
+
+      GST_DEBUG ("update superframerate (%d) from static meta data",
+          context->superframerate);
+    }
+  }
+
   gst_qmmf_context_parse_logical_cam_info(context, meta);
 
   context->state = GST_STATE_READY;
@@ -1775,7 +1795,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
 
   if (vpad->super_buffer_mode) {
     ::qmmf::recorder::SuperFrames super_frames;
-    super_frames.n_frames = vpad->framerate / vpad->superframerate;
+    super_frames.n_frames = vpad->framerate / context->superframerate;
     extraparam.Update(::qmmf::recorder::QMMF_SUPER_FRAMES, super_frames);
   }
 
@@ -2265,6 +2285,23 @@ gst_qmmf_context_update_local_props (GstQmmfContext * context,
       "org.codeaurora.qcamera3.multicam_exptime", "slaveExpTime");
   if (meta->exists(tag_id)) {
     context->slave_exp_time = meta->find(tag_id).data.i64[0];
+  }
+}
+
+void
+gst_qmmf_context_update_local_session_params(GstQmmfContext * context,
+    ::camera::CameraMetadata *meta)
+{
+  gint temp = 0;
+  guint tag_id = 0;
+
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.sessionParameters", "PreviewFPSOnHFRMode");
+  if (meta->exists(tag_id)) {
+    context->superframerate = meta->find(tag_id).data.i32[0];
+
+    GST_DEBUG ("found PreviewFPSOnHFRMode (%d), update new value (%d)",
+        tag_id, context->superframerate);
   }
 }
 
@@ -2896,6 +2933,9 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       ::camera::CameraMetadata *meta_ptr =
           (::camera::CameraMetadata *) g_value_get_pointer (value);
       recorder->SetCameraSessionParam (context->camera_id, *meta_ptr);
+
+      // Update local params from session metadata
+      gst_qmmf_context_update_local_session_params (context, meta_ptr);
     } else {
       recorder->SetCameraParam (context->camera_id, meta);
     }
@@ -3001,22 +3041,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       break;
     case PARAM_CAMERA_SUPER_FRAMERATE:
     {
-      ::camera::CameraMetadata meta;
-      static gint superframerate;
-
-      if (superframerate != 0) {
-        g_value_set_int (value, superframerate);
-      } else {
-        if (context->state >= GST_STATE_READY)
-          recorder->GetCameraParam (context->camera_id, meta);
-
-        guint tag_id = get_vendor_tag_by_name(
-            "org.codeaurora.qcamera3.platformCapabilities", "HFRPreviewFPS");
-        if (tag_id > 0) {
-          superframerate = meta.find(tag_id).data.i32[0];
-          g_value_set_int (value, superframerate);
-        }
-      }
+      g_value_set_int (value, context->superframerate);
       break;
     }
 #ifdef FEATURE_OFFLINE_IFE_SUPPORT

@@ -968,10 +968,6 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
   gpointer key = NULL;
   GstPad *pad = NULL;
   GList *list = NULL;
-  GValue isslave = G_VALUE_INIT, sframerate = G_VALUE_INIT;
-
-  g_value_init (&isslave, G_TYPE_BOOLEAN);
-  g_value_init (&sframerate, G_TYPE_INT);
 
   GST_TRACE_OBJECT (qmmfsrc, "Create stream");
 
@@ -979,17 +975,6 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
   for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
-
-    gst_qmmf_context_get_camera_param (qmmfsrc->context,
-        PARAM_CAMERA_SLAVE, &isslave);
-
-    if (!g_value_get_boolean (&isslave)) {
-      GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
-
-      gst_qmmf_context_get_camera_param (qmmfsrc->context,
-          PARAM_CAMERA_SUPER_FRAMERATE, &sframerate);
-      vpad->superframerate = g_value_get_int (&sframerate);
-    }
 
     success = qmmfsrc_video_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
@@ -999,9 +984,6 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Video stream creation failed!");
   }
-
-  g_value_unset (&isslave);
-  g_value_unset (&sframerate);
 
   // Iterate over the image pads, fixate caps and create streams.
   for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
