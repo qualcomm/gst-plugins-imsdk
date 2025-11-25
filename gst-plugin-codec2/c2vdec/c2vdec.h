@@ -64,6 +64,9 @@ struct _GstC2VDecoder {
   gchar              *name;
   GstC2Engine        *engine;
 
+  /// List of incomplete buffers.
+  GstBufferList      *incomplete_buffers;
+
   /// Negotiated output resolution, format, etc.
   GstVideoCodecState *outstate;
 
