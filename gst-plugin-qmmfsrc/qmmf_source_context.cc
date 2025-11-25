@@ -1170,6 +1170,66 @@ camera_event_callback (GstQmmfContext * context,
       event = EVENT_CAMERA_CLOSED;
       break;
     }
+    case  ::qmmf::recorder::EventType::kSOFFreeze:
+    {
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
+
+      // Ignore event if it is not for this camera id.
+      if (camera_id != context->camera_id)
+        return;
+
+      event = EVENT_SOF_FREEZE;
+      break;
+    }
+    case  ::qmmf::recorder::EventType::kRecoveryFailure:
+    {
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
+
+      // Ignore event if it is not for this camera id.
+      if (camera_id != context->camera_id)
+        return;
+
+      event = EVENT_RECOVERYFAILURE;
+      break;
+    }
+    case  ::qmmf::recorder::EventType::kFatal:
+    {
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
+
+      // Ignore event if it is not for this camera id.
+      if (camera_id != context->camera_id)
+        return;
+
+      event = EVENT_FATAL;
+      break;
+    }
+    case  ::qmmf::recorder::EventType::kRecoverySuccess:
+    {
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
+
+      // Ignore event if it is not for this camera id.
+      if (camera_id != context->camera_id)
+        return;
+
+      event = EVENT_RECOVERYSUCCESS;
+      break;
+    }
+    case  ::qmmf::recorder::EventType::kInternal_Recovery:
+    {
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
+
+      // Ignore event if it is not for this camera id.
+      if (camera_id != context->camera_id)
+        return;
+
+      event = EVENT_INTERNAL_RECOVERY;
+      break;
+    }
     default:
       event = EVENT_UNKNOWN;
       break;
