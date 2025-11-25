@@ -34,10 +34,11 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_VCE_DATA_TYPE_F32        (9)
 
 #define GST_VCE_BLIT_INIT \
-    { NULL, 0, {{0, 0}, {0, 0}, {0, 0}, {0, 0}}, {0, 0, 0, 0}, 255, GST_VCE_ROTATE_0 }
+    { NULL, NULL, 0, {{0, 0}, {0, 0}, {0, 0}, {0, 0}}, \
+        {0, 0, 0, 0}, 255, GST_VCE_ROTATE_0 }
 #define GST_VCE_COMPOSITION_INIT \
-    { NULL, 0, NULL, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
-        { 1.0, 1.0, 1.0, 1.0 }, 0 }
+    { NULL, 0, NULL, NULL, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
+      { 1.0, 1.0, 1.0, 1.0 }, 0 }
 
 // Maximum number of image channels, used for normalization offsets and scales.
 #define GST_VCE_MAX_CHANNELS         4
@@ -130,7 +131,8 @@ struct _GstVideoQuadrilateral
 
 /**
  * GstVideoBlit:
- * @inframe: Input video frame.
+ * @buffer: Input buffer.
+ * @info: GstVideoInfo for mapping.
  * @mask: Bitwise configuration mask.
  * @source: Source quadrilateral in the input frame.
  * @destination: Destination rectangle in the output frame.
@@ -138,12 +140,14 @@ struct _GstVideoQuadrilateral
  * @rotate: The degrees at which the frame will be rotatte.
  * @flip: The directions at which the frame will be flipped.
  *
- * Blit object. Input frame along with a possible crop and destination
- * rectangles and configuration mask.
+ * Blit object. Input buffer along with a possible crop and destination
+ * rectangles, configuration mask and info for mapping.
  */
 struct _GstVideoBlit
 {
-  GstVideoFrame         *frame;
+  GstBuffer             *buffer;
+  GstVideoInfo          *info;
+
   guint32               mask;
 
   GstVideoQuadrilateral source;
@@ -157,7 +161,8 @@ struct _GstVideoBlit
  * GstVideoComposition:
  * @blits: Array of blit objects.
  * @n_blits: Number of blit objects.
- * @frame: Output video frame where the blit objects will be placed.
+ * @buffer: Output buffer.
+ * @info: GstVideoInfo for mapping.
  * @bgcolor: Background color to be applied if bgfill is set to TRUE.
  * @bgfill: Whether to fill the background of the frame image with bgcolor.
  * @offsets: Component offset factors, used in normalize operation.
@@ -168,18 +173,19 @@ struct _GstVideoBlit
  */
 struct _GstVideoComposition
 {
-  GstVideoBlit  *blits;
-  guint         n_blits;
+  GstVideoBlit       *blits;
+  guint              n_blits;
 
-  GstVideoFrame *frame;
+  GstBuffer          *buffer;
+  GstVideoInfo       *info;
 
-  guint32       bgcolor;
-  gboolean      bgfill;
+  guint32            bgcolor;
+  gboolean           bgfill;
 
-  gdouble       offsets[GST_VCE_MAX_CHANNELS];
-  gdouble       scales[GST_VCE_MAX_CHANNELS];
+  gdouble            offsets[GST_VCE_MAX_CHANNELS];
+  gdouble            scales[GST_VCE_MAX_CHANNELS];
 
-  guint64       datatype;
+  guint64            datatype;
 };
 
 /**

@@ -157,26 +157,26 @@ gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
   GstVideoRectangle source = {0}, destination = {0};
   guint idx = 0;
 
-  outbuffer = composition->frame->buffer;
+  outbuffer = composition->buffer;
 
   for (idx = 0; idx < composition->n_blits; idx++) {
     vblit = &(composition->blits[idx]);
-    inbuffer = vblit->frame->buffer;
+    inbuffer = vblit->buffer;
 
     if (vblit->mask & GST_VCE_MASK_SOURCE) {
       gst_video_quadrilateral_to_rectangle (&(vblit->source), &source);
     } else {
       source.x = source.y = 0;
-      source.w = GST_VIDEO_FRAME_WIDTH (vblit->frame);
-      source.h = GST_VIDEO_FRAME_HEIGHT (vblit->frame);
+      source.w = GST_VIDEO_INFO_WIDTH (vblit->info);
+      source.h = GST_VIDEO_INFO_HEIGHT (vblit->info);
     }
 
     if (vblit->mask & GST_VCE_MASK_DESTINATION) {
       destination = vblit->destination;
     } else {
       destination.x = destination.y = 0;
-      destination.w = GST_VIDEO_FRAME_WIDTH (composition->frame);
-      destination.h = GST_VIDEO_FRAME_HEIGHT (composition->frame);
+      destination.w = GST_VIDEO_INFO_WIDTH (composition->info);
+      destination.h = GST_VIDEO_INFO_HEIGHT (composition->info);
     }
 
     while ((meta = gst_buffer_iterate_meta (inbuffer, &state))) {
@@ -732,11 +732,11 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (vaggregator);
   GList *list = NULL;
-  GstVideoFrame outframe = {0,};
   GstVideoComposition composition = GST_VCE_COMPOSITION_INIT;
   GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = TRUE;
   guint idx = 0, n_inputs = 0;
+  const GstVideoMeta *meta = NULL;
 
   // Get start time for performance measurements.
   time = gst_util_get_timestamp ();
@@ -748,25 +748,34 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 
   for (list = GST_ELEMENT (vcomposer)->sinkpads; list != NULL; list = list->next) {
     GstVideoComposerSinkPad *sinkpad = GST_VIDEO_COMPOSER_SINKPAD (list->data);
-    GstVideoFrame *inframe = NULL;
+    GstBuffer *inbuffer = NULL;
     GstVideoBlit *vblit = NULL;
 
 #if GST_VERSION_MAJOR > 1 || (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR >= 16)
-    inframe = gst_video_aggregator_pad_get_prepared_frame (
+    inbuffer = gst_video_aggregator_pad_get_current_buffer  (
         GST_VIDEO_AGGREGATOR_PAD (sinkpad));
 #else
-    inframe = GST_VIDEO_AGGREGATOR_PAD (sinkpad)->aggregated_frame;
+    inbuffer = GST_VIDEO_AGGREGATOR_PAD (sinkpad)->buffer;
 #endif // GST_VERSION_MAJOR > 1 || (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR >= 16)
 
     // GAP input buffer, nothing to do.
-    if (inframe == NULL || inframe->buffer == NULL)
+    if (inbuffer == NULL)
       continue;
 
     // Index to the current blit object to be populated.
     idx = n_inputs;
 
     vblit = &(composition.blits[idx]);
-    vblit->frame = inframe;
+    vblit->buffer = inbuffer;
+
+    vblit->info = &GST_VIDEO_AGGREGATOR_PAD (sinkpad)->info;
+
+    meta = gst_buffer_get_video_meta (inbuffer);
+
+    success = gst_video_info_modify_with_meta (vblit->info, meta);
+
+    if (!success)
+      GST_ERROR_OBJECT (vcomposer, "Failed to derive info from meta");
 
     GST_VIDEO_COMPOSER_SINKPAD_LOCK (sinkpad);
 
@@ -798,8 +807,10 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
     // Increase the number of populated blit objects.
     n_inputs++;
 
-    GST_TRACE_OBJECT (sinkpad, "Prepared %" GST_PTR_FORMAT, inframe->buffer);
+    GST_TRACE_OBJECT (sinkpad, "Prepared %" GST_PTR_FORMAT, inbuffer);
   }
+
+  composition.info = &GST_VIDEO_AGGREGATOR (vaggregator)->info;
 
   GST_OBJECT_UNLOCK (vaggregator);
 
@@ -816,17 +827,16 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 
   composition.n_blits = n_inputs;
 
-  success = gst_video_frame_map (&outframe, &(vaggregator->info), outbuffer,
-      GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF);
-
-  if (!success) {
-    GST_ERROR_OBJECT (vcomposer, "Failed to map output buffer!");
-    goto cleanup;
-  }
-
-  composition.frame = &outframe;
+  composition.buffer = outbuffer;
   composition.bgfill = TRUE;
   composition.datatype = 0;
+
+  meta = gst_buffer_get_video_meta (outbuffer);
+
+  success = gst_video_info_modify_with_meta (composition.info, meta);
+
+  if (!success)
+    GST_WARNING_OBJECT (vcomposer, "Failed to derive info from meta");
 
   GST_VIDEO_COMPOSER_LOCK (vcomposer);
   composition.bgcolor = vcomposer->background;
@@ -851,9 +861,6 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
       (GST_TIME_AS_USECONDS (time) % 1000));
 
 cleanup:
-  if (outframe.buffer != NULL)
-    gst_video_frame_unmap (&outframe);
-
   if (composition.blits != NULL)
     g_free (composition.blits);
 

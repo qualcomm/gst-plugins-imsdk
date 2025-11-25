@@ -298,33 +298,6 @@ gst_video_composer_sinkpad_getcaps (GstAggregatorPad * pad,
   GST_DEBUG_OBJECT (pad, "Returning caps: %" GST_PTR_FORMAT, sinkcaps);
   return sinkcaps;
 }
-#if (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
-static gboolean
-gst_video_composer_sinkpad_prepare_frame (GstVideoAggregatorPad * pad,
-    GstVideoAggregator * vaggregator)
-{
-  GstVideoFrame *frame = NULL;
-
-  if (pad->buffer == NULL)
-    return TRUE;
-
-  // GAP event, nothing to do.
-  if (gst_buffer_get_size (pad->buffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (pad->buffer, GST_BUFFER_FLAG_GAP))
-    return TRUE;
-
-  frame = g_slice_new0 (GstVideoFrame);
-
-  if (!gst_video_frame_map (frame, &pad->info, pad->buffer, GST_MAP_READ)) {
-    GST_WARNING_OBJECT (vaggregator, "Could not map input buffer");
-    g_slice_free (GstVideoFrame, frame);
-    return FALSE;
-  }
-
-  pad->aggregated_frame = frame;
-  return TRUE;
-}
-#endif // (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
 
 static void
 gst_video_composer_sinkpad_set_property (GObject * object, guint property_id,
@@ -577,8 +550,7 @@ gst_video_composer_sinkpad_class_init (GstVideoComposerSinkPadClass * klass)
           GST_PARAM_MUTABLE_PLAYING | G_PARAM_EXPLICIT_NOTIFY));
 
 #if (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
-  vaggpad->prepare_frame =
-      GST_DEBUG_FUNCPTR (gst_video_composer_sinkpad_prepare_frame);
+  vaggpad->prepare_frame = NULL;
 #endif // (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
 
   GST_DEBUG_CATEGORY_INIT (gst_video_composer_sinkpad_debug,

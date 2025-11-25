@@ -1548,10 +1548,10 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (base);
-  GstVideoFrame inframe = { 0, }, outframe = { 0, };
   GstVideoBlit blit = GST_VCE_BLIT_INIT;
   GstVideoComposition composition = GST_VCE_COMPOSITION_INIT;
   GstClockTime time = GST_CLOCK_TIME_NONE;
+  const GstVideoMeta *meta = NULL;
   gboolean success = FALSE;
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
@@ -1559,37 +1559,20 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
-  if (!gst_video_frame_map (&inframe, vtrans->ininfo, inbuffer,
-          GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
-    GST_ERROR_OBJECT (vtrans, "Failed to map input buffer!");
-    return GST_FLOW_OK;
-  }
-
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (vtrans, "DMA IOCTL SYNC START failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
-
-  if (!gst_video_frame_map (&outframe, vtrans->outinfo, outbuffer,
-          GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
-    GST_ERROR_OBJECT (vtrans, "Failed to map output buffer!");
-    gst_video_frame_unmap (&inframe);
-    return GST_FLOW_OK;
-  }
-
   time = gst_util_get_timestamp ();
 
   GST_VIDEO_TRANSFORM_LOCK (vtrans);
 
-  blit.frame = &inframe;
+  meta = gst_buffer_get_video_meta (inbuffer);
+
+  success = gst_video_info_modify_with_meta (vtrans->ininfo, meta);
+
+  if (!success)
+    GST_WARNING_OBJECT (vtrans, "Failed to derive info from meta");
+
+  blit.buffer = inbuffer;
   blit.mask = 0;
+  blit.info = vtrans->ininfo;
 
   if ((vtrans->crop.w != 0) && (vtrans->crop.h != 0)) {
     gst_video_rectangle_to_quadrilateral (&(vtrans->crop), &(blit.source));
@@ -1612,10 +1595,18 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     blit.mask |= GST_VCE_MASK_ROTATION;
   }
 
+  meta = gst_buffer_get_video_meta (outbuffer);
+
+  success = gst_video_info_modify_with_meta (vtrans->outinfo, meta);
+
+  if (!success)
+    GST_WARNING_OBJECT (vtrans, "Failed to derive info from meta");
+
   composition.blits = &blit;
   composition.n_blits = 1;
 
-  composition.frame = &outframe;
+  composition.buffer = outbuffer;
+  composition.info = vtrans->outinfo;
   composition.datatype = 0;
 
   composition.bgcolor = vtrans->background;
@@ -1631,21 +1622,6 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GST_LOG_OBJECT (vtrans, "Conversion took %" G_GINT64_FORMAT ".%03"
       G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
-
-  gst_video_frame_unmap (&outframe);
-  gst_video_frame_unmap (&inframe);
-
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (vtrans, "DMA IOCTL SYNC END failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
 
   if (!success) {
     GST_ERROR_OBJECT (vtrans, "Failed to process composition!");

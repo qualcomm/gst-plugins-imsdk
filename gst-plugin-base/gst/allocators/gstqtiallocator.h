@@ -34,14 +34,14 @@ typedef struct _GstQtiAllocatorPrivate GstQtiAllocatorPrivate;
 
 struct _GstQtiAllocator
 {
-  GstFdAllocator parent;
+  GstDmaBufAllocator parent;
 
   GstQtiAllocatorPrivate *priv;
 };
 
 struct _GstQtiAllocatorClass
 {
-  GstFdAllocatorClass parent;
+  GstDmaBufAllocatorClass parent;
 };
 
 GST_EXPORT

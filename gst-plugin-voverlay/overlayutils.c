@@ -27,15 +27,11 @@ gst_video_blit_release (GstVideoBlit * blit)
   blit->destination.x = blit->destination.y = 0;
   blit->destination.w = blit->destination.h = 0;
 
-  buffer = blit->frame->buffer;
-  gst_video_frame_unmap (blit->frame);
+  buffer = blit->buffer;
 
   // Unreference buffer twice as 2nd refcount has been set when blit was cached.
   gst_buffer_unref (buffer);
   gst_buffer_unref (buffer);
-
-  g_slice_free (GstVideoFrame, blit->frame);
-  blit->frame = NULL;
 }
 
 void
@@ -178,7 +174,7 @@ gst_extract_bboxes (const GValue * value, GArray * bboxes)
     GST_TRACE ("%s: Color: 0x%X", name, bbox->color);
 
     // Clear the cached blit if the flag has been raised.
-    if (changed && (bbox->blit.frame != NULL))
+    if (changed && (bbox->blit.buffer != NULL))
       gst_video_blit_release (&(bbox->blit));
 
     if (gst_structure_has_field (structure, "enable"))
@@ -439,7 +435,7 @@ gst_extract_strings (const GValue * value, GArray * strings)
     GST_TRACE ("%s: Font size: %d", name, string->fontsize);
 
     // Clear the cached blit if the flag has been raised.
-    if (changed && (string->blit.frame != NULL))
+    if (changed && (string->blit.buffer != NULL))
       gst_video_blit_release (&(string->blit));
 
     if (gst_structure_has_field (structure, "enable"))
@@ -670,7 +666,7 @@ gst_extract_masks (const GValue * value, GArray * masks)
         mask->infill ? "YES" : "NO", mask->inverse ? "YES" : "NO");
 
     // Clear the cached blit if the flag has been raised.
-    if (changed && (mask->blit.frame != NULL))
+    if (changed && (mask->blit.buffer != NULL))
       gst_video_blit_release (&(mask->blit));
 
     if (gst_structure_has_field (structure, "enable"))
@@ -802,7 +798,7 @@ gst_extract_static_images (const GValue * value, GArray * images)
     }
 
     // Clear the cached blit if the flag has been raised.
-    if (changed && (image->blit.frame != NULL))
+    if (changed && (image->blit.buffer != NULL))
       gst_video_blit_release (&(image->blit));
 
     if (gst_structure_has_field (structure, "enable"))
