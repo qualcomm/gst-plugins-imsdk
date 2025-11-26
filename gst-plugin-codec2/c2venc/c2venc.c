@@ -1383,6 +1383,9 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     if (outwidth > 0 && outwidth < info->width) {
       outstate->info.width = outwidth;
       GST_DEBUG_OBJECT (c2venc, "Set output width to %d", outwidth);
+    } else if (c2venc->rotate == GST_C2_ROTATE_90_CW ||
+        c2venc->rotate ==  GST_C2_ROTATE_90_CCW) {
+      outstate->info.width = info->height;
     } else if (outwidth > 0) {
       GST_ERROR_OBJECT (c2venc, "Failed to set output width to %d", outwidth);
       return FALSE;
@@ -1396,6 +1399,9 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     if (outheight > 0 && outheight < info->height) {
       outstate->info.height = outheight;
       GST_DEBUG_OBJECT (c2venc, "Set output height to %d", outheight);
+    } else if (c2venc->rotate == GST_C2_ROTATE_90_CW ||
+        c2venc->rotate == GST_C2_ROTATE_90_CCW) {
+      outstate->info.height = info->width;
     } else if (outheight > 0) {
       GST_ERROR_OBJECT (c2venc, "Failed to set output height to %d", outheight);
       return FALSE;
