@@ -61,6 +61,7 @@ Depends:
  gstreamer1.0-plugins-qcom-smartvencbin,
  gstreamer1.0-plugins-qcom-socket,
  gstreamer1.0-plugins-qcom-tools,
+ gstreamer1.0-plugins-qcom-uridecodebin,
  gstreamer1.0-plugins-qcom-vcomposer,
  gstreamer1.0-plugins-qcom-videotemplate,
  gstreamer1.0-plugins-qcom-voverlay,
@@ -288,6 +289,14 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
 Description: GStreamer plugin for Qualcomm: tools.
+
+Package: gstreamer1.0-plugins-qcom-uridecodebin
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Description: GStreamer plugin for Qualcomm: uridecodebin.
 
 Package: gstreamer1.0-plugins-qcom-vcomposer
 Section: libs
