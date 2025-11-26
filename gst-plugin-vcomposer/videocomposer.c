@@ -838,7 +838,7 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 
   composition.frame = &outframe;
   composition.bgfill = TRUE;
-  composition.flags = 0;
+  composition.datatype = 0;
 
   GST_VIDEO_COMPOSER_LOCK (vcomposer);
   composition.bgcolor = vcomposer->background;

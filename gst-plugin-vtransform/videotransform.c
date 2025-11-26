@@ -1640,7 +1640,7 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   composition.n_blits = 1;
 
   composition.frame = &outframe;
-  composition.flags = 0;
+  composition.datatype = 0;
 
   composition.bgcolor = vtrans->background;
   composition.bgfill = TRUE;

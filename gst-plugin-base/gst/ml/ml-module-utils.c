@@ -5,6 +5,7 @@
 
 #include "ml-module-utils.h"
 
+#include <gst/utils/common-utils.h>
 
 // Global table for storing registered indeces of ML stages.
 static GHashTable *ml_stage_table = NULL;

@@ -21,17 +21,17 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_VCE_MASK_FLIP_HORIZONTAL (1 << 3)
 #define GST_VCE_MASK_ROTATION        (1 << 4)
 
-// Composition flags valid only for the output RGB(A) frame.
-#define GST_VCE_FLAG_U8_FORMAT       (0)
-#define GST_VCE_FLAG_I8_FORMAT       (1)
-#define GST_VCE_FLAG_U16_FORMAT      (2)
-#define GST_VCE_FLAG_I16_FORMAT      (3)
-#define GST_VCE_FLAG_U32_FORMAT      (4)
-#define GST_VCE_FLAG_I32_FORMAT      (5)
-#define GST_VCE_FLAG_U64_FORMAT      (6)
-#define GST_VCE_FLAG_I64_FORMAT      (7)
-#define GST_VCE_FLAG_F16_FORMAT      (8)
-#define GST_VCE_FLAG_F32_FORMAT      (9)
+// Composition data types valid only for the output RGB(A) frame.
+#define GST_VCE_DATA_TYPE_U8         (0)
+#define GST_VCE_DATA_TYPE_I8         (1)
+#define GST_VCE_DATA_TYPE_U16        (2)
+#define GST_VCE_DATA_TYPE_I16        (3)
+#define GST_VCE_DATA_TYPE_U32        (4)
+#define GST_VCE_DATA_TYPE_I32        (5)
+#define GST_VCE_DATA_TYPE_U64        (6)
+#define GST_VCE_DATA_TYPE_I64        (7)
+#define GST_VCE_DATA_TYPE_F16        (8)
+#define GST_VCE_DATA_TYPE_F32        (9)
 
 #define GST_VCE_BLIT_INIT \
     { NULL, 0, {{0, 0}, {0, 0}, {0, 0}, {0, 0}}, {0, 0, 0, 0}, 255, GST_VCE_ROTATE_0 }
@@ -157,9 +157,9 @@ struct _GstVideoBlit
  * @frame: Output video frame where the blit objects will be placed.
  * @bgcolor: Background color to be applied if bgfill is set to TRUE.
  * @bgfill: Whether to fill the background of the frame image with bgcolor.
- * @offsets: Channel offset factors, used in normalize float operation.
- * @scales: Channel scale factors, used in normalize float operation.
- * @flags: Bitwise configuration mask for the output.
+ * @offsets: Component offset factors, used in normalize operation.
+ * @scales: Component scale factors, used in normalize operation.
+ * @datatype: The data type of the pixels in the output frame.
  *
  * Blit composition.
  */
@@ -176,7 +176,7 @@ struct _GstVideoComposition
   gdouble       offsets[GST_VCE_MAX_CHANNELS];
   gdouble       scales[GST_VCE_MAX_CHANNELS];
 
-  guint64       flags;
+  guint64       datatype;
 };
 
 /**
@@ -211,6 +211,18 @@ gst_video_rectangle_to_quadrilateral (const GstVideoRectangle * rectangle,
 GST_VIDEO_API void
 gst_video_quadrilateral_to_rectangle (const GstVideoQuadrilateral * quadrilateral,
                                       GstVideoRectangle * rectangle);
+
+/**
+ * gst_video_frame_normalize_ip:
+ *
+ * Helper function for normalizing video frame inplace.
+ *
+ * return: TRUE on success or FALSE on failure
+ */
+GST_VIDEO_API gboolean
+gst_video_frame_normalize_ip (GstVideoFrame * vframe, guint64 flags,
+                              gdouble offsets[GST_VCE_MAX_CHANNELS],
+                              gdouble scales[GST_VCE_MAX_CHANNELS]);
 
 /**
  * gst_video_converter_default_backend:
