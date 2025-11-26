@@ -737,7 +737,7 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
       composition = &(g_array_index (compositions, GstVideoComposition, id));
 
       composition->frame = outframe;
-      composition->flags = 0;
+      composition->datatype = 0;
 
       composition->bgcolor = 0x00000000;
       composition->bgfill = TRUE;
