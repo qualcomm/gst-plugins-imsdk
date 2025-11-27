@@ -28,7 +28,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -389,6 +389,17 @@ image_pad_update_params (GstPad * pad, GstStructure *structure)
     ipad->subformat = subformat;
   }
 
+  if (gst_structure_has_field (structure, "colorimetry")) {
+    const gchar *string = gst_structure_get_string (structure, "colorimetry");
+    gchar *new_colorimetry = g_strdup (string);
+
+    reconfigure |= (g_strcmp0 (string, ipad->colorimetry) != 0);
+
+    if (ipad->colorimetry != NULL)
+      g_free (ipad->colorimetry);
+    ipad->colorimetry = new_colorimetry;
+  }
+
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
 
   // Send reconfigurtion signal only when paramters have changed.
@@ -437,6 +448,9 @@ qmmfsrc_release_image_pad (GstElement * element, GstPad * pad)
   gst_object_ref (pad);
 
   gst_pad_set_active (pad, FALSE);
+
+  if (GST_QMMFSRC_IMAGE_PAD (pad)->colorimetry)
+    g_free (GST_QMMFSRC_IMAGE_PAD (pad)->colorimetry);
 
   gst_buffer_pool_set_active (GST_QMMFSRC_IMAGE_PAD (pad)->pool, FALSE);
   gst_object_unref (GST_QMMFSRC_IMAGE_PAD (pad)->pool);
@@ -534,6 +548,17 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
           DEFAULT_IMAGE_BAYER_BPP);
       GST_DEBUG_OBJECT (pad, "BPP not set, using default value: %s",
           DEFAULT_IMAGE_BAYER_BPP);
+    }
+  }
+
+  if (gst_structure_has_field (structure, "colorimetry")) {
+    const gchar *colorimetry = gst_structure_get_string (structure,
+        "colorimetry");
+
+    if (!colorimetry) {
+      gst_structure_fixate_field_string (structure, "colorimetry",
+          GST_VIDEO_COLORIMETRY_BT601);
+      GST_DEBUG_OBJECT (pad, "colorimetry not set, using default value bt601");
     }
   }
 
@@ -694,6 +719,8 @@ qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
   pad->subformat = GST_IMAGE_SUBFORMAT_NONE;
 
   pad->duration  = GST_CLOCK_TIME_NONE;
+
+  pad->colorimetry = NULL;
 
   // TODO temporality solution until properties are implemented.
   gst_structure_set (pad->params, "quality", G_TYPE_UINT,
