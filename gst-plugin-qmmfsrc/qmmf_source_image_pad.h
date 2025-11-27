@@ -28,7 +28,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -179,6 +179,9 @@ struct _GstQmmfSrcImagePad {
 
   /// Select physical camera or layout to stitch images
   glong             log_stream_type;
+
+  /// Image colorimetry name
+  gchar             *colorimetry;
 };
 
 struct _GstQmmfSrcImagePadClass {
