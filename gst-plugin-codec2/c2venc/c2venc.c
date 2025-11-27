@@ -25,6 +25,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define GST_TYPE_C2_SLICE_MODE         (gst_c2_slice_get_type())
 #define GST_TYPE_C2_VIDEO_ROTATION     (gst_c2_video_rotation_get_type())
 #define GST_TYPE_C2_VIDEO_FLIP         (gst_c2_video_flip_get_type())
+#define GST_TYPE_C2_HDR_MODE           (gst_c2_hdr_mode_get_type())
 
 #define DEFAULT_PROP_ROTATE               (GST_C2_ROTATE_NONE)
 #define DEFAULT_PROP_RATE_CONTROL         (GST_C2_RATE_CTRL_DISABLE)
@@ -53,6 +54,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_TEMPORAL_LAYER_NUM   (0xffffffff)
 #define DEFAULT_PROP_FLIP                 (GST_C2_FLIP_NONE)
 #define DEFAULT_PROP_VBV_DELAY            (0x7fffffff)
+#define DEFAULT_PROP_HDR_MODE             (GST_C2_HDR_NONE)
 
 #define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 
@@ -87,6 +89,9 @@ enum
   PROP_TEMPORAL_LAYER,
   PROP_FLIP,
   PROP_VBV_DELAY,
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  PROP_HDR_MODE,
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 };
 
 static GstStaticPadTemplate gst_c2_venc_sink_pad_template =
@@ -243,6 +248,27 @@ gst_c2_video_flip_get_type (void)
 
   return gtype;
 }
+
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+static GType
+gst_c2_hdr_mode_get_type (void)
+{
+  static GType gtype = 0;
+
+  static const GEnumValue variants[] = {
+    { GST_C2_HDR_NONE, "None", "none" }, // Same as SDR
+    { GST_C2_HDR_HLG, "Hlg", "hlg" },
+    { GST_C2_HDR_HDR10, "Hdr10", "hdr10" },
+    { GST_C2_HDR_HDR10_PLUS, "Hdr10+", "hdr10plus" },
+    { 0, NULL, NULL },
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstC2HdrMode", variants);
+
+  return gtype;
+}
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 
 static gboolean
 gst_caps_has_subformat (const GstCaps * caps, const gchar * subformat)
@@ -781,6 +807,17 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     }
   }
 
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  if (c2venc->hdr_mode != GST_C2_HDR_NONE) {
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_HDR_MODE, GPOINTER_CAST (&(c2venc->hdr_mode)));
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set hdr mode parameter!");
+      return FALSE;
+    }
+  }
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+
   return TRUE;
 }
 
@@ -809,7 +846,6 @@ gst_c2_venc_handle_region_encode (GstC2VEncoder * c2venc,
           gst_buffer_iterate_meta_filtered (frame->input_buffer, &state,
               GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE))) {
     GstVideoRegionOfInterestMeta *roimeta = (GstVideoRegionOfInterestMeta *) meta;
-    GstStructure *s = NULL;
     const gchar *label = NULL;
 
     if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
@@ -1727,10 +1763,9 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       for (idx = 2; idx < size; idx++) {
         val = gst_value_array_get_value (value, idx);
         ratio = g_value_get_int (val) / 100.0;
-        if (ratio < 0 || ratio > 100) {
+        if (ratio < 0 || ratio > 100)
           GST_WARNING_OBJECT (c2venc, "Unusual bitrate ratio value "
               "(%d) at index %d", ratio, idx);
-        }
 
         g_array_append_val (c2venc->temp_layer.bitrate_ratios, ratio);
       }
@@ -1742,6 +1777,11 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_VBV_DELAY:
       c2venc->vbv_delay = g_value_get_int (value);
       break;
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+    case PROP_HDR_MODE:
+      c2venc->hdr_mode = g_value_get_enum (value);
+      break;
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1901,6 +1941,11 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
     case PROP_VBV_DELAY:
       g_value_set_int (value, c2venc->vbv_delay);
       break;
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+    case PROP_HDR_MODE:
+      g_value_set_enum (value, c2venc->hdr_mode);
+      break;
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2115,6 +2160,15 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           "i.e 1/10 of the target bitrate)",
           0, G_MAXINT, DEFAULT_PROP_VBV_DELAY,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  g_object_class_install_property (gobject, PROP_HDR_MODE,
+      g_param_spec_enum ("hdr-mode", "HDR Modes for Encoder",
+          "When using colorspace BT2100HLG or BT2100PQ, set HDR mode for "
+          "encoder. It determines whether SEI nal will be parsed in codec2."
+          "(0x7fffffff=component default)",
+          GST_TYPE_C2_HDR_MODE, DEFAULT_PROP_HDR_MODE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 
   g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_trigger_iframe),
@@ -2211,6 +2265,9 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
       g_array_new (FALSE, FALSE, sizeof (gfloat));
   c2venc->n_subframes = 0;
   c2venc->vbv_delay = DEFAULT_PROP_VBV_DELAY;
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  c2venc->hdr_mode = DEFAULT_PROP_HDR_MODE;
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,
       "QTI c2venc encoder");

@@ -145,6 +145,10 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
       qc2::C2VideoMirrorTuning::input::PARAM_TYPE },
   { GST_C2_PARAM_VBV_DELAY,
       qc2::C2VBVDelayTuning::input::PARAM_TYPE },
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  { GST_C2_PARAM_HDR_MODE,
+      C2StreamHdrFormatInfo::output::PARAM_TYPE },
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 };
 
 // Convenient map for printing the engine parameter name in string form.
@@ -200,6 +204,9 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_FLIP, "FLIP" },
   { GST_C2_PARAM_VBV_DELAY, "VBV_DELAY" },
   { GST_C2_PARAM_VUI_TIMING_INFO, "VUI_TIMING_INFO" },
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  { GST_C2_PARAM_HDR_MODE, "HDR_MODE" },
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -431,6 +438,16 @@ static const std::unordered_map<uint32_t, qc2::QCMirrorType> kFlipMap = {
   { GST_C2_FLIP_BOTH,       Qc2MirrorBoth },
 };
 
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+// Map for the GST_C2_HDR_MODE parameter.
+static const std::unordered_map<uint32_t, uint32_t> kHdrMap = {
+  { GST_C2_HDR_NONE,       C2Config::hdr_format_t::SDR },
+  { GST_C2_HDR_HLG,        C2Config::hdr_format_t::HLG },
+  { GST_C2_HDR_HDR10,      C2Config::hdr_format_t::HDR10 },
+  { GST_C2_HDR_HDR10_PLUS, C2Config::hdr_format_t::HDR10_PLUS },
+};
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+
 C2Param::Index GstC2Utils::ParamIndex(uint32_t type) {
 
   return kParamIndexMap.at(type);
@@ -563,7 +580,7 @@ std::tuple<GstVideoFormat, uint32_t> GstC2Utils::VideoFormat(
     case C2PixelFormat::kTP10UBWC_FLEX:
       return std::make_tuple(GST_VIDEO_FORMAT_NV12_Q10LE32C, 16);
     default:
-      GST_ERROR ("Unsupported format: %u!", format);
+      GST_ERROR ("Unsupported format: %u!", static_cast<uint32_t>(format));
       return std::make_tuple(GST_VIDEO_FORMAT_UNKNOWN, 0);
   }
 }
@@ -1050,6 +1067,17 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(delay);
       break;
     }
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+    case GST_C2_PARAM_HDR_MODE: {
+      C2StreamHdrFormatInfo::output hdrmode;
+      uint32_t mode = *(reinterpret_cast<GstC2HdrMode*>(payload));
+
+      hdrmode.value = kHdrMap.at(mode);
+      c2param = C2Param::Copy(hdrmode);
+      break;
+    }
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1497,6 +1525,19 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       *(reinterpret_cast<gint32*>(payload)) = delay->value;
       break;
     }
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+    case GST_C2_PARAM_HDR_MODE: {
+      auto hdrmode =
+          reinterpret_cast<C2StreamHdrFormatInfo::output*>(c2param.get());
+
+      auto result = std::find_if(kHdrMap.begin(), kHdrMap.end(),
+          [&](const auto& m) { return m.second == hdrmode->value; });
+
+      *(reinterpret_cast<GstC2HdrMode*>(payload)) =
+          static_cast<GstC2HdrMode>(result->first);
+      break;
+    }
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1676,7 +1717,7 @@ bool GstC2Utils::ImportHandleInfo(GstBuffer* buffer,
       break;
 #endif // GBM_FORMAT_YCbCr_420_TP10_UBWC_FLEX_8_BATCH
     default:
-      GST_ERROR ("Unsupported format: %d !", format);
+      GST_ERROR ("Unsupported format: %d !", static_cast<uint32_t>(format));
       return false;
   }
 
