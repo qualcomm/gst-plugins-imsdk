@@ -780,9 +780,9 @@ static GstStaticCaps gst_qmmfsrc_image_static_src_caps =
         QMMFSRC_IMAGE_RAW_CAPS (
                 "{ NV21"
 #ifdef GST_IMAGE_NV12_FORMAT_ENABLE
-                ", NV12"
+                ", NV12, NV12_Q08C"
 #endif // GST_IMAGE_NV12_FORMAT_ENABLE
-                " }") "; "
+                ", P010_10LE, NV12_Q10LE32C }") "; "
             QMMFSRC_IMAGE_BAYER_CAPS (
                 "{ bggr, rggb, gbrg, grbg, mono }",
                 "{ 8, 10, 12, 16 }"));
@@ -837,9 +837,9 @@ gst_qmmfsrc_image_src_caps (void)
           QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
                 "{ NV21"
 #ifdef GST_IMAGE_NV12_FORMAT_ENABLE
-                ", NV12"
+                ", NV12, NV12_Q08C"
 #endif // GST_IMAGE_NV12_FORMAT_ENABLE
-                " }"));
+                ", P010_10LE, NV12_Q10LE32C }"));
 
       caps = gst_caps_make_writable (caps);
       gst_caps_append (caps, tmplcaps);
