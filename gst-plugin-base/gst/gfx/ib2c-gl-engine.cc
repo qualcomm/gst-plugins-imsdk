@@ -325,11 +325,16 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     auto& graphics = std::get<std::vector<GraphicTuple>>(stuple);
 
     // Resize normalization length and apply conversion needed for shaders.
-    if (normalize.size() != 4) { normalize.resize(4); }
+    normalize.resize(4);
 
     for (auto& norm : normalize) {
+      auto bitdepth = Format::BitDepth(surface.format);
+
       // Adjust data range to match fragment shader data representation.
-      norm.offset /= 255.0;
+      if (!Format::IsFloat(surface.format) && (bitdepth == 16))
+        norm.offset /= std::numeric_limits<uint16_t>::max();
+      else if (bitdepth == 8)
+        norm.offset /= std::numeric_limits<uint8_t>::max();
 
       if (!Format::IsSigned(surface.format))
         continue;
