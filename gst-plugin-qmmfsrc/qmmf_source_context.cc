@@ -51,6 +51,8 @@
 #include "qmmf_source_utils.h"
 #include "qmmf_source_image_pad.h"
 #include "qmmf_source_video_pad.h"
+#include <gst/camera/gstcamerameta.h>
+#include <set>
 
 namespace camera = qmmf;
 #define GST_QMMF_CONTEXT_GET_LOCK(obj) (&GST_QMMF_CONTEXT_CAST(obj)->lock)
@@ -84,6 +86,20 @@ struct _GstQmmfLogicalCamInfo {
 struct _GstQmmfCameraSwitchInfo {
   gint            phy_cam_id_for_switch;
   gint            input_req_id;
+};
+
+struct PendingBuffer {
+  GstBuffer *gstbuffer;
+  GstPad *pad;
+  guint64 timestamp;
+  guint64 frame_number;
+  GstDataQueueItem *item;
+};
+
+struct MetadataRefCount {
+  camera_metadata_t *metadata;
+  guint ref_count;  // Number of pads that still need this metadata
+  guint total_pads; // Total number of pads that requested this metadata
 };
 
 struct _GstQmmfContext {
@@ -207,7 +223,14 @@ struct _GstQmmfContext {
   gboolean          sw_tnr;
   /// Capabilities of each camera
   GHashTable        *static_metas;
-
+  /// Map of frame timestamp to metadata with reference counting
+  std::unique_ptr<std::map<guint64, MetadataRefCount>> metadata_refcount_map;
+  /// Map of frame timestamp to pending buffers
+  std::unique_ptr<std::map<guint64, std::vector<PendingBuffer>>> pending_buffers;
+  /// Set of pads that have metadata attachment enabled
+  std::unique_ptr<std::set<GstPad*>> metadata_enabled_pads;
+  /// Mutex for thread-safe access
+  GMutex metadata_lock;
   /// Logical Camera Information
   GstQmmfLogicalCamInfo logical_cam_info;
   /// Sensor Switch Information
@@ -747,6 +770,7 @@ qmmfsrc_gst_buffer_release (GstStructure * structure)
 {
   gsize value;
   guint track_id, camera_id;
+  GstQmmfContext* context = NULL;
   std::vector<::qmmf::BufferDescriptor> buffers;
   ::qmmf::recorder::Recorder *recorder = NULL;
   ::qmmf::BufferDescriptor buffer;
@@ -780,7 +804,311 @@ qmmfsrc_gst_buffer_release (GstStructure * structure)
     recorder->ReturnImageCaptureBuffer (camera_id, buffer);
   }
 
+  if (gst_structure_has_field (structure, "context")) {
+    gst_structure_get (structure, "context", G_TYPE_ULONG, &value, NULL);
+    context = reinterpret_cast<GstQmmfContext*> (GSIZE_TO_POINTER (value));
+
+    // Check if this buffer had metadata attached
+    gboolean had_metadata = FALSE;
+    if (gst_structure_has_field (structure, "has_metadata"))
+      gst_structure_get_boolean (structure, "has_metadata", &had_metadata);
+
+    if (context && had_metadata) {
+      g_mutex_lock (&context->metadata_lock);
+      // Find the metadata reference count for this timestamp
+      auto meta_it = (*context->metadata_refcount_map).find (buffer.timestamp);
+      if (meta_it != (*context->metadata_refcount_map).end ()) {
+        MetadataRefCount &ref_info = meta_it->second;
+        if (ref_info.metadata != NULL && ref_info.ref_count > 0) {
+          ref_info.ref_count--;
+
+          GST_DEBUG ("Decremented metadata ref_count for timestamp %"
+              G_GUINT64_FORMAT " to %u (total_pads: %u)",
+              buffer.timestamp, ref_info.ref_count, ref_info.total_pads);
+
+          // If all pads have received their buffers, free the metadata
+          if (ref_info.ref_count == 0) {
+            GST_INFO ("All pads received buffers for timestamp %"
+                G_GUINT64_FORMAT ", freeing metadata", buffer.timestamp);
+
+            if (ref_info.metadata) {
+              ref_info.metadata = NULL;
+            }
+
+            // Remove from map
+            (*context->metadata_refcount_map).erase (meta_it);
+          }
+        } else {
+          GST_WARNING ("Metadata ref_count already 0 for timestamp %"
+              G_GUINT64_FORMAT, buffer.timestamp);
+        }
+      } else {
+        GST_DEBUG ("No metadata found for timestamp %" G_GUINT64_FORMAT
+            " (may have been already freed)", buffer.timestamp);
+      }
+
+      g_mutex_unlock (&context->metadata_lock);
+    }
+  }
+
   gst_structure_free (structure);
+}
+
+static void
+gst_qmmf_context_attach_metadata_to_buffer (GstQmmfContext *context,
+    PendingBuffer *pending, camera_metadata_t *metadata)
+{
+  GST_DEBUG ("Attaching metadata to buffer with timestamp %" G_GUINT64_FORMAT,
+      pending->timestamp);
+
+  gst_buffer_add_camera_meta (pending->gstbuffer, metadata);
+
+  GstStructure *structure = (GstStructure *) gst_mini_object_get_qdata (
+      GST_MINI_OBJECT (pending->gstbuffer), qmmf_buffer_qdata_quark ());
+
+  if (structure)
+    gst_structure_set (structure, "has_metadata", G_TYPE_BOOLEAN, TRUE, NULL);
+}
+
+static void
+gst_qmmf_context_push_buffer_downstream (GstQmmfContext *context,
+    PendingBuffer *pending)
+{
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pending->pad);
+
+  GST_DEBUG ("Pushing buffer with timestamp %" G_GUINT64_FORMAT " downstream",
+      pending->timestamp);
+
+  if (!gst_data_queue_push (vpad->buffers, pending->item))
+    pending->item->destroy (pending->item);
+}
+
+static void
+gst_qmmf_context_cleanup_pending_buffers_for_pad (GstQmmfContext * context,
+    GstPad * pad)
+{
+  g_return_if_fail (context != NULL);
+  g_return_if_fail (pad != NULL);
+
+  g_mutex_lock (&context->metadata_lock);
+
+  GST_INFO ("Cleaning up pending buffers for pad %s", GST_PAD_NAME (pad));
+
+  // Iterate through all pending buffers and remove those belonging to this pad
+  auto it = context->pending_buffers->begin ();
+  while (it != context->pending_buffers->end ()) {
+    guint64 timestamp = it->first;
+    std::vector<PendingBuffer> &buffers = it->second;
+
+    // Remove buffers for this pad
+    auto buf_it = buffers.begin ();
+    while (buf_it != buffers.end ()) {
+      if (buf_it->pad == pad) {
+        GST_DEBUG ("Releasing pending buffer for pad %s, timestamp %"
+            G_GUINT64_FORMAT, GST_PAD_NAME (pad), timestamp);
+
+        // Destroy the buffer item
+        if (buf_it->item) {
+          buf_it->item->destroy (buf_it->item);
+        }
+
+        buf_it = buffers.erase (buf_it);
+      } else {
+        ++buf_it;
+      }
+    }
+
+    // If no more buffers for this timestamp, remove the entry
+    if (buffers.empty ())
+      it = context->pending_buffers->erase (it);
+    else
+      ++it;
+  }
+
+  g_mutex_unlock (&context->metadata_lock);
+}
+
+static void
+gst_qmmf_context_cleanup_all_pending_buffers (GstQmmfContext * context)
+{
+  g_return_if_fail (context != NULL);
+
+  g_mutex_lock (&context->metadata_lock);
+
+  GST_INFO ("Cleaning up all pending buffers");
+
+  // Iterate through all pending buffers and destroy them
+  for (auto& pair : (*context->pending_buffers)) {
+    guint64 timestamp = pair.first;
+
+    for (auto& pending : pair.second) {
+      GST_DEBUG ("Releasing pending buffer for pad %s, timestamp %"
+          G_GUINT64_FORMAT, GST_PAD_NAME (pending.pad), timestamp);
+
+      if (pending.item)
+        pending.item->destroy (pending.item);
+    }
+  }
+
+  context->pending_buffers->clear ();
+
+  g_mutex_unlock (&context->metadata_lock);
+}
+
+void
+gst_qmmf_context_register_metadata_pad (GstQmmfContext * context, GstPad * pad)
+{
+  g_return_if_fail (context != NULL);
+  g_return_if_fail (pad != NULL);
+
+  g_mutex_lock (&context->metadata_lock);
+  context->metadata_enabled_pads->insert (pad);
+  GST_INFO ("Registered pad %s for metadata attachment", GST_PAD_NAME (pad));
+  g_mutex_unlock (&context->metadata_lock);
+}
+
+void
+gst_qmmf_context_unregister_metadata_pad (GstQmmfContext * context, GstPad * pad)
+{
+  g_return_if_fail (context != NULL);
+  g_return_if_fail (pad != NULL);
+
+  g_mutex_lock (&context->metadata_lock);
+
+  // Check if this pad was registered
+  auto pad_it = context->metadata_enabled_pads->find (pad);
+  if (pad_it != context->metadata_enabled_pads->end ()) {
+    GST_INFO ("Unregistering pad %s from metadata attachment", GST_PAD_NAME (pad));
+
+    // Decrement reference counts for all metadata entries
+    // since this pad will no longer consume them
+    for (auto& meta_pair : (*context->metadata_refcount_map)) {
+      MetadataRefCount &ref_info = meta_pair.second;
+
+      if (ref_info.metadata != NULL && ref_info.ref_count > 0) {
+        ref_info.ref_count--;
+
+        GST_DEBUG ("Decremented ref_count for timestamp %" G_GUINT64_FORMAT
+            " to %u due to pad unregistration", meta_pair.first, ref_info.ref_count);
+
+        // If ref_count reaches 0, free the metadata
+        if (ref_info.ref_count == 0) {
+          GST_INFO ("Freeing metadata for timestamp %" G_GUINT64_FORMAT
+              " after pad unregistration", meta_pair.first);
+
+          if (ref_info.metadata) {
+            free_camera_metadata (ref_info.metadata);
+            ref_info.metadata = NULL;
+          }
+        }
+      }
+    }
+
+    // Remove entries with ref_count == 0
+    auto meta_it = context->metadata_refcount_map->begin ();
+    while (meta_it != context->metadata_refcount_map->end ()) {
+      if (meta_it->second.ref_count == 0 && meta_it->second.metadata == NULL)
+        meta_it = context->metadata_refcount_map->erase (meta_it);
+      else
+        ++meta_it;
+    }
+
+    // Remove pad from the set
+    context->metadata_enabled_pads->erase (pad_it);
+  }
+
+  g_mutex_unlock (&context->metadata_lock);
+}
+
+gboolean
+gst_qmmf_context_is_metadata_enabled (GstQmmfContext * context)
+{
+  gboolean enabled = FALSE;
+
+  g_return_val_if_fail (context != NULL, FALSE);
+
+  g_mutex_lock (&context->metadata_lock);
+  enabled = !context->metadata_enabled_pads->empty ();
+  g_mutex_unlock (&context->metadata_lock);
+
+  return enabled;
+}
+
+void
+gst_qmmf_context_store_metadata (GstQmmfContext * context, gpointer metadata)
+{
+  ::camera::CameraMetadata *meta = NULL;
+  camera_metadata_t *camerameta = NULL;
+  guint64 timestamp = 0;
+  gint32 frame_count = 0;
+  gboolean should_store = FALSE;
+  guint num_pads_needing_metadata = 0;
+
+  meta = static_cast<::camera::CameraMetadata*>(metadata);
+
+  // Extract frame identifiers
+  if (meta->exists (ANDROID_SENSOR_TIMESTAMP)) {
+    timestamp = meta->find (ANDROID_SENSOR_TIMESTAMP).data.i64[0];
+  }
+
+  if (meta->exists (ANDROID_REQUEST_FRAME_COUNT)) {
+    frame_count = meta->find (ANDROID_REQUEST_FRAME_COUNT).data.i32[0];
+  }
+
+  g_mutex_lock (&context->metadata_lock);
+
+  // Check if any pad needs metadata or if there are pending buffers
+  should_store = !context->metadata_enabled_pads->empty () ||
+                 ((*context->pending_buffers).find (timestamp) !=
+                  (*context->pending_buffers).end ());
+
+  if (!should_store) {
+    g_mutex_unlock (&context->metadata_lock);
+    GST_DEBUG ("No pads require metadata for frame %d, timestamp %"
+        G_GUINT64_FORMAT ", skipping storage", frame_count, timestamp);
+    return;
+  }
+
+  // Count how many pads need this metadata
+  num_pads_needing_metadata = context->metadata_enabled_pads->size ();
+
+  GST_DEBUG ("Storing metadata for frame %d, timestamp %" G_GUINT64_FORMAT
+      " with ref_count %u", frame_count, timestamp, num_pads_needing_metadata);
+
+  const camera_metadata_t *buffer = meta->getbuffer ();
+
+  if (buffer == NULL) {
+    g_mutex_unlock (&context->metadata_lock);
+    GST_ERROR ("Failed to get camera metadata buffer");
+    return;
+  }
+
+  camerameta = clone_camera_metadata (buffer);
+
+  MetadataRefCount ref_count_info;
+  ref_count_info.metadata = camerameta;
+  ref_count_info.ref_count = num_pads_needing_metadata;
+  ref_count_info.total_pads = num_pads_needing_metadata;
+
+  (*context->metadata_refcount_map)[timestamp] = ref_count_info;
+
+  // Check if there are pending buffers waiting for this metadata
+  auto pending_it = (*context->pending_buffers).find (timestamp);
+  if (pending_it != (*context->pending_buffers).end ()) {
+    GST_INFO ("Found %zu pending buffers for timestamp %" G_GUINT64_FORMAT,
+        pending_it->second.size (), timestamp);
+
+    // Attach metadata to all pending buffers with this timestamp
+    for (auto& pending : pending_it->second) {
+      gst_qmmf_context_attach_metadata_to_buffer (context, &pending, camerameta);
+      gst_qmmf_context_push_buffer_downstream (context, &pending);
+    }
+
+    // Remove from pending queue
+    (*context->pending_buffers).erase (pending_it);
+  }
+
+  g_mutex_unlock (&context->metadata_lock);
 }
 
 static GstBuffer *
@@ -833,6 +1161,8 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
   gst_structure_set (structure,
       "recorder", G_TYPE_ULONG, GPOINTER_TO_SIZE (context->recorder),
       "camera", G_TYPE_UINT, context->camera_id,
+      "context", G_TYPE_ULONG, GPOINTER_TO_SIZE (context),
+      "has_metadata", G_TYPE_BOOLEAN, FALSE,
       NULL
   );
 
@@ -989,9 +1319,52 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
     item->visible = TRUE;
     item->destroy = (GDestroyNotify) qmmfsrc_free_queue_item;
 
-    // Push the buffer into the queue or free it on failure.
-    if (!gst_data_queue_push (vpad->buffers, item))
-      item->destroy (item);
+    if (vpad->attach_metadata) {
+      g_mutex_lock (&context->metadata_lock);
+
+      // Check if metadata already available
+      auto meta_it = (*context->metadata_refcount_map).find (buffer.timestamp);
+      if (meta_it != (*context->metadata_refcount_map).end ()) {
+        // Metadata available, attach immediately
+        GST_DEBUG ("Metadata found for pad %s, timestamp %" G_GUINT64_FORMAT,
+            GST_PAD_NAME (pad), buffer.timestamp);
+
+        PendingBuffer pending;
+        pending.gstbuffer = gstbuffer;
+        pending.pad = pad;
+        pending.timestamp = buffer.timestamp;
+        pending.frame_number = buffer.seqnum;
+        pending.item = item;
+
+        gst_qmmf_context_attach_metadata_to_buffer (context, &pending,
+            meta_it->second.metadata);
+
+        g_mutex_unlock (&context->metadata_lock);
+
+        // Push buffer downstream
+        if (!gst_data_queue_push (vpad->buffers, item))
+          item->destroy (item);
+      } else {
+        // Metadata not yet available, add to pending queue
+        GST_DEBUG ("Metadata NOT found for pad %s, timestamp %" G_GUINT64_FORMAT
+            ", adding to pending queue", GST_PAD_NAME (pad), buffer.timestamp);
+
+        PendingBuffer pending;
+        pending.gstbuffer = gstbuffer;
+        pending.pad = pad;
+        pending.timestamp = buffer.timestamp;
+        pending.frame_number = buffer.seqnum;
+        pending.item = item;
+
+        (*context->pending_buffers)[buffer.timestamp].push_back (pending);
+
+        g_mutex_unlock (&context->metadata_lock);
+      }
+    } else {
+      // Metadata not requested for this pad, push immediately
+      if (!gst_data_queue_push (vpad->buffers, item))
+        item->destroy (item);
+    }
   }
 }
 
@@ -1233,6 +1606,13 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
   context->metacb = metacb;
   context->userdata = userdata;
 
+  g_mutex_init (&context->metadata_lock);
+  context->metadata_refcount_map =
+      std::make_unique<std::map<guint64, MetadataRefCount>> ();
+  context->pending_buffers =
+      std::make_unique<std::map<guint64, std::vector<PendingBuffer>>> ();
+  context->metadata_enabled_pads = std::make_unique<std::set<GstPad*>> ();
+
   // Register a events function which will call the EOS callback if necessary.
   cbs.event_cb =
       [&, context] (::qmmf::recorder::EventType type, void *data, size_t size)
@@ -1285,6 +1665,49 @@ gst_qmmf_context_free (GstQmmfContext * context)
     for (int i = 0; i < context->logical_cam_info.phy_cam_num; i++)
       g_free (context->logical_cam_info.phy_cam_name_list[i]);
   }
+
+  g_mutex_lock (&context->metadata_lock);
+
+  // Free pending buffers
+  if (!context->pending_buffers->empty ()) {
+    GST_WARNING ("Freeing %zu pending buffer entries during context cleanup",
+        context->pending_buffers->size ());
+
+    for (auto& pair : (*context->pending_buffers)) {
+      for (auto& pending : pair.second) {
+        if (pending.item)
+          pending.item->destroy (pending.item);
+      }
+    }
+    context->pending_buffers->clear ();
+  }
+
+  // Free metadata with reference counting
+  if (!context->metadata_refcount_map->empty ()) {
+    GST_WARNING ("Freeing %zu metadata entries during context cleanup",
+        context->metadata_refcount_map->size ());
+
+    for (auto& pair : (*context->metadata_refcount_map)) {
+      if (pair.second.metadata != NULL) {
+        GST_WARNING ("Freeing unreleased metadata for timestamp %" G_GUINT64_FORMAT
+            " with ref_count %u/%u", pair.first, pair.second.ref_count,
+            pair.second.total_pads);
+        free_camera_metadata (pair.second.metadata);
+        pair.second.metadata = NULL;
+      }
+    }
+    context->metadata_refcount_map->clear ();
+  }
+
+  // Clear metadata enabled pads
+  if (!context->metadata_enabled_pads->empty ()) {
+    GST_WARNING ("Clearing %zu registered metadata pads during context cleanup",
+        context->metadata_enabled_pads->size ());
+    context->metadata_enabled_pads->clear ();
+  }
+
+  g_mutex_unlock (&context->metadata_lock);
+  g_mutex_clear (&context->metadata_lock);
 
   GST_INFO ("Destroyed QMMF context: %p", context);
   g_slice_free (GstQmmfContext, context);
@@ -1843,6 +2266,9 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
     recorder->SetCameraParam (context->camera_id, meta);
   }
 
+  if (vpad->attach_metadata)
+    gst_qmmf_context_register_metadata_pad (context, pad);
+
   return TRUE;
 }
 
@@ -1854,6 +2280,9 @@ gst_qmmf_context_delete_video_stream (GstQmmfContext * context, GstPad * pad)
   gint status = 0;
 
   GST_TRACE ("Delete QMMF context video stream");
+
+  gst_qmmf_context_cleanup_pending_buffers_for_pad (context, pad);
+  gst_qmmf_context_unregister_metadata_pad (context, pad);
 
   status = recorder->DeleteVideoTrack (vpad->id);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
@@ -2061,6 +2490,8 @@ gst_qmmf_context_stop_video_streams (GstQmmfContext * context, GArray * ids)
   gint status = 0;
 
   GST_TRACE ("Stopping QMMF context track");
+
+  gst_qmmf_context_cleanup_all_pending_buffers (context);
 
   for (idx = 0; idx < ids->len; idx++)
     track_ids.emplace(g_array_index (ids, guint, idx));

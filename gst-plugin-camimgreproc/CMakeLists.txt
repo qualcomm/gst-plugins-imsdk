@@ -61,6 +61,7 @@ target_link_libraries(${CAMERA_IMAGE_REPROCESS} PRIVATE
   ${GST_QCOM_UTILS_LIBRARIES}
   ${GST_QCOM_VIDEO_LIBRARIES}
   ${GST_QCOM_ALLOC_LIBRARIES}
+  gstqticamerabase
 )
 
 install(

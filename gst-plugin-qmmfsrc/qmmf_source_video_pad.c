@@ -234,6 +234,28 @@ video_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
       gst_query_set_latency (query, TRUE, min_latency, max_latency);
       break;
     }
+    case GST_QUERY_CUSTOM:
+    {
+      const GstStructure *structure = gst_query_get_structure (query);
+
+      if (structure == NULL) {
+        GST_WARNING_OBJECT (pad, "Custom query has no structure");
+        success = gst_pad_query_default (pad, parent, query);
+        break;
+      }
+
+      if (gst_structure_has_name (structure, "need-metadata")) {
+        GST_INFO_OBJECT (pad, "Received need-metadata custom query");
+
+        GST_QMMFSRC_VIDEO_PAD (pad)->attach_metadata = TRUE;
+        success = TRUE;
+      } else {
+        GST_DEBUG_OBJECT (pad, "Received custom query with name: %s",
+            gst_structure_get_name (structure));
+        success = gst_pad_query_default (pad, parent, query);
+      }
+      break;
+    }
     default:
       success = gst_pad_query_default (pad, parent, query);
       break;
@@ -958,4 +980,5 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->duration        = GST_CLOCK_TIME_NONE;
 
   pad->buffers         = gst_data_queue_new (queue_is_full_cb, NULL, NULL, pad);
+  pad->attach_metadata = FALSE;
 }

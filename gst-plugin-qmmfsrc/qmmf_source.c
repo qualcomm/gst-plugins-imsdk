@@ -926,10 +926,12 @@ qmmfsrc_metadata_callback (gint camera_id, gconstpointer metadata,
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (userdata);
 
-  if (isurgent)
+  if (isurgent) {
     g_signal_emit_by_name (qmmfsrc, "urgent-metadata", metadata);
-  else
+  } else {
     g_signal_emit_by_name (qmmfsrc, "result-metadata", metadata);
+    gst_qmmf_context_store_metadata (qmmfsrc->context, metadata);
+  }
 }
 
 static gboolean
@@ -1043,6 +1045,13 @@ qmmfsrc_start_stream (GstQmmfSrc * qmmfsrc)
     if (gst_pad_get_task_state (pad) != GST_TASK_STARTED) {
       GST_INFO_OBJECT (qmmfsrc, "Pad %s is not activated", GST_PAD_NAME (pad));
       continue;
+    }
+
+    // Register pad for metadata if attach_metadata is enabled
+    if (GST_QMMFSRC_VIDEO_PAD (pad)->attach_metadata) {
+      GST_INFO_OBJECT (qmmfsrc, "Registering pad %s for metadata attachment",
+          GST_PAD_NAME (pad));
+      gst_qmmf_context_register_metadata_pad (qmmfsrc->context, pad);
     }
 
     ids = g_array_append_val (ids, GST_QMMFSRC_VIDEO_PAD (pad)->id);

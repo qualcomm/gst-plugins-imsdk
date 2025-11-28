@@ -166,6 +166,18 @@ gst_qmmf_context_capture_image (GstQmmfContext * context,
                                 guint n_images,
                                 GPtrArray * metas);
 
+GST_API gboolean
+gst_qmmf_context_is_metadata_enabled (GstQmmfContext * context);
+
+GST_API void
+gst_qmmf_context_store_metadata (GstQmmfContext * context, gpointer metadata);
+
+GST_API void
+gst_qmmf_context_register_metadata_pad (GstQmmfContext * context, GstPad * pad);
+
+GST_API void
+gst_qmmf_context_unregister_metadata_pad (GstQmmfContext * context, GstPad * pad);
+
 GST_API void
 gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
                                    const GValue * value);

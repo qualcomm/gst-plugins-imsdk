@@ -91,6 +91,7 @@ target_link_libraries(${GST_QMMFSRC_PLUGIN} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${GST_QCOM_UTILS_LIBRARIES}
   ${GST_QCOM_VIDEO_LIBRARIES}
+  gstqticamerabase
 )
 
 install(
