@@ -1103,7 +1103,7 @@ main (gint argc, gchar * argv[])
       "  snpe-tensors: <json array>\n"
       "      Set output tensors for SNPE model.\n"
       "      Example:\n"
-      "      [\"/heads/Mul\", \"/heads/Sigmoid\"]\n"
+      "      [\"boxes\", \"scores\", \"class_idx\"]\n"
       "  output-type: It takes either wayland or filesink as output\n"
       "  out-file: Path of output filename\n",
       app_name, DEFAULT_CONFIG_FILE);
