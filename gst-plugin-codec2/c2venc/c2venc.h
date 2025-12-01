@@ -47,6 +47,8 @@ struct _GstC2VEncoder {
   GstClockTime         prevts;
   /// Current profile.
   GstC2Profile         profile;
+  /// Current stream format.
+  GstC2StreamFormat    stream_format;
 
   /// SPS/PPS/VPS NALs headers.
   GList                *headers;
@@ -86,9 +88,8 @@ struct _GstC2VEncoder {
   gint32               priority;
   GstC2TemporalLayer   temp_layer;
   gint32               vbv_delay;
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
   GstC2HdrMode         hdr_mode;
-#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  gint32               chroma_qp_offset;
 };
 
 struct _GstC2VEncoderClass {
