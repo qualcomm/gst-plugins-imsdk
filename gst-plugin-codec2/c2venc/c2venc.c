@@ -57,6 +57,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_FLIP                 (GST_C2_FLIP_NONE)
 #define DEFAULT_PROP_VBV_DELAY            (0x7fffffff)
 #define DEFAULT_PROP_HDR_MODE             (GST_C2_HDR_NONE)
+#define DEFAULT_PROP_CHROMA_QP_OFFSET     (0x7fffffff)
 
 #define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 
@@ -91,9 +92,8 @@ enum
   PROP_TEMPORAL_LAYER,
   PROP_FLIP,
   PROP_VBV_DELAY,
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
   PROP_HDR_MODE,
-#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  PROP_CHROMA_QP_OFFSET,
 };
 
 static GstStaticPadTemplate gst_c2_venc_sink_pad_template =
@@ -109,10 +109,10 @@ GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-h264, "
-        "stream-format = (string) byte-stream,"
+        "stream-format = (string) { byte-stream, avc3 },"
         "alignment = (string) au;"
         "video/x-h265,"
-        "stream-format = (string) byte-stream,"
+        "stream-format = (string) { byte-stream, hev1 },"
         "alignment = (string) au;"
         "image/heic")
 );
@@ -251,7 +251,6 @@ gst_c2_video_flip_get_type (void)
   return gtype;
 }
 
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 static GType
 gst_c2_hdr_mode_get_type (void)
 {
@@ -270,7 +269,6 @@ gst_c2_hdr_mode_get_type (void)
 
   return gtype;
 }
-#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 
 static gboolean
 gst_caps_has_subformat (const GstCaps * caps, const gchar * subformat)
@@ -373,6 +371,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
   GstC2HeaderMode csdmode = GST_C2_PREPEND_HEADER_TO_ALL_SYNC;
   GstC2QuantRanges qp_ranges = {0, 0, 0, 0, 0, 0};
   gdouble framerate = 0.0;
+  GstC2NalPrefixMode prefix_mode = GST_C2_NAL_PREFIX_START;
   gboolean success = FALSE;
 
   pixinfo.format = GST_VIDEO_INFO_FORMAT (info);
@@ -432,6 +431,13 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       GST_C2_PARAM_OUT_FRAMERATE, GPOINTER_CAST (&framerate));
   if (!success) {
     GST_ERROR_OBJECT (c2venc, "Failed to set output framerate parameter!");
+    return FALSE;
+  }
+
+  success = gst_c2_engine_set_parameter (c2venc->engine,
+      GST_C2_PARAM_OPERATING_FRAMERATE, GPOINTER_CAST (&framerate));
+  if (!success) {
+    GST_ERROR_OBJECT (c2venc, "Failed to set operating framerate parameter!");
     return FALSE;
   }
 
@@ -783,6 +789,29 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     }
   }
 
+  if (c2venc->chroma_qp_offset != DEFAULT_PROP_CHROMA_QP_OFFSET) {
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_CHROMA_QP_OFFSET,
+        GPOINTER_CAST (&(c2venc->chroma_qp_offset)));
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set chroma QP offset parameter!");
+      return FALSE;
+    }
+  }
+
+  if (c2venc->stream_format != GST_C2_HEIC_NONE) {
+    if (c2venc->stream_format == GST_C2_H264_AVC3 ||
+        c2venc->stream_format == GST_C2_H265_HEV1)
+      prefix_mode = GST_C2_NAL_PREFIX_LENGTH;
+
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_NAL_LENGTH_BITSTREAM, GPOINTER_CAST (&prefix_mode));
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set NAL prefix mode!");
+      return FALSE;
+    }
+  }
+
   success = gst_c2_engine_set_parameter (c2venc->engine,
       GST_C2_PARAM_COLOR_ASPECTS_TUNING,
       GPOINTER_CAST (&info->colorimetry));
@@ -809,7 +838,6 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     }
   }
 
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
   if (c2venc->hdr_mode != GST_C2_HDR_NONE) {
     success = gst_c2_engine_set_parameter (c2venc->engine,
         GST_C2_PARAM_HDR_MODE, GPOINTER_CAST (&(c2venc->hdr_mode)));
@@ -818,7 +846,6 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       return FALSE;
     }
   }
-#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 
   return TRUE;
 }
@@ -1217,6 +1244,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   GstVideoCodecState *outstate = NULL;
   GstCaps *caps = NULL;
   GstStructure *structure = NULL;
+  const GValue *value = NULL;
   const gchar *name = NULL, *string = NULL;
   GstC2Profile profile = GST_C2_PROFILE_INVALID;
   GstC2Level level = GST_C2_LEVEL_INVALID;
@@ -1249,15 +1277,49 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   // Make sure that caps have only one entry.
   caps = gst_caps_truncate (caps);
 
+  if (gst_caps_is_fixed (caps) == FALSE) {
+    structure = gst_caps_get_structure (caps, 0);
+
+    // Use byte stream as default stream format.
+    gst_structure_set (structure, "stream-format", G_TYPE_STRING,
+        "byte-stream", NULL);
+
+    // Use input resolution as default resolution.
+    if (gst_structure_has_field (structure, "width")) {
+      value = gst_structure_get_value (structure, "width");
+
+      if ((NULL == value) || !gst_value_is_fixed (value))
+        gst_structure_set (structure, "width", G_TYPE_INT, info->width, NULL);
+    }
+
+    if (gst_structure_has_field (structure, "height")) {
+      value = gst_structure_get_value (structure, "height");
+
+    if ((NULL == value) || !gst_value_is_fixed (value))
+      gst_structure_set (structure, "height", G_TYPE_INT, info->height, NULL);
+    }
+  }
+
   // Get the caps structue and set the component name.
   structure = gst_caps_get_structure (caps, 0);
+  string = gst_structure_get_string (structure, "stream-format");
 
-  if (gst_structure_has_name (structure, "video/x-h264"))
+  if (gst_structure_has_name (structure, "video/x-h264")) {
     name = "c2.qti.avc.encoder";
-  else if (gst_structure_has_name (structure, "video/x-h265"))
+    c2venc->stream_format = GST_C2_H264_BYTE;
+
+    if (string && g_str_equal (string, "avc3"))
+      c2venc->stream_format = GST_C2_H264_AVC3;
+  } else if (gst_structure_has_name (structure, "video/x-h265")) {
     name = "c2.qti.hevc.encoder";
-  else if (gst_structure_has_name (structure, "image/heic"))
+    c2venc->stream_format = GST_C2_H265_BYTE;
+
+    if (string && g_str_equal (string, "hev1"))
+      c2venc->stream_format = GST_C2_H265_HEV1;
+  } else if (gst_structure_has_name (structure, "image/heic")) {
     name = "c2.qti.heic.encoder";
+    c2venc->stream_format = GST_C2_HEIC_NONE;
+  }
 
   if (name == NULL) {
     GST_ERROR_OBJECT (c2venc, "Unknown component!");
@@ -1397,7 +1459,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     } else if (c2venc->rotate == GST_C2_ROTATE_90_CW ||
         c2venc->rotate ==  GST_C2_ROTATE_90_CCW) {
       outstate->info.width = info->height;
-    } else if (outwidth > 0) {
+    } else if (outwidth > 0 && outwidth > info->width) {
       GST_ERROR_OBJECT (c2venc, "Failed to set output width to %d", outwidth);
       return FALSE;
     }
@@ -1413,7 +1475,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     } else if (c2venc->rotate == GST_C2_ROTATE_90_CW ||
         c2venc->rotate == GST_C2_ROTATE_90_CCW) {
       outstate->info.height = info->width;
-    } else if (outheight > 0) {
+    } else if (outheight > 0 && outheight > info->height) {
       GST_ERROR_OBJECT (c2venc, "Failed to set output height to %d", outheight);
       return FALSE;
     }
@@ -1758,6 +1820,11 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       }
       break;
     }
+    case PROP_CHROMA_QP_OFFSET:
+    {
+      c2venc->chroma_qp_offset = g_value_get_int (value);
+      break;
+    }
     case PROP_SLICE_SIZE:
       c2venc->slice_size = g_value_get_uint (value);
       break;
@@ -1832,11 +1899,9 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_VBV_DELAY:
       c2venc->vbv_delay = g_value_get_int (value);
       break;
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
     case PROP_HDR_MODE:
       c2venc->hdr_mode = g_value_get_enum (value);
       break;
-#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1946,6 +2011,9 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       }
       break;
     }
+    case PROP_CHROMA_QP_OFFSET:
+      g_value_set_int (value, c2venc->chroma_qp_offset);
+      break;
     case PROP_SLICE_SIZE:
       g_value_set_uint (value, c2venc->slice_size);
       break;
@@ -1996,11 +2064,9 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
     case PROP_VBV_DELAY:
       g_value_set_int (value, c2venc->vbv_delay);
       break;
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
     case PROP_HDR_MODE:
       g_value_set_enum (value, c2venc->hdr_mode);
       break;
-#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2159,6 +2225,12 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
                   G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
               G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_CHROMA_QP_OFFSET,
+      g_param_spec_int ("chroma-qp-offset", "Chroma Quantization Offset",
+          "Chroma Quantization offset from Luma Quantization, supported "
+          "range is 0 to -12. (0x7fffffff=component default)",
+          G_MININT32, G_MAXINT32, DEFAULT_PROP_CHROMA_QP_OFFSET,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject, PROP_SLICE_MODE,
       g_param_spec_enum ("slice-mode", "slice mode",
           "Slice mode (0xffffffff=component default)",
@@ -2218,7 +2290,6 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           "i.e 1/10 of the target bitrate)",
           0, G_MAXINT, DEFAULT_PROP_VBV_DELAY,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
   g_object_class_install_property (gobject, PROP_HDR_MODE,
       g_param_spec_enum ("hdr-mode", "HDR Modes for Encoder",
           "When using colorspace BT2100HLG or BT2100PQ, set HDR mode for "
@@ -2226,7 +2297,6 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           "(0x7fffffff=component default)",
           GST_TYPE_C2_HDR_MODE, DEFAULT_PROP_HDR_MODE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
-#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 
   g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_trigger_iframe),
@@ -2303,6 +2373,8 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->quant_init.b_frames = DEFAULT_PROP_QUANT_B_FRAMES;
   c2venc->quant_init.b_frames_enable = FALSE;
 
+  c2venc->chroma_qp_offset = DEFAULT_PROP_CHROMA_QP_OFFSET;
+
   c2venc->quant_ranges.min_i_qp = DEFAULT_PROP_MIN_QP_I_FRAMES;
   c2venc->quant_ranges.max_i_qp = DEFAULT_PROP_MAX_QP_I_FRAMES;
   c2venc->quant_ranges.min_p_qp = DEFAULT_PROP_MIN_QP_P_FRAMES;
@@ -2325,9 +2397,7 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
       g_array_new (FALSE, FALSE, sizeof (gfloat));
   c2venc->n_subframes = 0;
   c2venc->vbv_delay = DEFAULT_PROP_VBV_DELAY;
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
   c2venc->hdr_mode = DEFAULT_PROP_HDR_MODE;
-#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,
       "QTI c2venc encoder");
