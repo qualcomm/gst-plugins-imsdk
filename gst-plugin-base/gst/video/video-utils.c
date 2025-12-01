@@ -149,6 +149,10 @@ gst_video_retrieve_gpu_alignment (GstVideoInfo * info, GstVideoAlignment * align
     align->padding_right = info->width / 3;
   }
 
+  // Freedreno alignment limitation. Height need to be multiple of 4
+  if (GST_VIDEO_FORMAT_INFO_IS_RGB (vfinfo))
+    align->padding_bottom = GST_ROUND_UP_4 (info->height) - info->height;
+
   return gst_video_info_align (info, align);
 }
 

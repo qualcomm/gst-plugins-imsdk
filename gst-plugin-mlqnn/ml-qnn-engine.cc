@@ -1151,17 +1151,19 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
   // populate input tensor data
   for (idx = 0; idx < graph_info->numInputTensors; idx++) {
     Qnn_Tensor_t *tensor = &(graph_info->inputTensors[idx]);
+    guint size = gst_ml_info_tensor_size (&(inframe->info), idx);
 
     QNN_TENSOR_CLIENTBUF (tensor).data = GST_ML_FRAME_BLOCK_DATA (inframe, idx);
-    QNN_TENSOR_CLIENTBUF (tensor).dataSize = GST_ML_FRAME_BLOCK_SIZE (inframe, idx);
+    QNN_TENSOR_CLIENTBUF (tensor).dataSize = size;
   }
 
   // populate output tensor data
   for (idx = 0; idx < graph_info->numOutputTensors; idx++) {
     Qnn_Tensor_t *tensor = &(graph_info->outputTensors[idx]);
+    guint size = gst_ml_info_tensor_size (&(outframe->info), idx);
 
     QNN_TENSOR_CLIENTBUF (tensor).data = GST_ML_FRAME_BLOCK_DATA (outframe, idx);
-    QNN_TENSOR_CLIENTBUF (tensor).dataSize = GST_ML_FRAME_BLOCK_SIZE (outframe, idx);
+    QNN_TENSOR_CLIENTBUF (tensor).dataSize = size;
   }
 
   // Execute Graph

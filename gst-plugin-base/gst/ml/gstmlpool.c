@@ -67,6 +67,7 @@ struct _GstMLBufferPoolPrivate
   GstAllocator        *allocator;
   GstAllocationParams params;
   GstMLInfo           info;
+  guint               maxsize;
 
   gboolean            addmeta;
   gboolean            continuous;
@@ -259,8 +260,8 @@ gst_ml_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
     GST_ERROR_OBJECT (mlpool, "Failed getting geometry from caps %"
         GST_PTR_FORMAT, caps);
     return FALSE;
-  } else if (maxsize != gst_ml_info_size (&info)) {
-    GST_ERROR_OBJECT (pool, "Provided size is not equal for the caps: %u != %"
+  } else if (maxsize < gst_ml_info_size (&info)) {
+    GST_ERROR_OBJECT (pool, "Provided size is not enough for the caps: %u != %"
         G_GSIZE_FORMAT, maxsize, gst_ml_info_size (&info));
     return FALSE;
   }
@@ -291,6 +292,7 @@ gst_ml_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 
   priv->params = params;
   priv->info = info;
+  priv->maxsize = maxsize;
 
   // Remove cached allocator.
   if (priv->allocator)
@@ -328,7 +330,7 @@ gst_ml_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
 
   for (idx = 0; idx < priv->info.n_tensors; idx++) {
     // Check if a single continuous memory block is requested for all tensors.
-    size = priv->continuous ? gst_ml_info_size (&priv->info) :
+    size = priv->continuous ? priv->maxsize :
         gst_ml_info_tensor_size (&priv->info, idx);
 
     if (GST_IS_SYSTEM_MEMORY_TYPE (priv->memtype))

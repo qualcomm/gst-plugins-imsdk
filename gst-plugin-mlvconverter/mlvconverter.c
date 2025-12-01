@@ -52,6 +52,7 @@
 #include <gst/ml/ml-module-utils.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
+#include <gst/gfx/gfx-utils.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
@@ -1548,6 +1549,7 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
   GstMLInfo info;
+  guint size = 1, stride = 0, alignment = 0;
 
   if (!gst_ml_info_from_caps (&info, caps)) {
     GST_ERROR_OBJECT (mlconverter, "Invalid caps %" GST_PTR_FORMAT, caps);
@@ -1558,7 +1560,19 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
   pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_DMA);
 
   config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_set_params (config, caps, gst_ml_info_size (&info),
+
+  alignment = gst_gfx_adreno_get_alignment ();
+  stride = GST_ML_INFO_TENSOR_DIM_W (mlconverter->tensorlayout, &info) *
+      GST_ML_INFO_TENSOR_DIM_C (mlconverter->tensorlayout, &info);
+
+  size *= GST_ML_INFO_TENSOR_DIM_N (mlconverter->tensorlayout, &info);
+  size *= GST_ROUND_UP_N (stride, alignment);
+  size *= GST_ROUND_UP_4 (
+      GST_ML_INFO_TENSOR_DIM_H (mlconverter->tensorlayout, &info));
+  size *= GST_ML_INFO_TENSOR_DIM_D (mlconverter->tensorlayout, &info);
+  size *= gst_ml_type_get_size (info.type);
+
+  gst_buffer_pool_config_set_params (config, caps, size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
 
   allocator = gst_fd_allocator_new ();
@@ -1568,6 +1582,8 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
       config, GST_ML_BUFFER_POOL_OPTION_TENSOR_META);
   gst_buffer_pool_config_add_option (
       config, GST_ML_BUFFER_POOL_OPTION_KEEP_MAPPED);
+  gst_buffer_pool_config_add_option (
+      config, GST_ML_BUFFER_POOL_OPTION_CONTINUOUS);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (mlconverter, "Failed to set pool configuration!");
@@ -1700,15 +1716,12 @@ gst_ml_video_converter_decide_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
-  if (gst_query_get_n_allocation_pools (query) > 0)
-    gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, NULL, NULL);
-
   // Invalidate the cached pool if there is an allocation_query.
   if (mlconverter->outpool)
     gst_object_unref (mlconverter->outpool);
 
   // Create a new pool in case none was proposed in the query.
-  if (!pool && !(pool = gst_ml_video_converter_create_pool (mlconverter, caps))) {
+  if (!(pool = gst_ml_video_converter_create_pool (mlconverter, caps))) {
     GST_ERROR_OBJECT (mlconverter, "Failed to create buffer pool!");
     return FALSE;
   }

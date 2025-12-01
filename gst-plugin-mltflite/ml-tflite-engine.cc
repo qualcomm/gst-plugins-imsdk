@@ -872,9 +872,9 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
   for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
     gint input = engine->interpreter->inputs()[idx];
     TfLiteTensor *tensor = engine->interpreter->tensor(input);
+    guint size = gst_ml_info_tensor_size (&(inframe->info), idx);
 
-    memcpy (tensor->data.raw, GST_ML_FRAME_BLOCK_DATA (inframe, idx),
-        GST_ML_FRAME_BLOCK_SIZE (inframe, idx));
+    memcpy (tensor->data.raw, GST_ML_FRAME_BLOCK_DATA (inframe, idx), size);
 
     mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, idx);
     mlmeta->name =
