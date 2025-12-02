@@ -26,39 +26,10 @@
 * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
-* Changes from Qualcomm Innovation Center are provided under the following license:
+* Changes from Qualcomm Technologies, Inc. are provided under the following license:
 *
-* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted (subject to the limitations in the
-* disclaimer below) provided that the following conditions are met:
-*
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*
-*     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
-* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
-* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
-* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
 #include "qmmf_source_video_pad.h"
@@ -72,6 +43,7 @@
 #endif // ENABLE_RUNTIME_PARSER
 
 #include "qmmf_source_utils.h"
+#include "qmmf_source.h"
 
 // Declare qmmfsrc_video_pad_class_init() and qmmfsrc_video_pad_init()
 // functions, implement qmmfsrc_video_pad_get_type() function and set
@@ -440,12 +412,13 @@ video_pad_update_params (GstPad * pad, GstStructure * structure)
 
   if (gst_structure_has_field (structure, "colorimetry")) {
     const gchar *string = gst_structure_get_string (structure, "colorimetry");
+    gchar *new_colorimetry = g_strdup (string);
 
     reconfigure |= (g_strcmp0 (string, vpad->colorimetry) != 0);
 
     if (vpad->colorimetry != NULL)
-      free(vpad->colorimetry);
-    vpad->colorimetry = g_strdup (string);
+      g_free (vpad->colorimetry);
+    vpad->colorimetry = new_colorimetry;
   }
 
   GST_QMMFSRC_VIDEO_PAD_UNLOCK (pad);
@@ -512,35 +485,59 @@ qmmfsrc_release_video_pad (GstElement * element, GstPad * pad)
 gboolean
 video_pad_set_super_buffer_mode (GstPad * pad, GstStructure *structure)
 {
+  GstQmmfSrc * qmmfsrc = GST_QMMFSRC (gst_object_get_parent (GST_OBJECT (pad)));
   GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
   gint fps_n, fps_d, fps;
+  GstClockTime duration;
+  GValue isslave = G_VALUE_INIT, sframerate = G_VALUE_INIT;
+  gint superframerate = 0;
+  const gchar *viewmode;
+  guint batch = 0;
+
+  // if super_buffer_mode is not enabled in this vpad, return true directly
+  if (vpad->super_buffer_mode != TRUE)
+    return TRUE;
+
+  g_value_init (&isslave, G_TYPE_BOOLEAN);
+  gst_qmmf_context_get_camera_param (qmmfsrc->context, PARAM_CAMERA_SLAVE,
+      &isslave);
+
+  // if camera is under slave mode, return true directly
+  if (g_value_get_boolean (&isslave)) {
+    GST_DEBUG ("camera is in slave mode, super buffer disabled");
+    return TRUE;
+  }
+
+  g_value_init (&sframerate, G_TYPE_INT);
+  gst_qmmf_context_get_camera_param (qmmfsrc->context,
+      PARAM_CAMERA_SUPER_FRAMERATE, &sframerate);
+  superframerate = g_value_get_int (&sframerate);
+
+  // if superframerate is not set with super_buffer_mode enabled, return false
+  if (superframerate <= 0) {
+    GST_ERROR_OBJECT (pad, "Invalid HFR platform capability: %d",
+        superframerate);
+    return FALSE;
+  }
 
   gst_structure_get_fraction (structure, "framerate", &fps_n, &fps_d);
-  vpad->duration = gst_util_uint64_scale_int (GST_SECOND, fps_d, fps_n);
-  fps = 1 / GST_TIME_AS_SECONDS (gst_guint64_to_gdouble (vpad->duration));
+  duration = gst_util_uint64_scale_int (GST_SECOND, fps_d, fps_n);
+  fps = 1 / GST_TIME_AS_SECONDS (gst_guint64_to_gdouble (duration));
 
-  if (vpad->super_buffer_mode == TRUE) {
-    const gchar *viewmode;
-    guint batch = 0;
-
-    if (vpad->superframerate <= 0) {
-      GST_ERROR_OBJECT (pad, "Invalid HFR platform capability: %d",
-          vpad->superframerate);
-      return FALSE;
-    }
-
-    batch = fps / vpad->superframerate;
-    if (!((batch == 2) || (batch == 4) || (batch == 8) || (batch == 16))) {
-      GST_ERROR_OBJECT (pad, "Don't support super buffer with batch %u.", batch);
-      return FALSE;
-    }
-
-    viewmode =
-      gst_video_multiview_mode_to_caps_string (GST_VIDEO_MULTIVIEW_MODE_MONO);
-    gst_structure_set (structure,
-        "multiview-mode", G_TYPE_STRING, viewmode,
-        "views", G_TYPE_INT, batch, NULL);
+  batch = fps / superframerate;
+  if (!((batch == 2) || (batch == 4) || (batch == 8) || (batch == 16))) {
+    GST_ERROR_OBJECT (pad, "Don't support super buffer with batch %u.", batch);
+    return FALSE;
   }
+
+  GST_DEBUG ("super buffer mode enabled on pad %s with batch %d",
+      GST_PAD_NAME (pad), batch);
+
+  viewmode =
+    gst_video_multiview_mode_to_caps_string (GST_VIDEO_MULTIVIEW_MODE_MONO);
+  gst_structure_set (structure,
+      "multiview-mode", G_TYPE_STRING, viewmode,
+      "views", G_TYPE_INT, batch, NULL);
 
   return TRUE;
 }
@@ -558,9 +555,13 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
   caps = gst_pad_get_allowed_caps (pad);
   g_return_val_if_fail (caps != NULL, FALSE);
 
+  // need to update some params, so mark it writable here
+  caps = gst_caps_make_writable (caps);
+  structure = gst_caps_get_structure (caps, 0);
+
   // Immediately return the fetched caps if they are fixed.
   if (gst_caps_is_fixed (caps)) {
-    if (!video_pad_set_super_buffer_mode (pad, gst_caps_get_structure (caps, 0)))
+    if (!video_pad_set_super_buffer_mode (pad, structure))
       return FALSE;
 
     video_pad_send_stream_start (pad);
@@ -578,9 +579,6 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
   g_return_val_if_fail (!gst_caps_is_empty(caps), FALSE);
 
   // Capabilities are not fixated, fixate them.
-  caps = gst_caps_make_writable (caps);
-  structure = gst_caps_get_structure (caps, 0);
-
   gst_structure_get_int (structure, "width", &width);
   gst_structure_get_int (structure, "height", &height);
   framerate = gst_structure_get_value (structure, "framerate");
@@ -943,7 +941,6 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->width           = -1;
   pad->height          = -1;
   pad->framerate       = 0.0;
-  pad->superframerate  = 60;
   pad->super_buffer_mode = FALSE;
   pad->format          = GST_VIDEO_FORMAT_UNKNOWN;
   pad->codec           = GST_VIDEO_CODEC_UNKNOWN;

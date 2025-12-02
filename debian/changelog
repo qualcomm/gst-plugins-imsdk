@@ -1,3 +1,213 @@
+gst-plugins-qti-oss (1.7.2-qcom0) noble; urgency=medium
+
+  [ QCTECMDR Service ]
+  * Merge "vdec: properly handle decoded buffers with INCOMPLETE flag"
+  * Merge "mlvconverter: Fix issue with not fixated frame rate"
+  * Merge "base: Resolve freedreno related RGB(A) format issue"
+  * Merge "gst-concurrent-videoplay-composition.py: Add default path"
+  * Merge "base: ib2c: Fix recalculation of the normalize values"
+  * Merge "Include BSD-3-Clause-Clear license in copyright headers"
+
+  [ Bala Sai Kosuri ]
+  * Include BSD-3-Clause-Clear license in copyright headers
+
+  [ Jai Shiv ]
+  * gst-plugin-example: add below app
+
+  [ QCTECMDR Service ]
+  * Merge "gst-videocodec-concurrent-playback: change the default input filenames"
+
+  [ Angel Hitov ]
+  * base: Resolve freedreno related RGB(A) format issue
+
+  [ QCTECMDR Service ]
+  * Merge "Revert^2 "gst-plugin-qmmfsrc: Add image colorimetry.""
+  * Merge "gst-plugin-qmmfsrc: support more snapshot format(NV12_Q08C, P010_10LE, NV12_Q10LE32C)."
+
+  [ Petar G. Georgiev ]
+  * base: ib2c: Fix recalculation of the normalize values
+  * base: Offload normalization to CPU for unsupported GLES format types
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-event-encoder: Removing harcoded framerate"
+  * Merge "gst-plugin-codec2: update src caps in case of rotation."
+  * Merge "base, mlvconverter: Move inplace normalization into the engine"
+
+  [ Kin Zhao ]
+  * vdec: properly handle decoded buffers with INCOMPLETE flag
+
+  [ Hongyong Huang ]
+  * Revert^2 "gst-plugin-qmmfsrc: Add image colorimetry."
+
+  [ Ziyi Gai ]
+  * gst-plugin-qmmfsrc: support more snapshot format(NV12_Q08C, P010_10LE, NV12_Q10LE32C).
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: enable superframerate update from vendor tag dynamically"
+
+  [ Petar G. Georgiev ]
+  * base, mlvconverter: Move inplace normalization into the engine
+
+  [ QCTECMDR Service ]
+  * Merge "qtiqmmfsrc: add support for cam-server system events"
+  * Merge "mltflite: add floating point precision option"
+  * Merge "gst-plugin-jpegpacker: initial commit for a new plugin."
+  * Merge "gst-ai-multistream-batch-inference: Replacing layers with tensors"
+
+  [ Nikolay Hristozov ]
+  * mlvconverter: Fix issue with not fixated frame rate
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-object-detection: Includes below changes:"
+  * Merge "gst-ai-metadata-parser-example: Updating model and label name"
+  * Merge "gst-ai-daisychain-detection-classification: Includes below change:"
+
+  [ aditsaur ]
+  * gst-ai-event-encoder: Removing harcoded framerate
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-usb-camera-app: Updating labels file name"
+  * Merge "gst-timelapse-example:fix buffer leak"
+
+  [ aditsaur ]
+  * gst-ai-multistream-batch-inference: Replacing layers with tensors
+
+  [ Deepali Reddy Karra ]
+  * qtiqmmfsrc: add support for cam-server system events
+
+  [ Ziyi Gai ]
+  * gst-plugin-jpegpacker: initial commit for a new plugin.
+
+  [ aditsaur ]
+  * gst-ai-object-detection: Includes below changes:
+
+  [ lei shen ]
+  * gst-timelapse-example:fix buffer leak
+
+  [ FengChen ]
+  * qmmfsrc: enable superframerate update from vendor tag dynamically
+
+  [ aditsaur ]
+  * gst-ai-daisychain-detection-classification: Includes below change:
+
+  [ Ziyi Gai ]
+  * gst-plugin-codec2: update src caps in case of rotation.
+
+  [ aditsaur ]
+  * gst-ai-metadata-parser-example: Updating model and label name
+
+  [ Teodor Boyanov ]
+  * mltflite: add floating point precision option
+
+  [ aditsaur ]
+  * gst-ai-usb-camera-app: Updating labels file name
+
+  [ vicky kumar ]
+  * gst-concurrent-videoplay-composition.py: Add default path
+  * gst-videocodec-concurrent-playback: change the default input filenames
+
+ -- girish k <girik@qti.qualcomm.com>  Tue, 02 Dec 2025 10:49:41 +0530
+
+gst-plugins-qti-oss (1.7.1-qcom0) noble; urgency=medium
+
+  [ QCTECMDR Service ]
+  * Merge "vtransform: Copy metadata from input to output buffer"
+
+  [ Tushar Patra Jamula ]
+  * vtransform: Copy metadata from input to output buffer
+
+  [ Linux Build Service Account ]
+  * Merge "Revert "gst-plugin-qmmfsrc: Add image colorimetry."" into le-gst.lnx.2.1
+
+  [ Girish K ]
+  * Revert "gst-plugin-qmmfsrc: Add image colorimetry."
+
+  [ QCTECMDR Service ]
+  * Merge "Add KEEP_MAPPED flag to all ml pools"
+  * Merge "base: ml: Add KEEP_MAPPED option to the pool"
+  * Merge "gst-plugin-qmmfsrc: Add image colorimetry."
+  * Merge "gst-ai-event-encoder: Updated pipeline EOS callback"
+  * Merge "gst-ai-python-apps: Update camera resolution"
+  * Merge "camera-img-reproc: add GST_VIDEO_METADATA support"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-event-encoder: Updated pipeline EOS callback
+
+  [ Tushar Patra Jamula ]
+  * base: video: Use OPEN_CV_INCLUDE_DIRS for opencv headers
+
+  [ QCTECMDR Service ]
+  * Merge "dngpacker: add dng pack measurement time"
+  * Merge "gst-plugin-codec2: avoid unnecessary GST ERROR print"
+  * Merge "metatransform: Palm detection module minor fixes"
+  * Merge "metatransform: Add module for palm detection"
+  * Merge "base: video: Accept video alignment only when using QTI allocator"
+
+  [ Jiadong Huang ]
+  * gst-plugin-codec2: avoid unnecessary GST ERROR print
+
+  [ Tushar Patra Jamula ]
+  * Add KEEP_MAPPED flag to all ml pools
+  * base: ml: Add KEEP_MAPPED option to the pool
+
+  [ QCTECMDR Service ]
+  * Merge "base: Add support for reporting GLES vendor and renderer"
+  * Merge "base: Small cleanup/improvement to FCV, OCV and GLES video engines"
+
+  [ Tushar Patra Jamula ]
+  * base: video: Accept video alignment only when using QTI allocator
+
+  [ Angel Krastev ]
+  * metatransform: Palm detection module minor fixes
+
+  [ Petar G. Georgiev ]
+  * base: Add support for reporting GLES vendor and renderer
+
+  [ Angel Krastev ]
+  * metatransform: Add module for palm detection
+
+  [ shukulk ]
+  * qmmfsrc: handle eos for specific stream when 'identity eos-after' is used in the pipeline
+
+  [ Hongyong Huang ]
+  * gst-plugin-qmmfsrc: Add image colorimetry.
+
+  [ FengChen ]
+  * camera-img-reproc: add GST_VIDEO_METADATA support
+  * dngpacker: add dng pack measurement time
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugins-qti-oss: Add support for QNN system context graph/bin for V3 type"
+
+  [ Petar G. Georgiev ]
+  * base: Small cleanup/improvement to FCV, OCV and GLES video engines
+
+  [ Angel Krastev ]
+  * mlpostprocess: fix typo in header file
+
+  [ aditsaur ]
+  * gst-ai-python-apps: Update camera resolution
+
+  [ QCTECMDR Service ]
+  * Merge "mlvdetection: Palm detection module"
+  * Merge "Kafka backend implementation"
+  * Merge "qtic2venc: qcs610: Correct ROI meta filter with ML"
+
+  [ Bala Sai Kosuri ]
+  * Kafka backend implementation
+  * Disable plugins with unavailable dependencies
+
+  [ Sanjay Chitroda ]
+  * qtic2venc: qcs610: Correct ROI meta filter with ML
+
+  [ Angel Krastev ]
+  * mlvdetection: Palm detection module
+
+  [ Tushar Darote ]
+  * gst-plugins-qti-oss: Add support for QNN system context graph/bin for V3 type
+
+ -- girish k <girik@qti.qualcomm.com>  Mon, 24 Nov 2025 10:35:58 +0530
+
 gst-plugins-qti-oss (1.7.0-qcom0) noble; urgency=medium
 
   [ Bala Sai Kosuri ]

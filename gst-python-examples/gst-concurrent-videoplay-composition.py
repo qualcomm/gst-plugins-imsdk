@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 ################################################################################
-# Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 ################################################################################
 
@@ -14,6 +14,8 @@ import gi
 gi.require_version('Gst', '1.0')
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
+
+DEFAULT_INPUT_VIDEO_PATH = "/etc/media/video.mp4"
 
 # Constants
 DESCRIPTION = """
@@ -105,7 +107,7 @@ def main():
         )
     )
     parser.add_argument(
-        "--infile", type=str, required=True,
+        "--infile", type=str, default=DEFAULT_INPUT_VIDEO_PATH,
         help="Input file to stream"
     )
     parser.add_argument(

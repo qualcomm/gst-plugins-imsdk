@@ -26,39 +26,10 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifdef HAVE_CONFIG_H
@@ -122,6 +93,7 @@
 
 #define DEFAULT_OPT_THREADS  1
 #define DEFAULT_OPT_DELEGATE GST_ML_TFLITE_DELEGATE_NONE
+#define DEFAULT_OPT_PRIORITY GST_ML_TFLITE_PRIORITY_MIN_LATENCY
 
 #define GET_OPT_MODEL(s) get_opt_string (s, \
     GST_ML_TFLITE_ENGINE_OPT_MODEL)
@@ -130,6 +102,9 @@
     DEFAULT_OPT_DELEGATE)
 #define GET_OPT_STHREADS(s) get_opt_uint (s, \
     GST_ML_TFLITE_ENGINE_OPT_THREADS, DEFAULT_OPT_THREADS)
+#define GET_OPT_PRIORITY(s) get_opt_enum (s, \
+    GST_ML_TFLITE_ENGINE_OPT_PRIORITY, GST_TYPE_ML_TFLITE_PRIORITY, \
+    DEFAULT_OPT_PRIORITY)
 
 #ifdef HAVE_EXTERNAL_DELEGATE_H
 #define GET_OPT_EXT_DELEGATE_PATH(s) get_opt_string (s, \
@@ -171,6 +146,28 @@ gst_ml_tflite_engine_debug_category (void)
     g_once_init_leave (&catonce, catdone);
   }
   return (GstDebugCategory *) catonce;
+}
+
+GType
+gst_ml_tflite_priority_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_ML_TFLITE_PRIORITY_MIN_LATENCY,
+        "MIN-LATENCY will be set on priority 1 and MAX-PRECISION will be set "
+        "on priority 3", "min-latency"
+    },
+    { GST_ML_TFLITE_PRIORITY_MAX_PRECISION,
+        "MAX-PRECISION will be set on priority 1 and MIN-LATENCY will be set "
+        "on priority 3", "max-precision"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+      gtype = g_enum_register_static ("GstMLTFLitePriority", variants);
+
+  return gtype;
 }
 
 GType
@@ -435,6 +432,7 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
 {
   TfLiteDelegate *delegate = NULL;
   gint type = GET_OPT_DELEGATE (settings);
+  gint priority = GET_OPT_PRIORITY (settings);
 
   switch (type) {
     case GST_ML_TFLITE_DELEGATE_NNAPI_DSP:
@@ -525,12 +523,27 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
     {
       TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
 
-      // Prefer minimum latency and memory usage with precision lower than fp32
-      options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+      switch (priority) {
+        case GST_ML_TFLITE_PRIORITY_MIN_LATENCY:
+        {
+          options.inference_priority1 =
+              TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+          options.inference_priority3 =
+              TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+          break;
+        }
+        case GST_ML_TFLITE_PRIORITY_MAX_PRECISION:
+        {
+          options.inference_priority1 =
+              TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+          options.inference_priority3 =
+              TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+          break;
+        }
+      }
+
       options.inference_priority2 =
           TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
-      options.inference_priority3 =
-          TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
       options.inference_preference =
           TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 
@@ -859,9 +872,9 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
   for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
     gint input = engine->interpreter->inputs()[idx];
     TfLiteTensor *tensor = engine->interpreter->tensor(input);
+    guint size = gst_ml_info_tensor_size (&(inframe->info), idx);
 
-    memcpy (tensor->data.raw, GST_ML_FRAME_BLOCK_DATA (inframe, idx),
-        GST_ML_FRAME_BLOCK_SIZE (inframe, idx));
+    memcpy (tensor->data.raw, GST_ML_FRAME_BLOCK_DATA (inframe, idx), size);
 
     mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, idx);
     mlmeta->name =

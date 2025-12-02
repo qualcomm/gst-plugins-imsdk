@@ -26,39 +26,10 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "c2d-video-converter.h"
@@ -90,11 +61,28 @@
 
 #define GST_C2D_MAX_DRAW_OBJECTS  250
 
+typedef struct _GstC2dRequest GstC2dRequest;
+
 /// Mutex for protecting the static reference counter.
 G_LOCK_DEFINE_STATIC (c2d);
 // Reference counter as C2D is singleton.
 static gint refcount = 0;
 
+struct _GstC2dRequest
+{
+  // The ID of the composition request.
+  guint         id;
+
+  // Video frame which will be normalized.
+  GstVideoFrame *frame;
+
+  // Offset and scale factors for each component of the pixel.
+  gdouble       offsets[GST_VCE_MAX_CHANNELS];
+  gdouble       scales[GST_VCE_MAX_CHANNELS];
+
+  // Configuration mask containing the type of the frame pixels.
+  guint64       flags;
+};
 
 struct _GstC2dVideoConverter
 {
@@ -1028,11 +1016,13 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
     GstVideoComposition * compositions, guint n_compositions, gpointer * fence)
 {
   GArray *requests = NULL;
+  GstC2dRequest *request = NULL;
   C2D_OBJECT objects[GST_C2D_MAX_DRAW_OBJECTS] = { 0, };
   guint idx = 0, num = 0, surface_id = 0, area = 0;
   C2D_STATUS status = C2D_STATUS_OK;
 
-  requests = g_array_sized_new (FALSE, FALSE, sizeof (guint), n_compositions);
+  requests = g_array_sized_new (FALSE, FALSE, sizeof (GstC2dRequest),
+      n_compositions);
   g_array_set_size (requests, n_compositions);
 
   // Sort compositions by output frame dimensions.
@@ -1141,7 +1131,14 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
       goto cleanup;
     }
 
-    g_array_index (requests, guint, idx) = surface_id;
+    request = &g_array_index (requests, GstC2dRequest, idx);
+    request->id = surface_id;
+
+    request->frame = composition->frame;
+    request->flags = composition->datatype;
+
+    memcpy (request->offsets, composition->offsets, sizeof (request->offsets));
+    memcpy (request->scales, composition->scales, sizeof (request->scales));
   }
 
   // Wait for all compositions to finish if synchronous, otherwise fill fence.
@@ -1164,24 +1161,28 @@ gst_c2d_video_converter_wait_fence (GstC2dVideoConverter * convert,
     gpointer fence)
 {
   GArray *requests = (GArray*) fence;
-  guint idx = 0, surface_id = 0;
+  GstC2dRequest *request = NULL;
+  guint idx = 0;
   gboolean success = TRUE;
   C2D_STATUS status = C2D_STATUS_OK;
 
   for (idx = 0; idx < requests->len; idx++) {
-    surface_id = g_array_index (requests, guint, idx);
+    request = &g_array_index (requests, GstC2dRequest, idx);
 
-    GST_LOG ("Waiting surface_id: %x", surface_id);
+    GST_LOG ("Waiting surface_id: %x", request->id);
 
-    if ((status = convert->Finish (surface_id)) != C2D_STATUS_OK) {
+    if ((status = convert->Finish (request->id)) != C2D_STATUS_OK) {
       GST_ERROR ("Finish failed for surface %x, error: %d!",
-          surface_id, status);
+          request->id, status);
 
       success &= FALSE;
       continue;
     }
 
-    GST_LOG ("Finished waiting surface_id: %x", surface_id);
+    GST_LOG ("Finished waiting surface_id: %x", request->id);
+
+    success &= gst_video_frame_normalize_ip (request->frame, request->flags,
+        request->offsets, request->scales);
   }
 
   g_array_free (requests, TRUE);
@@ -1211,23 +1212,16 @@ gst_c2d_video_converter_flush (GstC2dVideoConverter * convert)
 
   GST_C2D_LOCK (convert);
 
-  if (convert->insurfaces != NULL) {
-    g_hash_table_foreach (convert->insurfaces, gst_c2d_destroy_surface, convert);
-    g_hash_table_remove_all (convert->insurfaces);
-  }
+  g_hash_table_foreach (convert->insurfaces, gst_c2d_destroy_surface, convert);
+  g_hash_table_remove_all (convert->insurfaces);
 
-  if (convert->outsurfaces != NULL) {
-    g_hash_table_foreach (convert->outsurfaces, gst_c2d_destroy_surface, convert);
-    g_hash_table_remove_all (convert->outsurfaces);
-  }
+  g_hash_table_foreach (convert->outsurfaces, gst_c2d_destroy_surface, convert);
+  g_hash_table_remove_all (convert->outsurfaces);
 
-  if (convert->gpulist != NULL) {
-    g_hash_table_foreach (convert->gpulist, gst_c2d_unmap_gpu_address, convert);
-    g_hash_table_remove_all (convert->gpulist);
-  }
+  g_hash_table_foreach (convert->gpulist, gst_c2d_unmap_gpu_address, convert);
+  g_hash_table_remove_all (convert->gpulist);
 
-  if (convert->vaddrlist != NULL)
-    g_hash_table_remove_all (convert->vaddrlist);
+  g_hash_table_remove_all (convert->vaddrlist);
 
   GST_C2D_UNLOCK (convert);
   return;

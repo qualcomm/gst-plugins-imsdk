@@ -26,39 +26,10 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "gstmlpool.h"
@@ -96,6 +67,7 @@ struct _GstMLBufferPoolPrivate
   GstAllocator        *allocator;
   GstAllocationParams params;
   GstMLInfo           info;
+  guint               maxsize;
 
   gboolean            addmeta;
   gboolean            continuous;
@@ -288,8 +260,8 @@ gst_ml_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
     GST_ERROR_OBJECT (mlpool, "Failed getting geometry from caps %"
         GST_PTR_FORMAT, caps);
     return FALSE;
-  } else if (maxsize != gst_ml_info_size (&info)) {
-    GST_ERROR_OBJECT (pool, "Provided size is not equal for the caps: %u != %"
+  } else if (maxsize < gst_ml_info_size (&info)) {
+    GST_ERROR_OBJECT (pool, "Provided size is not enough for the caps: %u != %"
         G_GSIZE_FORMAT, maxsize, gst_ml_info_size (&info));
     return FALSE;
   }
@@ -320,6 +292,7 @@ gst_ml_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 
   priv->params = params;
   priv->info = info;
+  priv->maxsize = maxsize;
 
   // Remove cached allocator.
   if (priv->allocator)
@@ -357,7 +330,7 @@ gst_ml_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
 
   for (idx = 0; idx < priv->info.n_tensors; idx++) {
     // Check if a single continuous memory block is requested for all tensors.
-    size = priv->continuous ? gst_ml_info_size (&priv->info) :
+    size = priv->continuous ? priv->maxsize :
         gst_ml_info_tensor_size (&priv->info, idx);
 
     if (GST_IS_SYSTEM_MEMORY_TYPE (priv->memtype))

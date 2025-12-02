@@ -1,7 +1,7 @@
 /*
- Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- SPDX-License-Identifier: BSD-3-Clause-Clear
-*/
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "custom-video-lib-common.h"
 
@@ -187,7 +187,7 @@ custom_lib_process_buffer (CustomLib * custom_lib,
     composition.n_blits = 1;
 
     composition.frame = &outframe;
-    composition.flags = 0;
+    composition.datatype = 0;
 
     composition.bgcolor = 0;
     composition.bgfill = FALSE;

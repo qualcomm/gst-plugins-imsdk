@@ -26,39 +26,10 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifdef HAVE_CONFIG_H
@@ -81,6 +52,7 @@
 #include <gst/ml/ml-module-utils.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
+#include <gst/gfx/gfx-utils.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
@@ -145,7 +117,7 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define GST_ML_VIDEO_FORMATS \
     "{ RGBA, BGRA, ABGR, ARGB, RGBx, BGRx, xRGB, xBGR, BGR, RGB, GRAY8, NV12, NV21, YUY2, UYVY, NV12_Q08C }"
 
-#define GST_ML_TENSOR_TYPES "{ INT8, UINT8, INT16, UINT16, INT32, UINT32, FLOAT16, FLOAT32 }"
+#define GST_ML_TENSOR_TYPES "{ INT8, UINT8, INT16, UINT16, INT32, UINT32, INT64, UINT64, FLOAT16, FLOAT32 }"
 
 #define GST_ML_VIDEO_CONVERTER_SRC_CAPS    \
     "neural-network/tensors, "             \
@@ -1317,51 +1289,6 @@ gst_ml_video_converter_prepare_buffer_queues (GstMLVideoConverter * mlconverter,
 }
 
 static gboolean
-gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
-    GstVideoFrame * vframe)
-{
-  guint8 *indata = NULL;
-  gpointer outdata = NULL;
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  gdouble mean[4] = {0}, sigma[4] = {0}, value = 0.0f;
-  gint row = 0, column = 0, width = 0, height = 0;
-  guint idx = 0, bpp = 0;
-
-  // Retrive the video frame Bytes Per Pixel for later calculations.
-  bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
-      GST_VIDEO_FORMAT_INFO_N_COMPONENTS (vframe->info.finfo);
-  bpp /= 8;
-
-  // Convinient local variables for per channel mean and sigma values.
-  for (idx = 0; idx < bpp; idx++) {
-    mean[idx] = GET_MEAN_VALUE (mlconverter->mean, idx);
-    sigma[idx] = GET_SIGMA_VALUE (mlconverter->sigma, idx);
-  }
-
-  indata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
-  outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
-  mltype = GST_ML_INFO_TYPE (mlconverter->mlinfo);
-
-  width = GST_VIDEO_FRAME_WIDTH (vframe);
-  height = GST_VIDEO_FRAME_HEIGHT (vframe);
-
-  // Normalize in reverse as front bytes are occupied.
-  for (row = (height - 1); row >= 0; row--) {
-    for (column = ((width * bpp) - 1); column >= 0; column--) {
-      idx = (row * width * bpp) + column;
-
-      // Convert value to actual tensor type and apply normalization.
-      value = gst_ml_convert_uint8_to_mltype (mltype, indata[idx]);
-      value = (value - mean[idx % bpp]) * sigma[idx % bpp];
-
-      gst_ml_tensor_assign_value (mltype, outdata, idx, value);
-    }
-  }
-
-  return TRUE;
-}
-
-static gboolean
 gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
     GstVideoBlit * vblit, GstVideoFrame * outframe)
 {
@@ -1622,6 +1549,7 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
   GstMLInfo info;
+  guint size = 1, stride = 0, alignment = 0;
 
   if (!gst_ml_info_from_caps (&info, caps)) {
     GST_ERROR_OBJECT (mlconverter, "Invalid caps %" GST_PTR_FORMAT, caps);
@@ -1632,7 +1560,19 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
   pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_DMA);
 
   config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_set_params (config, caps, gst_ml_info_size (&info),
+
+  alignment = gst_gfx_adreno_get_alignment ();
+  stride = GST_ML_INFO_TENSOR_DIM_W (mlconverter->tensorlayout, &info) *
+      GST_ML_INFO_TENSOR_DIM_C (mlconverter->tensorlayout, &info);
+
+  size *= GST_ML_INFO_TENSOR_DIM_N (mlconverter->tensorlayout, &info);
+  size *= GST_ROUND_UP_N (stride, alignment);
+  size *= GST_ROUND_UP_4 (
+      GST_ML_INFO_TENSOR_DIM_H (mlconverter->tensorlayout, &info));
+  size *= GST_ML_INFO_TENSOR_DIM_D (mlconverter->tensorlayout, &info);
+  size *= gst_ml_type_get_size (info.type);
+
+  gst_buffer_pool_config_set_params (config, caps, size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
 
   allocator = gst_fd_allocator_new ();
@@ -1642,6 +1582,8 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
       config, GST_ML_BUFFER_POOL_OPTION_TENSOR_META);
   gst_buffer_pool_config_add_option (
       config, GST_ML_BUFFER_POOL_OPTION_KEEP_MAPPED);
+  gst_buffer_pool_config_add_option (
+      config, GST_ML_BUFFER_POOL_OPTION_CONTINUOUS);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (mlconverter, "Failed to set pool configuration!");
@@ -1774,15 +1716,12 @@ gst_ml_video_converter_decide_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
-  if (gst_query_get_n_allocation_pools (query) > 0)
-    gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, NULL, NULL);
-
   // Invalidate the cached pool if there is an allocation_query.
   if (mlconverter->outpool)
     gst_object_unref (mlconverter->outpool);
 
   // Create a new pool in case none was proposed in the query.
-  if (!pool && !(pool = gst_ml_video_converter_create_pool (mlconverter, caps))) {
+  if (!(pool = gst_ml_video_converter_create_pool (mlconverter, caps))) {
     GST_ERROR_OBJECT (mlconverter, "Failed to create buffer pool!");
     return FALSE;
   }
@@ -1882,6 +1821,7 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
   GstPad *pad = NULL;
   const GValue *rate = NULL, *dims = NULL, *depth = NULL;
   gint idx = 0, length = 0;
+  GstStructure *structure = NULL;
 
   GST_DEBUG_OBJECT (mlconverter, "Transforming caps: %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
@@ -1899,12 +1839,20 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
     if (mlconverter->backend == GST_VCE_BACKEND_NONE) {
       GstCaps *videocaps = NULL;
       gint idx = 0, length = 0, maxwidth = 0, maxheight = 0;
+      GstCaps *localcaps = gst_caps_copy (caps);
 
-      videocaps = gst_ml_video_converter_translate_ml_caps (mlconverter, caps);
+      // Removing non-fixated framerate field for caps translation
+      if (!gst_caps_is_empty (localcaps)) {
+        structure = gst_caps_get_structure (localcaps, 0);
+        gst_structure_remove_field (structure, "rate");
+      }
+
+      videocaps = gst_ml_video_converter_translate_ml_caps (mlconverter, localcaps);
       length = gst_caps_get_size (videocaps);
+      gst_caps_unref (localcaps);
 
       for (idx = 0; idx < length; idx++) {
-        GstStructure *structure = gst_caps_get_structure (videocaps, idx);
+        structure = gst_caps_get_structure (videocaps, idx);
 
         if (!gst_structure_has_field (structure, "width") &&
             !gst_structure_has_field (structure, "height"))
@@ -1934,7 +1882,7 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
 
   // Extract the framerate and propagate it to result caps.
   if (!gst_caps_is_empty (caps)) {
-    GstStructure *structure = gst_caps_get_structure (caps, 0);
+    structure = gst_caps_get_structure (caps, 0);
 
     rate = gst_structure_get_value (structure,
         (direction == GST_PAD_SRC) ? "rate" : "framerate");
@@ -1956,7 +1904,7 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
   length = gst_caps_get_size (result);
 
   for (idx = 0; idx < length; idx++) {
-    GstStructure *structure = gst_caps_get_structure (result, idx);
+    structure = gst_caps_get_structure (result, idx);
 
     if (rate != NULL) {
       gst_structure_set_value (structure,
@@ -2087,12 +2035,8 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
 
     // Remove any padding from output video info as tensors require none.
     GST_VIDEO_INFO_PLANE_STRIDE (&outinfo, idx) -= padding;
-
-    // Additional adjustments only for GLES backend.
-    if ((mlconverter->backend == GST_VCE_BACKEND_GLES)) {
-      // Adjust the stride for some tensor types.
-      GST_VIDEO_INFO_PLANE_STRIDE (&outinfo, idx) *= n_bytes;
-    }
+    // Adjust the stride for some tensor types.
+    GST_VIDEO_INFO_PLANE_STRIDE (&outinfo, idx) *= n_bytes;
 
     // Calculate the new updated size without padding
     GST_VIDEO_INFO_SIZE (&outinfo) -= padding *
@@ -2172,25 +2116,29 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   mlconverter->composition.frame = g_slice_new0 (GstVideoFrame);
-  mlconverter->composition.flags = 0;
+  mlconverter->composition.datatype = 0;
 
   mlconverter->composition.bgcolor = 0x00000000;
   mlconverter->composition.bgfill = TRUE;
 
-  if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT32)
-    mlconverter->composition.flags |= GST_VCE_FLAG_I32_FORMAT;
+  if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT64)
+    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_I64;
+  else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_UINT64)
+    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_U64;
+  else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT32)
+    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_I32;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_UINT32)
-    mlconverter->composition.flags |= GST_VCE_FLAG_U32_FORMAT;
+    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_U32;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT16)
-    mlconverter->composition.flags |= GST_VCE_FLAG_I16_FORMAT;
+    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_I16;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_UINT16)
-    mlconverter->composition.flags |= GST_VCE_FLAG_U16_FORMAT;
+    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_U16;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_FLOAT16)
-    mlconverter->composition.flags |= GST_VCE_FLAG_F16_FORMAT;
+    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_F16;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_FLOAT32)
-    mlconverter->composition.flags |= GST_VCE_FLAG_F32_FORMAT;
+    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_F32;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT8)
-    mlconverter->composition.flags |= GST_VCE_FLAG_I8_FORMAT;
+    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_I8;
 
   for (idx = 0; idx < GST_VCE_MAX_CHANNELS; idx++) {
     mlconverter->composition.offsets[idx] = (idx < mlconverter->mean->len) ?
@@ -2375,17 +2323,14 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   inframe = mlconverter->composition.blits[0].frame;
   outframe = mlconverter->composition.frame;
 
+  // Perform transformation only when custom normalization coefficients are set,
+  // when there are multiple blit elements (buffers), or when there is only a
+  // single blit element which does not have the required parameters for output.
   if (mlconverter->backend != GST_VCE_BACKEND_NONE &&
       ((n_blits > 1) || is_conversion_required (inframe, outframe) ||
           ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0)))) {
     success = gst_video_converter_engine_compose (mlconverter->converter,
         &(mlconverter->composition), 1, NULL);
-
-    // If the conversion request was successful apply normalization.
-    if (success && (mlconverter->backend != GST_VCE_BACKEND_GLES) &&
-        (GST_ML_INFO_TYPE (mlconverter->mlinfo) != GST_ML_TYPE_UINT8 ||
-            ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0))))
-      success = gst_ml_video_converter_normalize_ip (mlconverter, outframe);
   } else {
     // There is not need for frame conversion, apply only normalization.
     success = gst_ml_video_converter_normalize (mlconverter,

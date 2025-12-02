@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -829,24 +829,70 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   if (options.detection_use_cpu) {
     tflite_delegate = GST_ML_TFLITE_DELEGATE_NONE;
     g_print ("Using CPU Delegate for Detection\n");
+    if (qtimlelement[GST_DETECTION_TYPE_YOLO] == NULL ||
+        !G_IS_OBJECT(qtimlelement[GST_DETECTION_TYPE_YOLO])) {
+      g_printerr("Error: Detection element is invalid\n");
+      goto error_clean_elements;
+  }
     g_object_set (G_OBJECT (qtimlelement[GST_DETECTION_TYPE_YOLO]), "delegate",
         tflite_delegate, NULL);
   }
   if (options.classification_use_cpu) {
     tflite_delegate = GST_ML_TFLITE_DELEGATE_NONE;
     g_print ("Using CPU Delegate for Classification\n");
-    g_object_set (G_OBJECT (qtimlelement[GST_CLASSIFICATION_TYPE_INCEPTION]),
-        "delegate", tflite_delegate, NULL);
+    gint valid_elements = 0;
+    // Validate all classification elements (indices 1 through
+    // TFLITE_ELEMENT_COUNT-1)
+    for (gint i = 1; i < TFLITE_ELEMENT_COUNT; i++) {
+      if (qtimlelement[i] == NULL) {
+        g_printerr("Element at index %d is NULL\n", i);
+        continue;
+      }
+      if (!G_IS_OBJECT(qtimlelement[i])) {
+        g_printerr("Invalid element at index %d\n", i);
+        continue;
+      }
+      g_object_set (G_OBJECT (qtimlelement[i]),
+          "delegate", tflite_delegate, NULL);
+      valid_elements++;
+    }
+    if (valid_elements == 0) {
+      g_printerr("Error: No valid classification elements configured for "
+          "CPU delegate\n");
+      goto error_clean_elements;
+    }
   }
   if (options.classification_use_gpu) {
     g_print ("Using GPU delegate for Classification\n");
     tflite_delegate = GST_ML_TFLITE_DELEGATE_GPU;
-    g_object_set (G_OBJECT (qtimlelement[GST_CLASSIFICATION_TYPE_INCEPTION]),
-        "delegate", tflite_delegate, NULL);
+    gint valid_elements = 0;
+    for (gint i = 1; i < TFLITE_ELEMENT_COUNT; i++) {
+        if (qtimlelement[i] == NULL) {
+          g_printerr("Element at index %d is NULL\n", i);
+          continue;
+        }
+        if (!G_IS_OBJECT(qtimlelement[i])) {
+          g_printerr("Invalid element at index %d\n", i);
+          continue;
+        }
+        g_object_set (G_OBJECT (qtimlelement[i]),
+          "delegate", tflite_delegate, NULL);
+        valid_elements++;
+    }
+    if (valid_elements == 0) {
+      g_printerr("Error: No valid classification elements configured for "
+          "GPU delegate\n");
+      goto error_clean_elements;
+    }
   }
   if (options.detection_use_gpu) {
     g_print ("Using GPU delegate for Detection\n");
     tflite_delegate = GST_ML_TFLITE_DELEGATE_GPU;
+    if (qtimlelement[GST_DETECTION_TYPE_YOLO] == NULL ||
+        !G_IS_OBJECT(qtimlelement[GST_DETECTION_TYPE_YOLO])) {
+      g_printerr("Error: Detection element is invalid\n");
+      goto error_clean_elements;
+    }
     g_object_set (G_OBJECT (qtimlelement[GST_DETECTION_TYPE_YOLO]),
         "delegate", tflite_delegate, NULL);
   }
@@ -855,16 +901,38 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     delegate_options =
         gst_structure_from_string ("QNNExternalDelegate,backend_type=htp",
         NULL);
-    g_object_set (G_OBJECT (qtimlelement[GST_CLASSIFICATION_TYPE_INCEPTION]),
-        "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
-    g_object_set (G_OBJECT (qtimlelement[GST_CLASSIFICATION_TYPE_INCEPTION]),
-        "external_delegate_path", "libQnnTFLiteDelegate.so", NULL);
-    g_object_set (G_OBJECT (qtimlelement[GST_CLASSIFICATION_TYPE_INCEPTION]),
-        "external_delegate_options", delegate_options, NULL);
+    gint valid_elements = 0;
+    for (gint i = 1; i < TFLITE_ELEMENT_COUNT; i++) {
+        if (qtimlelement[i] == NULL) {
+          g_printerr("Element at index %d is NULL\n", i);
+          continue;
+        }
+        if (!G_IS_OBJECT(qtimlelement[i])) {
+          g_printerr("Invalid element at index %d\n", i);
+          continue;
+        }
+        g_object_set (G_OBJECT (qtimlelement[i]),
+            "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
+        g_object_set (G_OBJECT (qtimlelement[i]),
+            "external_delegate_path", "libQnnTFLiteDelegate.so", NULL);
+        g_object_set (G_OBJECT (qtimlelement[i]),
+            "external_delegate_options", delegate_options, NULL);
+        valid_elements++;
+    }
     gst_structure_free (delegate_options);
+    if (valid_elements == 0) {
+      g_printerr("Error: No valid classification elements configured for "
+          "DSP delegate\n");
+      goto error_clean_elements;
+    }
   }
   if (options.detection_use_dsp) {
     g_print ("Using DSP delegate with TFLITE for Detection\n");
+    if (qtimlelement[GST_DETECTION_TYPE_YOLO] == NULL ||
+        !G_IS_OBJECT(qtimlelement[GST_DETECTION_TYPE_YOLO])) {
+      g_printerr("Error: Detection element is invalid for DSP delegate\n");
+      goto error_clean_elements;
+    }
     delegate_options =
         gst_structure_from_string ("QNNExternalDelegate,backend_type=htp",
         NULL);

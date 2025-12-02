@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -55,12 +55,14 @@
 #define DEFAULT_SNPE_YOLOV5_MODEL "/etc/models/yolov5.dlc"
 #define DEFAULT_SNPE_YOLOV8_MODEL "/etc/models/yolov8.dlc"
 #define DEFAULT_SNPE_YOLONAS_MODEL "/etc/models/yolonas.dlc"
+#define DEFAULT_SNPE_YOLOX_MODEL "/etc/models/yolox.dlc"
 #define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
 #define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
 #define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
 #define DEFAULT_TFLITE_YOLONAS_MODEL "/etc/models/yolonas_quantized.tflite"
 #define DEFAULT_TFLITE_YOLOV7_MODEL "/etc/models/Yolo-v7-Quantized.tflite"
 #define DEFAULT_QNN_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.bin"
+#define DEFAULT_QNN_YOLOX_MODEL "/etc/models/yolox_quantized.bin"
 #define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.json"
 #define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.json"
 #define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.json"
@@ -120,13 +122,13 @@ typedef struct {
   gchar dev_video[16];
   enum GstSinkType sinktype;
   enum GstVideoFormat video_format;
-  gchar **snpe_layers;
+  gchar **snpe_tensors;
   GstCameraSourceType camera_type;
   GstModelType model_type;
   GstYoloModelType yolo_model_type;
   gdouble threshold;
   gint delegate_type;
-  gint snpe_layer_count;
+  gint snpe_tensor_count;
   gboolean use_cpu;
   gboolean use_gpu;
   gboolean use_dsp;
@@ -165,12 +167,14 @@ gst_app_context_free
   if (options->model_path != (gchar *)(&DEFAULT_SNPE_YOLOV5_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_SNPE_YOLOV8_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_SNPE_YOLONAS_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_SNPE_YOLOX_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV8_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOX_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV5_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLONAS_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV7_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_QNN_YOLOV8_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_QNN_YOLOX_MODEL) &&
       options->model_path != NULL) {
     g_free ((gpointer)options->model_path);
   }
@@ -184,11 +188,11 @@ gst_app_context_free
     g_free ((gpointer)options->labels_path);
   }
 
-  if (options->snpe_layers != NULL) {
-    for (gint i = 0; i < options->snpe_layer_count; i++) {
-      g_free ((gpointer)options->snpe_layers[i]);
+  if (options->snpe_tensors != NULL) {
+    for (gint i = 0; i < options->snpe_tensor_count; i++) {
+      g_free ((gpointer)options->snpe_tensors[i]);
     }
-    g_free ((gpointer)options->snpe_layers);
+    g_free ((gpointer)options->snpe_tensors);
   }
 
 
@@ -354,7 +358,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstPad *qtiqmmfsrc_type = NULL;
   gboolean ret = FALSE;
   gchar element_name[128], settings[128];
-  GValue layers = G_VALUE_INIT;
+  GValue tensors = G_VALUE_INIT;
   GValue value = G_VALUE_INIT;
   gint pos_vals[2], dim_vals[2];
   gint primary_camera_width = DEFAULT_CAMERA_OUTPUT_WIDTH;
@@ -784,18 +788,25 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
-  // 2.6 Set properties for ML postproc plugins - module, layers, threshold
+  // 2.6 Set properties for ML postproc plugins - module, tensors, threshold
   if (options->model_type == GST_MODEL_TYPE_SNPE) {
     g_object_set (G_OBJECT (qtimlelement), "model",
         options->model_path, NULL);
 
-    g_value_init (&layers, GST_TYPE_ARRAY);
-    g_value_init (&value, G_TYPE_STRING);
-    for (gint i = 0; i < options->snpe_layer_count; i++) {
-      g_value_set_string (&value, options->snpe_layers[i]);
-      gst_value_array_append_value (&layers, &value);
+    // Validate that tensors are provided for SNPE models
+    if (options->snpe_tensors == NULL || options->snpe_tensor_count == 0) {
+      g_printerr ("ERROR: snpe-tensors must be specified in config "
+         "file for SNPE models\n");
+      goto error_clean_elements;
     }
-    g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
+
+    g_value_init (&tensors, GST_TYPE_ARRAY);
+    g_value_init (&value, G_TYPE_STRING);
+    for (gint i = 0; i < options->snpe_tensor_count; i++) {
+      g_value_set_string (&value, options->snpe_tensors[i]);
+      gst_value_array_append_value (&tensors, &value);
+    }
+    g_object_set_property (G_OBJECT (qtimlelement), "tensors", &tensors);
 
     // set qtimlvdetection properties
     g_object_set (G_OBJECT (qtimlvdetection), "labels",
@@ -819,7 +830,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
       // YOLO_V8 specific settings
       case GST_YOLO_TYPE_V8:
-        // get enum values of module property frrom qtimlvdetection plugin
+      case GST_YOLO_TYPE_X:
+        // get enum values of module property from qtimlvdetection plugin
         module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
         if (module_id != -1){
           snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
@@ -940,6 +952,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     switch (options->yolo_model_type) {
       // YOLOv8 specific settings
       case GST_YOLO_TYPE_V8:
+      case GST_YOLO_TYPE_X:
         // set qtimlvdetection properties
         g_object_set (G_OBJECT (qtimlvdetection), "labels",
             options->labels_path, NULL);
@@ -956,7 +969,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         break;
 
       default:
-        g_printerr ("Unsupported QNN model, use YoloV8 QNN model\n");
+        g_printerr ("Unsupported QNN model, use YoloV8 or Yolox QNN model\n");
         goto error_clean_elements;
     }
   } else {
@@ -1256,7 +1269,7 @@ parse_json (gchar * config_file, GstAppOptions * options)
   JsonParser *parser = NULL;
   JsonNode *root = NULL;
   JsonObject *root_obj = NULL;
-  JsonArray *snpe_layers = NULL;
+  JsonArray *snpe_tensors = NULL;
   GError *error = NULL;
 
   parser = json_parser_new ();
@@ -1389,15 +1402,15 @@ parse_json (gchar * config_file, GstAppOptions * options)
     }
   }
 
-  if (json_object_has_member (root_obj, "snpe-layers")) {
-    snpe_layers = json_object_get_array_member (root_obj, "snpe-layers");
-    options->snpe_layer_count = json_array_get_length (snpe_layers);
-    options->snpe_layers = (gchar **) g_malloc (
-        sizeof (gchar **) * options->snpe_layer_count);
+  if (json_object_has_member (root_obj, "snpe-tensors")) {
+    snpe_tensors = json_object_get_array_member (root_obj, "snpe-tensors");
+    options->snpe_tensor_count = json_array_get_length (snpe_tensors);
+    options->snpe_tensors = (gchar **) g_malloc (
+        sizeof (gchar **) * options->snpe_tensor_count);
 
-    for (gint i = 0; i < options->snpe_layer_count; i++) {
-      options->snpe_layers[i] =
-          g_strdup (json_array_get_string_element (snpe_layers, i));
+    for (gint i = 0; i < options->snpe_tensor_count; i++) {
+      options->snpe_tensors[i] =
+          g_strdup (json_array_get_string_element (snpe_tensors, i));
     }
   }
 
@@ -1501,7 +1514,7 @@ main (gint argc, gchar * argv[])
   options.yolo_model_type = GST_YOLO_TYPE_NAS;
   options.model_path = NULL;
   options.labels_path = NULL;
-  options.snpe_layers = NULL;
+  options.snpe_tensors = NULL;
   options.width = USB_CAMERA_OUTPUT_WIDTH;
   options.height = USB_CAMERA_OUTPUT_HEIGHT;
   options.video_format = GST_NV12_VIDEO_FORMAT;
@@ -1557,6 +1570,7 @@ main (gint argc, gchar * argv[])
       "      Default model path for YOLOV5 DLC: "DEFAULT_SNPE_YOLOV5_MODEL"\n"
       "      Default model path for YOLOV8 DLC: "DEFAULT_SNPE_YOLOV8_MODEL"\n"
       "      Default model path for YOLO NAS DLC: "DEFAULT_SNPE_YOLONAS_MODEL"\n"
+      "      Default model path for YOLOX DLC: "DEFAULT_SNPE_YOLOX_MODEL"\n"
       "      Default model path for YOLOV5 TFLITE: "
       DEFAULT_TFLITE_YOLOV5_MODEL"\n"
       "      Default model path for YOLOV8 TFLITE: "
@@ -1569,6 +1583,8 @@ main (gint argc, gchar * argv[])
       DEFAULT_TFLITE_YOLOV7_MODEL"\n"
       "      Default model path for YOLOV8 QNN: "
       DEFAULT_QNN_YOLOV8_MODEL"\n"
+      "      Default model path for YOLOX QNN: "
+      DEFAULT_QNN_YOLOX_MODEL"\n"
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path for YOLOV5: "DEFAULT_YOLOV5_LABELS"\n"
@@ -1590,9 +1606,9 @@ main (gint argc, gchar * argv[])
       "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
       "      This is an optional parameter. If not filled, "
       "then default dsp runtime is selected\n"
-      "  snpe-layers: <json array>\n"
-      "      Set output layers for SNPE model. Example:\n"
-      "      [\"/heads/Mul\", \"/heads/Sigmoid\"]\n"
+      "  snpe-tensors: <json array>\n"
+      "      Set output tensors for SNPE model. Example:\n"
+      "      [\"boxes\", \"scores\", \"class_idx\"]\n"
       "  output-ip-address: Use this parameter to provide the rtsp output address.\n"
       "      eg: 127.0.0.1\n"
       "      Default ip is:" DEFAULT_IP "\n"
@@ -1773,7 +1789,9 @@ main (gint argc, gchar * argv[])
           DEFAULT_SNPE_YOLOV5_MODEL :
           (options.yolo_model_type == GST_YOLO_TYPE_V8 ?
           DEFAULT_SNPE_YOLOV8_MODEL :
-          DEFAULT_SNPE_YOLONAS_MODEL));
+          (options.yolo_model_type == GST_YOLO_TYPE_NAS ?
+          DEFAULT_SNPE_YOLONAS_MODEL :
+          DEFAULT_SNPE_YOLOX_MODEL)));
     } else if (options.model_type == GST_MODEL_TYPE_TFLITE) {
       if (options.yolo_model_type == GST_YOLO_TYPE_V5) {
         options.model_path = DEFAULT_TFLITE_YOLOV5_MODEL;
@@ -1791,8 +1809,10 @@ main (gint argc, gchar * argv[])
     } else if (options.model_type == GST_MODEL_TYPE_QNN) {
       if (options.yolo_model_type == GST_YOLO_TYPE_V8) {
         options.model_path = DEFAULT_QNN_YOLOV8_MODEL;
+      } else if (options.yolo_model_type == GST_YOLO_TYPE_X) {
+        options.model_path = DEFAULT_QNN_YOLOX_MODEL;
       } else {
-        g_printerr ("Only YOLOV8 model is supported with QNN runtime\n");
+        g_printerr ("Only YOLOV8 and Yolox model is supported with QNN runtime\n");
         gst_app_context_free (&appctx, &options, config_file);
         return -EINVAL;
       }
@@ -1803,35 +1823,6 @@ main (gint argc, gchar * argv[])
       return -EINVAL;
     }
   }
-
-  // Set default layers for SNPE models if not provided
-  if (options.snpe_layers == NULL && options.model_type == GST_MODEL_TYPE_SNPE) {
-    if (options.yolo_model_type == GST_YOLO_TYPE_V5) {
-      options.snpe_layer_count = 3;
-      options.snpe_layers = (gchar **) g_malloc (
-          sizeof (gchar **) * options.snpe_layer_count);
-      options.snpe_layers[0] = g_strdup ("Conv_198");
-      options.snpe_layers[1] = g_strdup ("Conv_232");
-      options.snpe_layers[2] = g_strdup ("Conv_266");
-    } else if (options.yolo_model_type == GST_YOLO_TYPE_V8) {
-      options.snpe_layer_count = 2;
-      options.snpe_layers = (gchar **) g_malloc (
-          sizeof (gchar **) * options.snpe_layer_count);
-      options.snpe_layers[0] = g_strdup ("Mul_248");
-      options.snpe_layers[1] = g_strdup ("Sigmoid_249");
-    } else if (options.yolo_model_type == GST_YOLO_TYPE_NAS) {
-      options.snpe_layer_count = 2;
-      options.snpe_layers = (gchar **) g_malloc (
-          sizeof (gchar **) * options.snpe_layer_count);
-      options.snpe_layers[0] = g_strdup ("/heads/Mul");
-      options.snpe_layers[1] = g_strdup ("/heads/Sigmoid");
-    } else {
-      g_printerr ("Given YOLO model type is not supported by SNPE framework\n");
-      gst_app_context_free (&appctx, &options, config_file);
-      return -EINVAL;
-    }
-  }
-
   // Set default label path for execution
   if (options.labels_path == NULL) {
     options.labels_path =

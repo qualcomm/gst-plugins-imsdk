@@ -27,6 +27,7 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
@@ -838,7 +839,7 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 
   composition.frame = &outframe;
   composition.bgfill = TRUE;
-  composition.flags = 0;
+  composition.datatype = 0;
 
   GST_VIDEO_COMPOSER_LOCK (vcomposer);
   composition.bgcolor = vcomposer->background;

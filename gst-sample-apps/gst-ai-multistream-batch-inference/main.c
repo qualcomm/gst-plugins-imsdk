@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -119,7 +119,7 @@ typedef struct {
   gchar *model_path;
   gchar *labels_path;
   gchar *post_process;
-  gchar **snpe_layers;
+  gchar **snpe_tensors;
   gchar *file_path[DEFAULT_BATCH_SIZE];
   GstModelType model_type;
   gint snpe_layer_count;
@@ -222,10 +222,10 @@ set_ml_params (GstElement * qtimlpostprocess,
       g_value_init (&layers, GST_TYPE_ARRAY);
       g_value_init (&value, G_TYPE_STRING);
       for (gint i = 0; i < options.snpe_layer_count; i++) {
-        g_value_set_string (&value, options.snpe_layers[i]);
+        g_value_set_string (&value, options.snpe_tensors[i]);
         gst_value_array_append_value (&layers, &value);
       }
-      g_object_set_property (G_OBJECT (qtielement), "layers", &layers);
+      g_object_set_property (G_OBJECT (qtielement), "tensors", &layers);
     }
     g_object_set (G_OBJECT (qtielement), "model", options.model_path,
         "delegate", GST_ML_SNPE_DELEGATE_DSP, NULL);
@@ -234,7 +234,7 @@ set_ml_params (GstElement * qtimlpostprocess,
       g_value_init (&layers, GST_TYPE_ARRAY);
       g_value_init (&value, G_TYPE_STRING);
       for (gint i = 0; i < options.snpe_layer_count; i++) {
-        g_value_set_string (&value, options.snpe_layers[i]);
+        g_value_set_string (&value, options.snpe_tensors[i]);
         gst_value_array_append_value (&layers, &value);
       }
       g_object_set_property (G_OBJECT (qtielement), "tensors", &layers);
@@ -452,11 +452,11 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions options[],
       g_free (options[i].labels_path);
       options[i].labels_path = NULL;
     }
-    if (options[i].snpe_layers != NULL) {
+    if (options[i].snpe_tensors != NULL) {
       for (gint j = 0; j < options[i].snpe_layer_count; j++) {
-        g_free ((gpointer)options[i].snpe_layers[j]);
+        g_free ((gpointer)options[i].snpe_tensors[j]);
       }
-      g_free ((gpointer) options[i].snpe_layers);
+      g_free ((gpointer) options[i].snpe_tensors);
     }
     if (options[i].post_process != NULL) {
       g_free (options[i].post_process);
@@ -1041,7 +1041,7 @@ main (gint argc, gchar * argv[])
   const gchar *app_name = NULL;
   JsonParser *parser = NULL;
   JsonArray *pipeline_info = NULL;
-  JsonArray *snpe_layers = NULL;
+  JsonArray *snpe_tensors = NULL;
   JsonNode *root = NULL;
   JsonObject *root_obj = NULL;
   gchar *config_file = NULL;
@@ -1100,8 +1100,8 @@ main (gint argc, gchar * argv[])
       "  post-process-plugin: It takes input as either qtimlvsegmentation"
       "  or qtimlvdetection\n"
       "  mlframework: It takes either tflite, snpe or qnn as input\n"
-      "  snpe-layers: <json array>\n"
-      "      Set output layers for SNPE model.\n"
+      "  snpe-tensors: <json array>\n"
+      "      Set output tensors for SNPE model.\n"
       "      Example:\n"
       "      [\"/heads/Mul\", \"/heads/Sigmoid\"]\n"
       "  output-type: It takes either wayland or filesink as output\n"
@@ -1225,19 +1225,19 @@ main (gint argc, gchar * argv[])
       return -1;
     }
 
-    // Check if snpe-layers exists before accessing it
-    if (json_object_has_member(info, "snpe-layers")) {
-      snpe_layers = json_object_get_array_member (info, "snpe-layers");
-      options[id].snpe_layer_count = json_array_get_length (snpe_layers);
-      options[id].snpe_layers = (gchar **) g_malloc (
+    // Check if snpe-tensors exists before accessing it
+    if (json_object_has_member(info, "snpe-tensors")) {
+      snpe_tensors = json_object_get_array_member (info, "snpe-tensors");
+      options[id].snpe_layer_count = json_array_get_length (snpe_tensors);
+      options[id].snpe_tensors = (gchar **) g_malloc (
           sizeof (gchar **) * options[id].snpe_layer_count);
       for (gint i = 0; i < options[id].snpe_layer_count; i++) {
-        options[id].snpe_layers[i] =
-            g_strdup (json_array_get_string_element (snpe_layers, i));
+        options[id].snpe_tensors[i] =
+            g_strdup (json_array_get_string_element (snpe_tensors, i));
       }
     } else {
       options[id].snpe_layer_count = 0;
-      options[id].snpe_layers = NULL;
+      options[id].snpe_tensors = NULL;
     }
 
     g_print ("Model Path: %s\n", options[id].model_path);

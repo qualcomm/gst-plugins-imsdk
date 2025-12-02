@@ -64,6 +64,7 @@ endif () # ENABLE_CAMERA AND ENABLE_VIDEO_ENCODE AND ENABLE_DISPLAY
 
 if (ENABLE_CAMERA AND (ENABLE_VIDEO_ENCODE OR ENABLE_DISPLAY))
   add_subdirectory(gst-add-remove-streams-runtime)
+  add_subdirectory(gst-camera-prebuffered-data-app)
   add_subdirectory(gst-activate-deactivate-streams-runtime)
   add_subdirectory(gst-shdr-app)
   add_subdirectory(gst-camera-burst-intervalcapture-example)

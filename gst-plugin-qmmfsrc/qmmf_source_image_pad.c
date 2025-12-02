@@ -26,39 +26,10 @@
 * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
-* Changes from Qualcomm Innovation Center are provided under the following license:
+* Changes from Qualcomm Technologies, Inc. are provided under the following license:
 *
-* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted (subject to the limitations in the
-* disclaimer below) provided that the following conditions are met:
-*
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*
-*     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
-* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
-* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
-* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
 #include "qmmf_source_image_pad.h"
@@ -389,6 +360,17 @@ image_pad_update_params (GstPad * pad, GstStructure *structure)
     ipad->subformat = subformat;
   }
 
+  if (gst_structure_has_field (structure, "colorimetry")) {
+    const gchar *string = gst_structure_get_string (structure, "colorimetry");
+    gchar *new_colorimetry = g_strdup (string);
+
+    reconfigure |= (g_strcmp0 (string, ipad->colorimetry) != 0);
+
+    if (ipad->colorimetry != NULL)
+      g_free (ipad->colorimetry);
+    ipad->colorimetry = new_colorimetry;
+  }
+
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
 
   // Send reconfigurtion signal only when paramters have changed.
@@ -437,6 +419,9 @@ qmmfsrc_release_image_pad (GstElement * element, GstPad * pad)
   gst_object_ref (pad);
 
   gst_pad_set_active (pad, FALSE);
+
+  if (GST_QMMFSRC_IMAGE_PAD (pad)->colorimetry)
+    g_free (GST_QMMFSRC_IMAGE_PAD (pad)->colorimetry);
 
   gst_buffer_pool_set_active (GST_QMMFSRC_IMAGE_PAD (pad)->pool, FALSE);
   gst_object_unref (GST_QMMFSRC_IMAGE_PAD (pad)->pool);
@@ -534,6 +519,17 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
           DEFAULT_IMAGE_BAYER_BPP);
       GST_DEBUG_OBJECT (pad, "BPP not set, using default value: %s",
           DEFAULT_IMAGE_BAYER_BPP);
+    }
+  }
+
+  if (gst_structure_has_field (structure, "colorimetry")) {
+    const gchar *colorimetry = gst_structure_get_string (structure,
+        "colorimetry");
+
+    if (!colorimetry) {
+      gst_structure_fixate_field_string (structure, "colorimetry",
+          GST_VIDEO_COLORIMETRY_BT601);
+      GST_DEBUG_OBJECT (pad, "colorimetry not set, using default value bt601");
     }
   }
 
@@ -694,6 +690,8 @@ qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
   pad->subformat = GST_IMAGE_SUBFORMAT_NONE;
 
   pad->duration  = GST_CLOCK_TIME_NONE;
+
+  pad->colorimetry = NULL;
 
   // TODO temporality solution until properties are implemented.
   gst_structure_set (pad->params, "quality", G_TYPE_UINT,

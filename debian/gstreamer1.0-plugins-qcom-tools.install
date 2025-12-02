@@ -1,3 +1,6 @@
 usr/bin/gst-pipeline-app
 usr/bin/gst-rtsp-server
 usr/bin/gst-warmboot-app
+usr/bin/test-dl-qnn
+usr/bin/test-dl-snpe
+usr/bin/test-dl-tflite

@@ -1,37 +1,7 @@
-
 /*
-* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted (subject to the limitations in the
-* disclaimer below) provided that the following conditions are met:
-*
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*
-*     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
-* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
-* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
-* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -71,8 +41,8 @@ GST_STATIC_PAD_TEMPLATE ("sink",
         "video/x-vp8;"
         "video/x-vp9;"
         "video/x-av1,"
-        "stream-format = (string) { obu-stream },"
-        "alignment = (string) { tu }")
+        "stream-format = (string) { obu-stream, annexb },"
+        "alignment = (string) { obu, tu, frame }")
 );
 
 static GstStaticPadTemplate gst_c2_vdec_src_pad_template =
@@ -259,6 +229,11 @@ gst_c2_vdec_buffer_available (GstBuffer * buffer, gpointer userdata)
   GstFlowReturn ret = GST_FLOW_OK;
   guint64 index = 0;
 
+ if (!GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_MARKER)) {
+    gst_buffer_list_add (c2vdec->incomplete_buffers, buffer);
+    return;
+  }
+
   // Get the frame index from the buffer offset field.
   index = GST_BUFFER_OFFSET (buffer);
 
@@ -274,9 +249,37 @@ gst_c2_vdec_buffer_available (GstBuffer * buffer, gpointer userdata)
       ", dts: %" GST_TIME_FORMAT, frame->system_frame_number,
       GST_TIME_ARGS (frame->pts), GST_TIME_ARGS (frame->dts));
 
-  GST_BUFFER_FLAG_SET (buffer, GST_BUFFER_FLAG_SYNC_AFTER);
+  // Check for incomplete buffers and merge them into single buffer.
+  if (gst_buffer_list_length (c2vdec->incomplete_buffers) > 0) {
+    GstMemory *memory = NULL;
 
-  frame->output_buffer = buffer;
+    // Create a new buffer to hold the memory blocks for all incomplete buffers.
+    frame->output_buffer = gst_buffer_new ();
+
+    while (gst_buffer_list_length (c2vdec->incomplete_buffers) > 0) {
+      GstBuffer *buf = gst_buffer_list_get (c2vdec->incomplete_buffers, 0);
+
+      // Append the memory block from input buffer into the new buffer.
+      memory = gst_buffer_get_memory (buf, 0);
+      gst_buffer_append_memory (frame->output_buffer, memory);
+
+      // Add parent meta, input buffer won't be released until new buffer is freed.
+      gst_buffer_add_parent_buffer_meta (frame->output_buffer, buf);
+
+      gst_buffer_list_remove (c2vdec->incomplete_buffers, 0, 1);
+    }
+
+    memory = gst_buffer_get_memory (buffer, 0);
+    gst_buffer_append_memory (frame->output_buffer, memory);
+
+    gst_buffer_add_parent_buffer_meta (frame->output_buffer, buffer);
+    gst_buffer_unref (buffer);
+  } else {
+    // No previous incomplete buffers, simply past current as the output buffer.
+    frame->output_buffer = buffer;
+  }
+
+  GST_BUFFER_FLAG_SET (frame->output_buffer, GST_BUFFER_FLAG_SYNC_AFTER);
   gst_video_codec_frame_unref (frame);
 
   // TODO: Renegotiate output state caps for resolution change using video meta
@@ -634,6 +637,8 @@ gst_c2_vdec_finalize (GObject * object)
 
   g_free (c2vdec->name);
 
+  gst_buffer_list_unref (c2vdec->incomplete_buffers);
+
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (c2vdec));
 }
 
@@ -649,8 +654,10 @@ gst_c2_vdec_class_init (GstC2VDecoderClass * klass)
   gobject->get_property = GST_DEBUG_FUNCPTR (gst_c2_vdec_get_property);
 
   gst_element_class_set_static_metadata (element,
-      "Codec2 H.264/H.265/VP8/VP9/MPEG Video Decoder", "Codec/Decoder/Video",
-      "Decode H.264/H.265/VP8/VP9/MPEG video streams", "QTI");
+      "Codec2 H.264/H.265/VP8/VP9/AV1/MPEG Video Decoder",
+      "Codec/Decoder/Video",
+      "Decode H.264/H.265/VP8/VP9/AV1/MPEG video streams",
+      "QTI");
 
   gst_element_class_add_static_pad_template (element,
       &gst_c2_vdec_sink_pad_template);
@@ -677,6 +684,8 @@ gst_c2_vdec_init (GstC2VDecoder *c2vdec)
   c2vdec->engine = NULL;
 
   c2vdec->outstate = NULL;
+
+  c2vdec->incomplete_buffers = gst_buffer_list_new ();
 
   GST_DEBUG_CATEGORY_INIT (gst_c2_vdec_debug_category, "qtic2vdec", 0,
       "QTI c2vdec decoder");
