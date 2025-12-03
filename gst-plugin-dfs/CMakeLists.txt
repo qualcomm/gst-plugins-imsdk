@@ -54,7 +54,9 @@ if(HAVE_DFS_FACTORY_H)
   )
 
   # Add target specific precompiler defintions.
-  add_definitions(-DRVSDK_API_VERSION=${RVSDK_API_VERSION})
+  set(RVSDK_API_VERSION "0x202404" CACHE STRING "RVSDK_API_VERSION")
+  target_compile_definitions(${GST_DFS} PRIVATE
+    RVSDK_API_VERSION=${RVSDK_API_VERSION})
 
   target_include_directories(${GST_DFS} PRIVATE
     ${GST_INCLUDE_DIRS}
