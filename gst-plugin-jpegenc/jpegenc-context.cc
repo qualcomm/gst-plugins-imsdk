@@ -155,6 +155,39 @@ gst_jpeg_enc_callback (GstJPEGEncoderContext * context, guint buf_fd,
 }
 
 gboolean
+gst_jpeg_enc_context_get_params (GstJPEGEncoderContext * context,
+    const GstJPEGEncoderInParams in_params, GstJPEGEncoderOutParams * out_params)
+{
+  qmmf::OfflineJpegInputParams jpeg_in_params;
+  qmmf::OfflineJpegOutputParams jpeg_out_params;
+
+  jpeg_out_params.size = 0;
+
+  if (context == NULL) {
+    GST_ERROR ("NULL pointers!");
+    return FALSE;
+  }
+
+  jpeg_in_params.camera_id = in_params.camera_id;
+  jpeg_in_params.width = in_params.width;
+  jpeg_in_params.height = in_params.height;
+
+  if (context->recorder->GetOfflineJpegParams(jpeg_in_params, jpeg_out_params) != 0) {
+    GST_ERROR ("Failed to get jpeg params");
+    return FALSE;
+  }
+
+  if (jpeg_out_params.size == 0) {
+    GST_ERROR ("Invalid output buffer size returned from GetOfflineJpegParams");
+    return FALSE;
+  }
+
+  out_params->jpeg_size = jpeg_out_params.size;
+
+  return TRUE;
+}
+
+gboolean
 gst_jpeg_enc_context_create (GstJPEGEncoderContext * context,
     GstStructure * params)
 {
