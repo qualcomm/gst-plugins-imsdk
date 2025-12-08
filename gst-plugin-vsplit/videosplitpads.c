@@ -976,7 +976,6 @@ gst_video_split_srcpad_decide_allocation (GstVideoSplitSrcPad * pad,
     gst_query_add_allocation_pool (query, pool, size, minbuffers,
         maxbuffers);
 
-  gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
   return TRUE;
 }
 
