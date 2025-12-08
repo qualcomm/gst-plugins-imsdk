@@ -1597,25 +1597,25 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
 
 static gboolean
 gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
-    GstQuery * inquery, GstQuery * outquery)
+    GstQuery * decide_query, GstQuery * query)
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
+  GstStructure *config = NULL;
   GstVideoInfo info = {0,};
+  GstVideoAlignment align = {0,};
   guint size = 0, minbuffers = 0;
-  gboolean needpool = FALSE;
+  gboolean needpool = FALSE, success = FALSE;
 
-  if (!GST_BASE_TRANSFORM_CLASS (parent_class)->propose_allocation (
-        base, inquery, outquery))
+  success = GST_BASE_TRANSFORM_CLASS (parent_class)->propose_allocation (
+      base, decide_query, query);
+
+  if (!success)
     return FALSE;
 
-  // No input query, nothing to do.
-  if (NULL == inquery)
-    return TRUE;
-
-  // // Extract caps from the query.
-  gst_query_parse_allocation (outquery, &caps, &needpool);
+  // Extract caps from the query.
+  gst_query_parse_allocation (query, &caps, &needpool);
 
   if (NULL == caps) {
     GST_ERROR_OBJECT (mlconverter, "Failed to extract caps from query!");
@@ -1627,10 +1627,13 @@ gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
+  if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+    GST_ERROR_OBJECT (mlconverter, "Failed to get alignment!");
+    return FALSE;
+  }
+
   if (needpool) {
-    GstStructure *config = NULL;
     GstAllocator *allocator = NULL;
-    GstVideoAlignment align = {0,};
 
     if ((pool = gst_image_buffer_pool_new ()) == NULL) {
       GST_ERROR_OBJECT (mlconverter, "Failed to create image pool!");
@@ -1660,12 +1663,6 @@ gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
     gst_buffer_pool_config_add_option (config,
         GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
 
-    if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
-      GST_ERROR_OBJECT (mlconverter, "Failed to get alignment!");
-      gst_clear_object (&pool);
-      return FALSE;
-    }
-
     gst_buffer_pool_config_set_params (config, caps, info.size,
         DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
 
@@ -1686,14 +1683,19 @@ gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
   minbuffers = GST_ML_INFO_TENSOR_DIM_D (mlconverter->tensorlayout,
       mlconverter->mlinfo);
 
-  // If upstream does't have a pool requirement, set only size in query.
-  gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size,
+  // If upstream doesn't have a pool requirement, set only size in query.
+  gst_query_add_allocation_pool (query, needpool ? pool : NULL, size,
         minbuffers, 0);
 
   if (pool != NULL)
     gst_object_unref (pool);
 
-  gst_query_add_allocation_meta (outquery, GST_VIDEO_META_API_TYPE, NULL);
+  config = gst_structure_new_empty ("video-meta");
+  gst_buffer_pool_config_set_video_alignment (config, &align);
+
+  // Add video meta with alignment information for upstream.
+  gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, config);
+
   return TRUE;
 }
 
@@ -1744,8 +1746,6 @@ gst_ml_video_converter_decide_allocation (GstBaseTransform * base,
         maxbuffers);
   else
     gst_query_add_allocation_pool (query, pool, size, minbuffers, maxbuffers);
-
-  gst_query_add_allocation_meta (query, GST_ML_TENSOR_META_API_TYPE, NULL);
 
   return TRUE;
 }
