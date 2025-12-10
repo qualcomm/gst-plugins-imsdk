@@ -91,6 +91,7 @@ struct _GstVideoTransform {
 
   /// Properties.
   GstVideoConvBackend     backend;
+  GstStructure            *backendparam;
   gboolean                flip_v;
   gboolean                flip_h;
   GstVideoTransformRotate rotation;
