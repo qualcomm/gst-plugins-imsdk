@@ -249,9 +249,9 @@ static const std::string kComputeHeader = R"(
 #extension GL_NV_image_formats : warn
 
 uniform int targetWidth;
-uniform int targetHeight;
 uniform int imageWidth;
 uniform int numPixels;
+uniform int numPlanePixels;
 uniform int numChannels;
 
 uniform sampler2D inTex;
@@ -261,22 +261,22 @@ layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 )";
 
 static const std::string kComputeOutputRGBA8 = R"(
-layout (binding = 1, rgba8) writeonly mediump uniform image2D outTex;
+layout (binding = 0, rgba8) writeonly mediump uniform image2D outTex;
 
 )";
 
 static const std::string kComputeOutputRGBA16 = R"(
-layout (binding = 1, rgba16) writeonly mediump uniform image2D outTex;
+layout (binding = 0, rgba16) writeonly mediump uniform image2D outTex;
 
 )";
 
 static const std::string kComputeOutputRGBA16F = R"(
-layout (binding = 1, rgba16f) writeonly mediump uniform image2D outTex;
+layout (binding = 0, rgba16f) writeonly mediump uniform image2D outTex;
 
 )";
 
 static const std::string kComputeOutputRGBA32F = R"(
-layout (binding = 1, rgba32f) writeonly mediump uniform image2D outTex;
+layout (binding = 0, rgba32f) writeonly mediump uniform image2D outTex;
 
 )";
 
@@ -297,10 +297,10 @@ void main() {
         vec4 p3 = texelFetch(inTex, pos3, 0);
 
         if (numChannels == 4) {
-            vec4 out0 = vec4(p0.x, p0.y, p0.z, p0.w);
-            vec4 out1 = vec4(p1.x, p1.y, p1.z, p1.w);
-            vec4 out2 = vec4(p2.x, p2.y, p2.z, p2.w);
-            vec4 out3 = vec4(p3.x, p3.y, p3.z, p3.w);
+            vec4 out0 = vec4(p0.r, p0.g, p0.b, p0.a);
+            vec4 out1 = vec4(p1.r, p1.g, p1.b, p1.a);
+            vec4 out2 = vec4(p2.r, p2.g, p2.b, p2.a);
+            vec4 out3 = vec4(p3.r, p3.g, p3.b, p3.a);
 
             ivec2 outPos0 = ivec2(pixelId % imageWidth, pixelId / imageWidth);
             ivec2 outPos1 = ivec2((pixelId + 1) % imageWidth, (pixelId + 1) / imageWidth);
@@ -317,9 +317,9 @@ void main() {
             // then compressed in 3 pixels of the output RGBA texture which is actually RGB.
             pixelId = (pixelId * 3) / 4;
 
-            vec4 out0 = vec4(p0.x, p0.y, p0.z, p1.x);
-            vec4 out1 = vec4(p1.y, p1.z, p2.x, p2.y);
-            vec4 out2 = vec4(p2.z, p3.x, p3.y, p3.z);
+            vec4 out0 = vec4(p0.r, p0.g, p0.b, p1.r);
+            vec4 out1 = vec4(p1.g, p1.b, p2.r, p2.g);
+            vec4 out2 = vec4(p2.b, p3.r, p3.g, p3.b);
 
             ivec2 outPos0 = ivec2(pixelId % imageWidth, pixelId / imageWidth);
             ivec2 outPos1 = ivec2((pixelId + 1) % imageWidth, (pixelId + 1) / imageWidth);
@@ -332,10 +332,10 @@ void main() {
             // Recalculate the pixelId for the output 1 channeled (GRAY) texture.
             pixelId = pixelId / 4;
 
-            float out0 = 0.299 * p0.x + 0.587 * p0.y + 0.114 * p0.z;
-            float out1 = 0.299 * p1.x + 0.587 * p1.y + 0.114 * p1.z;
-            float out2 = 0.299 * p2.x + 0.587 * p2.y + 0.114 * p2.z;
-            float out3 = 0.299 * p3.x + 0.587 * p3.y + 0.114 * p3.z;
+            float out0 = 0.299 * p0.r + 0.587 * p0.g + 0.114 * p0.b;
+            float out1 = 0.299 * p1.r + 0.587 * p1.g + 0.114 * p1.b;
+            float out2 = 0.299 * p2.r + 0.587 * p2.g + 0.114 * p2.b;
+            float out3 = 0.299 * p3.r + 0.587 * p3.g + 0.114 * p3.b;
 
             ivec2 outPos = ivec2(pixelId % imageWidth, pixelId / imageWidth);
             imageStore(outTex, outPos, vec4(out0, out1, out2, out3));
@@ -350,10 +350,6 @@ void main() {
     pixelId = 4 * (int(gl_GlobalInvocationID.x) + pixelId);
 
     if ((pixelId + 3) < numPixels) {
-        int plane0PixelId = pixelId / 4;
-        int plane1PixelId = plane0PixelId + targetWidth * targetHeight / 4;
-        int plane2PixelId = plane1PixelId + targetWidth * targetHeight / 4;
-
         ivec2 pos0 = ivec2(pixelId % targetWidth, pixelId / targetWidth);
         ivec2 pos1 = ivec2((pixelId + 1) % targetWidth, (pixelId + 1) / targetWidth);
         ivec2 pos2 = ivec2((pixelId + 2) % targetWidth, (pixelId + 2) / targetWidth);
@@ -364,25 +360,29 @@ void main() {
         vec4 p2 = texelFetch(inTex, pos2, 0);
         vec4 p3 = texelFetch(inTex, pos3, 0);
 
-        vec4 outp0 = vec4(p0.x, p1.x, p2.x, p3.x);
-        vec4 outp1 = vec4(p0.y, p1.y, p2.y, p3.y);
-        vec4 outp2 = vec4(p0.z, p1.z, p2.z, p3.z);
+        vec4 out0 = vec4(p0.r, p1.r, p2.r, p3.r);
+        vec4 out1 = vec4(p0.g, p1.g, p2.g, p3.g);
+        vec4 out2 = vec4(p0.b, p1.b, p2.b, p3.b);
+
+        int plane0PixelId = (pixelId + (pixelId / numPlanePixels) * (numChannels - 1) * numPlanePixels) / 4;
+        int plane1PixelId = plane0PixelId + numPlanePixels / 4;
+        int plane2PixelId = plane1PixelId + numPlanePixels / 4;
 
         ivec2 outPos0 = ivec2(plane0PixelId % imageWidth, plane0PixelId / imageWidth);
         ivec2 outPos1 = ivec2(plane1PixelId % imageWidth, plane1PixelId / imageWidth);
         ivec2 outPos2 = ivec2(plane2PixelId % imageWidth, plane2PixelId / imageWidth);
 
-        imageStore(outTex, outPos0, outp0);
-        imageStore(outTex, outPos1, outp1);
-        imageStore(outTex, outPos2, outp2);
+        imageStore(outTex, outPos0, out0);
+        imageStore(outTex, outPos1, out1);
+        imageStore(outTex, outPos2, out2);
 
         if (numChannels == 4) {
-            vec4 outp3 = vec4(p0.w, p1.w, p2.w, p3.w);
+            vec4 out3 = vec4(p0.a, p1.a, p2.a, p3.a);
 
-            int plane3PixelId = plane2PixelId + targetWidth * targetHeight / 4;
+            int plane3PixelId = plane2PixelId + numPlanePixels / 4;
             ivec2 outPos3 = ivec2(plane3PixelId % imageWidth, plane3PixelId / imageWidth);
 
-            imageStore(outTex, outPos3, outp3);
+            imageStore(outTex, outPos3, out3);
         }
     }
 }
