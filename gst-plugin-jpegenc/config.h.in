@@ -3,8 +3,8 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
-#define PACKAGE         "@GST_PLUGINS_QTI_OSS_PACKAGE@"
-#define PACKAGE_VERSION "@GST_PLUGINS_QTI_OSS_VERSION@"
-#define PACKAGE_LICENSE "@GST_PLUGINS_QTI_OSS_LICENSE@"
-#define PACKAGE_SUMMARY "@GST_PLUGINS_QTI_OSS_SUMMARY@"
-#define PACKAGE_ORIGIN  "@GST_PLUGINS_QTI_OSS_ORIGIN@"
+#define PACKAGE         "gst-plugins-qcom"
+#define PACKAGE_VERSION "1.0"
+#define PACKAGE_LICENSE "BSD"
+#define PACKAGE_SUMMARY "Qualcomm open-source multimedia GStreamer plugin"
+#define PACKAGE_ORIGIN  "Unknown package origin"
