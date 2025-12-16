@@ -53,7 +53,7 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
       C2StreamSyncFrameIntervalTuning::output::PARAM_TYPE },
   { GST_C2_PARAM_INTRA_REFRESH_TUNING,
       C2StreamIntraRefreshTuning::output::PARAM_TYPE },
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
   { GST_C2_PARAM_INTRA_REFRESH_MODE,
       qc2::C2VideoIntraRefreshType::output::PARAM_TYPE },
 #endif // CODEC2_CONFIG_VERSION_MAJOR
@@ -306,12 +306,12 @@ static const std::unordered_map<uint32_t, uint32_t> kRateCtrlMap = {
 // GST_C2_PARAM_INTRA_REFRESH_MODE parameter.
 static const std::unordered_map<uint32_t, uint32_t> kIntraRefreshMap = {
   { GST_C2_INTRA_REFRESH_DISABLED,  C2Config::INTRA_REFRESH_DISABLED },
-#if (CODEC2_CONFIG_VERSION_MAJOR == 1)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  { GST_C2_INTRA_REFRESH_ARBITRARY, qc2::IntraRefreshMode::INTRA_REFRESH_RANDOM },
+  { GST_C2_INTRA_REFRESH_CYCLIC,    qc2::IntraRefreshMode::INTRA_REFRESH_CYCLIC },
+#else
   { GST_C2_INTRA_REFRESH_ARBITRARY, C2Config::INTRA_REFRESH_ARBITRARY },
   { GST_C2_INTRA_REFRESH_CYCLIC,    C2Config::INTRA_REFRESH_ARBITRARY + 1 },
-#elif (CODEC2_CONFIG_VERSION_MAJOR == 2)
-  { GST_C2_INTRA_REFRESH_ARBITRARY, qc2::IntraRefreshMode::INTRA_REFRESH_RANDOM },
-  { GST_C2_INTRA_REFRESH_CYCLIC,    qc2::IntraRefreshMode::INTRA_REFRESH_CYCLIC},
 #endif // CODEC2_CONFIG_VERSION_MAJOR
 };
 
@@ -672,7 +672,7 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(irefresh);
       break;
     }
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
     case GST_C2_PARAM_INTRA_REFRESH_MODE: {
       qc2::C2VideoIntraRefreshType::output ir_type;
       uint32_t mode = *(reinterpret_cast<guint32*>(payload));
@@ -1173,7 +1173,7 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       reinterpret_cast<GstC2IntraRefresh*>(payload)->period = irefresh->period;
       break;
     }
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
     case GST_C2_PARAM_INTRA_REFRESH_MODE: {
       auto ir_type =
           reinterpret_cast<qc2::C2VideoIntraRefreshType::output*>(c2param.get());
