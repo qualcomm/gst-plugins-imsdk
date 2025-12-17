@@ -169,6 +169,7 @@ struct _GstSwitchPipelineInfo {
   gint                  sensor_num;
   GstLogCamMode         log_cam_mode;
   gboolean              menu;
+  gint                  superbuf_base;
   GOptionEntry          *options;
 };
 
@@ -185,6 +186,7 @@ struct _GstSwitchStreamInfo {
   gboolean              sbs;
   GstCameraStreamFormat cam_stream_format;
   gboolean              ubwc;
+  gboolean              superbuf;
 };
 
 struct _DisplayControl {
@@ -310,7 +312,7 @@ pipeline_alloc_options (GstSwitchPipeline *pipeline)
   GOptionEntry *entries;
 
   // allocate option number + 1, last one should be { NULL }
-  entries = g_new0 (GOptionEntry, 10);
+  entries = g_new0 (GOptionEntry, 11);
 
   if (entries != NULL) {
     entries[0].long_name = "cameraid";
@@ -366,6 +368,12 @@ pipeline_alloc_options (GstSwitchPipeline *pipeline)
     entries[8].arg = G_OPTION_ARG_NONE;
     entries[8].arg_data = (gpointer) &pipeline->info.menu;
     entries[8].description = "menu to set camera's dynamic properties";
+
+    entries[9].long_name = "superbuf-base";
+    entries[9].short_name = 'b';
+    entries[9].arg = G_OPTION_ARG_INT;
+    entries[9].arg_data = (gpointer) &pipeline->info.superbuf_base;
+    entries[9].description = "divisor to calculate frames in one super buffer";
 
     pipeline->info.options = entries;
   }
@@ -468,7 +476,7 @@ switchstream_alloc_options (GstSwitchStream *stream)
   GOptionEntry *entries = NULL;
   GstSwitchStreamInfo *info = &stream->info;
   // allocate option number + 1, keep last one { NULL }
-  gint option_num = 6;
+  gint option_num = 7;
   gint option_idx = 0;
 
   // preview stream can choose to display on screen or store to file
@@ -516,6 +524,13 @@ switchstream_alloc_options (GstSwitchStream *stream)
       info->name);
   option_idx++;
 
+  entries[option_idx].long_name = g_strdup_printf ("%s-superbuf", info->name);
+  entries[option_idx].arg = G_OPTION_ARG_NONE;
+  entries[option_idx].arg_data = (gpointer) &info->superbuf;
+  entries[option_idx].description = g_strdup_printf ("%s enable super buffer mode",
+      info->name);
+  option_idx++;
+
   if (stream->index != 0 && info->stype == GST_SWITCHSTREAM_TYPE_PREVIEW) {
     entries[option_idx].long_name = g_strdup_printf ("%sptype", info->name);
     entries[option_idx].arg = G_OPTION_ARG_INT;
@@ -529,8 +544,8 @@ switchstream_alloc_options (GstSwitchStream *stream)
     entries[option_idx].long_name = g_strdup_printf ("%s-cam-idx", info->name);
     entries[option_idx].arg = G_OPTION_ARG_INT;
     entries[option_idx].arg_data = (gpointer) &info->phy_cam_idx;
-    entries[option_idx].description = g_strdup_printf ("%s physical camera id "
-        "attached to this stream, default -1", info->name);
+    entries[option_idx].description = g_strdup_printf ("%s physical camera id"
+        " attached to this stream, default -1", info->name);
     option_idx++;
 
     entries[option_idx].long_name = g_strdup_printf ("%s-sbs", info->name);
@@ -687,6 +702,19 @@ check_pipeline_streams_options (GstSwitchPipeline *pipeline)
   SWITCH_MSG ("general options: sensor-switch(%d) logical camera mode (%d)\n",
       pinfo->sensor_switch, pinfo->log_cam_mode);
 
+  switch (pinfo->superbuf_base) {
+    case 0:
+      break;
+    case 30:
+    case 60:
+      SWITCH_MSG ("general options: super-buffer-base(%d)\n",
+          pinfo->superbuf_base);
+      break;
+    default:
+      SWITCH_ERROR ("unsupported super-buffer-base(%d)\n", pinfo->superbuf_base);
+      return FALSE;
+  }
+
   valid_pstreams = valid_vstreams = 0;
   display_pipeline_num = 0;
 
@@ -701,8 +729,9 @@ check_pipeline_streams_options (GstSwitchPipeline *pipeline)
           stream->info.src_width, stream->info.src_height, stream->info.src_fps,
           stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY ? "display" : "file");
 
-      SWITCH_MSG ("\tstream format(%s) ubwc(%d)\n",
-          CameraStreamMaps[stream->info.cam_stream_format], stream->info.ubwc);
+      SWITCH_MSG ("\tstream format(%s) ubwc(%d) superbuf-mode(%d)\n",
+          CameraStreamMaps[stream->info.cam_stream_format], stream->info.ubwc,
+          stream->info.superbuf);
       valid_pstreams++;
 
       if (stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY) {
@@ -733,8 +762,8 @@ check_pipeline_streams_options (GstSwitchPipeline *pipeline)
       SWITCH_MSG ("\tstream format(%s) ubwc(%d)\n",
           CameraStreamMaps[stream->info.cam_stream_format], stream->info.ubwc);
 
-      SWITCH_MSG ("\tphy-cam-id(%d) side-by-side(%d)\n",
-          stream->info.phy_cam_idx, stream->info.sbs);
+      SWITCH_MSG ("\tphy-cam-id(%d) side-by-side(%d) superbuf-mode(%d)\n",
+          stream->info.phy_cam_idx, stream->info.sbs, stream->info.superbuf);
 
       if (stream->info.phy_cam_idx != -1 && stream->info.sbs == TRUE) {
         SWITCH_ERROR ("video stream index (%d) can not have both physical"
@@ -1118,6 +1147,9 @@ switchstream_file_init (GstUnifiedSwitchStream *ustream)
         NULL);
   else
     ;
+
+  if ((pinfo->superbuf_base != 0) && sinfo->superbuf)
+    g_object_set (fbin->camera_pad, "super-buffer-mode", TRUE, NULL);
 
   caps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, CameraStreamMaps[sinfo->cam_stream_format],
@@ -2596,6 +2628,31 @@ pipeline_prepare_to_run (GstSwitchPipeline *pipeline)
   g_return_val_if_fail (pipeline != NULL, FALSE);
   pcontrol = &pipeline->control;
   pinfo = &pipeline->info;
+
+  ret = gst_element_set_state (pcontrol->pipeline, GST_STATE_READY);
+  SWITCH_MSG ("set pipeline to READY state, return val(%d)\n", ret);
+
+  if (pinfo->superbuf_base) {
+    std::shared_ptr<VendorTagDescriptor> vtags;
+
+    vtags = VendorTagDescriptor::getGlobalVendorTagDescriptor();
+    if (vtags.get() == NULL) {
+      SWITCH_MSG ("Failed to retrieve Global Vendor Tag Descriptor!\n");
+      return FALSE;
+    }
+
+    if (session_metadata.getTagFromName (
+        "org.codeaurora.qcamera3.sessionParameters.PreviewFPSOnHFRMode",
+        vtags.get(), &tag) != 0) {
+      SWITCH_MSG ("PreviewFPSOnHFRMode not found\n");
+      return FALSE;
+    }
+
+    SWITCH_MSG ("PreviewFPSOnHFRMode set to %d\n", pinfo->superbuf_base);
+
+    session_metadata.update (tag, &pinfo->superbuf_base, 1);
+    metadata_update = TRUE;
+  }
 
   ret = gst_element_set_state (pcontrol->pipeline, GST_STATE_PAUSED);
   SWITCH_MSG ("set pipeline to PAUSED state, return val(%d)\n", ret);
