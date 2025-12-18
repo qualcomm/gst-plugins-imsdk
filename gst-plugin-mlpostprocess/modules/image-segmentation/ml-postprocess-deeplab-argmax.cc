@@ -171,7 +171,8 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       else
         id = (id - inidx);
 
-      uint32_t color = labels_parser_.GetColor(id);
+      uint32_t color = labels_parser_.GetLabel(id) == "unknown" ?
+          0x00000000 : labels_parser_.GetColor(id);
 
       outdata[outidx] = EXTRACT_RED_COLOR(color);
       outdata[outidx + 1] = EXTRACT_GREEN_COLOR(color);
