@@ -7,11 +7,10 @@
 
 #include <cmath>
 
-#define NMS_INTERSECTION_THRESHOLD 0.5F
+static const float kNMSIntersectionTreshold = 0.5;
+static const float kDefaultThreshold        = 0.70;
 
-#define DEFAULT_THRESHOLD 0.70
-
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "object-detection",
   "tensors": [
@@ -28,7 +27,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
@@ -38,24 +37,24 @@ Module::~Module() {
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (!labels_parser_.LoadFromFile(labels_file)) {
-    LOG (logger_, kError, "Failed to parse labels");
+    LOG(logger_, kError, "Failed to parse labels");
     return false;
   }
 
   if (!json_settings.empty()) {
     auto root = JsonValue::Parse(json_settings);
+
     if (!root || root->GetType() != JsonType::Object) return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
-    LOG (logger_, kLog, "Threshold: %f", threshold_);
+    threshold_ = root->GetNumber("confidence") / 100.0;
+    LOG(logger_, kLog, "Threshold: %f", threshold_);
   }
 
   return true;
@@ -75,10 +74,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the width of the intersecting rectangle.
   // 1st: Find out the X axis coordinate of left most Top-Right point.
-  float width = fmin (l_box.right, r_box.right);
+  float width = std::min(l_box.right, r_box.right);
   // 2nd: Find out the X axis coordinate of right most Top-Left point
   // and substract from the previously found value.
-  width -= fmax (l_box.left, r_box.left);
+  width -= std::max(l_box.left, r_box.left);
 
   // Negative width means that there is no overlapping.
   if (width <= 0.0F)
@@ -86,10 +85,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the height of the intersecting rectangle.
   // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
-  float height = fmin (l_box.bottom, r_box.bottom);
+  float height = std::min(l_box.bottom, r_box.bottom);
   // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
   // and substract from the previously found value.
-  height -= fmax (l_box.top, r_box.top);
+  height -= std::max(l_box.top, r_box.top);
 
   // Negative height means that there is no overlapping.
   if (height <= 0.0F)
@@ -116,10 +115,10 @@ int32_t Module::NonMaxSuppression(const ObjectDetection &l_box,
     if (l_box.name != r_box.name)
       continue;
 
-    double score = IntersectionScore (l_box, r_box);
+    double score = IntersectionScore(l_box, r_box);
 
     // If the score is below the threshold, continue with next list entry.
-    if (score <= NMS_INTERSECTION_THRESHOLD)
+    if (score <= kNMSIntersectionTreshold)
       continue;
 
     // If confidence of current box is higher, remove the old entry.
@@ -142,7 +141,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   int nms = -1;
 
   if (output.type() != typeid(ObjectDetections)) {
-    LOG (logger_, kError, "Unexpected output type!");
+    LOG(logger_, kError, "Unexpected output type!");
     return false;
   }
 
@@ -186,8 +185,8 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       // Extracting the rotation angle then computing the sine and cosine
       float angle = geometry[idx + 4];
 
-      float cos_angle = cos (angle);
-      float sin_angle = sin (angle);
+      float cos_angle = cos(angle);
+      float sin_angle = sin(angle);
 
       // Using the geo volume to get the width and height bounding box
       float h = x0 + x2;
@@ -199,32 +198,34 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       entry.left = (entry.right - w);
       entry.top = (entry.bottom - h);
 
-      TransformDimensions (entry, region);
+      TransformDimensions(entry, region);
 
       // Keep dimensions within the region.
-      entry.top = std::max(entry.top, (float)region.y);
-      entry.left = std::max(entry.left, (float)region.x);
-      entry.bottom = std::min(entry.bottom, (float)(region.y + region.height));
-      entry.right = std::min(entry.right, (float)(region.x + region.width));
+      entry.top = std::max(entry.top, static_cast<float>(region.y));
+      entry.left = std::max(entry.left, static_cast<float>(region.x));
+      entry.bottom = std::min(entry.bottom,
+          static_cast<float>((region.y + region.height)));
+      entry.right = std::min(entry.right,
+          static_cast<float>((region.x + region.width)));
 
       entry.confidence = scores[num] * 100;
       entry.name = labels_parser_.GetLabel(0);
       entry.color = labels_parser_.GetColor(0);
 
-      nms = NonMaxSuppression (entry, detections);
+      nms = NonMaxSuppression(entry, detections);
 
       // If the NMS result is -2 don't add the prediction to the list.
       if (nms == (-2))
         continue;
 
-      LOG (logger_, kTrace, "Label: %s. Confidence: %.2f Box[%.2f, %.2f, %.2f, %.2f]",
+      LOG(logger_, kTrace, "Label: %s. Confidence: %.2f Box[%.2f, %.2f, %.2f, %.2f]",
           entry.name.c_str(), entry.confidence, entry.top,
           entry.left, entry.bottom, entry.right);
 
       if (nms >= 0)
         detections.erase(detections.begin() + nms);
 
-      detections.push_back(entry);
+      detections.emplace_back(std::move(entry));
     }
   }
 
@@ -232,5 +233,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

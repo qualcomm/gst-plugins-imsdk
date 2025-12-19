@@ -55,7 +55,6 @@ class Module : public IModule {
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
-
  private:
   // Logging callback.
   LogCallback logger_;

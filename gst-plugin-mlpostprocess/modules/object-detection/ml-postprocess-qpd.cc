@@ -7,13 +7,11 @@
 
 #include <cmath>
 
-#define NMS_INTERSECTION_THRESHOLD 0.5F
+static const uint32_t kBboxSizeTreshold     = 400; // 20 x 20 pixels
+static const float kNMSIntersectionTreshold = 0.5;
+static const float kDefaultThreshold        = 0.70;
 
-#define BBOX_SIZE_THRESHOLD         400 // 20 x 20 pixels
-
-#define DEFAULT_THRESHOLD 0.70
-
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "object-detection",
   "tensors": [
@@ -32,7 +30,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
@@ -42,29 +40,32 @@ Module::~Module() {
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (!labels_parser_.LoadFromFile(labels_file)) {
-    LOG (logger_, kError, "Failed to parse labels");
+    LOG(logger_, kError, "Failed to parse labels");
     return false;
   }
 
   if (!json_settings.empty()) {
     auto root = JsonValue::Parse(json_settings);
+
     if (!root || root->GetType() != JsonType::Object) return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
-    LOG (logger_, kLog, "Threshold: %f", threshold_);
+    threshold_ = root->GetNumber("confidence") / 100;
+    LOG(logger_, kLog, "Threshold: %f", threshold_);
 
     auto lmks = root->GetArray("landmarks");
+
     for (auto lmk : lmks) {
       std::map<uint32_t, std::string> landmarks_names;
+
       if (!lmk || lmk->GetType() != JsonType::Object) continue;
+
       auto lmks_names = lmk->GetArray("landmarks_names");
 
       for (auto lmk_name : lmks_names) {
@@ -72,6 +73,7 @@ bool Module::Configure(const std::string& labels_file,
               lmk_name->GetNumber("id"),
               lmk_name->GetString("name")});
       }
+
       landmarks_.insert({lmk->GetNumber("id"), landmarks_names});
     }
   }
@@ -93,10 +95,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the width of the intersecting rectangle.
   // 1st: Find out the X axis coordinate of left most Top-Right point.
-  float width = fmin (l_box.right, r_box.right);
+  float width = std::min(l_box.right, r_box.right);
   // 2nd: Find out the X axis coordinate of right most Top-Left point
   // and substract from the previously found value.
-  width -= fmax (l_box.left, r_box.left);
+  width -= std::max(l_box.left, r_box.left);
 
   // Negative width means that there is no overlapping.
   if (width <= 0.0F)
@@ -104,10 +106,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the height of the intersecting rectangle.
   // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
-  float height = fmin (l_box.bottom, r_box.bottom);
+  float height = std::min(l_box.bottom, r_box.bottom);
   // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
   // and substract from the previously found value.
-  height -= fmax (l_box.top, r_box.top);
+  height -= std::max(l_box.top, r_box.top);
 
   // Negative height means that there is no overlapping.
   if (height <= 0.0F)
@@ -134,10 +136,10 @@ int32_t Module::NonMaxSuppression(const ObjectDetection &l_box,
     if (l_box.name != r_box.name)
       continue;
 
-    double score = IntersectionScore (l_box, r_box);
+    double score = IntersectionScore(l_box, r_box);
 
     // If the score is below the threshold, continue with next list entry.
-    if (score <= NMS_INTERSECTION_THRESHOLD)
+    if (score <= kNMSIntersectionTreshold)
       continue;
 
     // If confidence of current box is higher, remove the old entry.
@@ -157,7 +159,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
   if (output.type() != typeid(ObjectDetections)) {
-    LOG (logger_, kError, "Unexpected predictions type!");
+    LOG(logger_, kError, "Unexpected predictions type!");
     return false;
   }
 
@@ -194,7 +196,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     uint32_t class_idx = idx % n_classes;
 
     if (labels_parser_.GetLabel(class_idx) == "unknown") {
-      LOG (logger_, kDebug, "Unknown label, skipping this entry.");
+      LOG(logger_, kDebug, "Unknown label, skipping this entry.");
       continue;
     }
 
@@ -215,7 +217,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
     uint32_t size = (entry.right - entry.left) * (entry.bottom - entry.top);
 
-    if (size < BBOX_SIZE_THRESHOLD)
+    if (size < kBboxSizeTreshold)
       continue;
 
     entry.left = std::max(entry.left, static_cast<float>(region.x));
@@ -225,21 +227,21 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     entry.bottom =
         std::min(entry.bottom, static_cast<float>(region.y + region.height));
 
-    LOG (logger_, kTrace, "Class: %u Confidence: %.2f Box[%f, %f, %f, %f]",
+    LOG(logger_, kTrace, "Class: %u Confidence: %.2f Box[%f, %f, %f, %f]",
         class_idx, confidence, entry.top, entry.left, entry.bottom, entry.right);
 
-    TransformDimensions (entry, region);
+    TransformDimensions(entry, region);
 
     entry.confidence = confidence * 100;
     entry.name = labels_parser_.GetLabel(class_idx);
     entry.color = labels_parser_.GetColor(class_idx);
 
-    int32_t nms = NonMaxSuppression (entry, detections);
+    int32_t nms = NonMaxSuppression(entry, detections);
 
     if (nms == -2)
       continue;
 
-    LOG (logger_, kLog, "Label: %s Confidence: %.2f Box[%f, %f, %f, %f]",
+    LOG(logger_, kLog, "Label: %s Confidence: %.2f Box[%f, %f, %f, %f]",
         entry.name.c_str(), entry.confidence, entry.top, entry.left,
         entry.bottom, entry.right);
 
@@ -277,8 +279,8 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       lmk.y = (lmk.y - region.y) / region.height;
 
 
-      lmk.x = std::min (std::max (lmk.x, 0.0f), 1.0f);
-      lmk.y = std::min (std::max (lmk.y, 0.0f), 1.0f);
+      lmk.x = std::min(std::max(lmk.x, 0.0f), 1.0f);
+      lmk.y = std::min(std::max(lmk.y, 0.0f), 1.0f);
 
       if (!entry.landmarks.has_value()) {
         entry.landmarks.emplace();
@@ -286,16 +288,17 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
       entry.landmarks->emplace_back(lmk);
 
-      LOG (logger_, kTrace, "Landmark: %d %s [%f %f] ",
+      LOG(logger_, kTrace, "Landmark: %d %s [%f %f] ",
           n_landmarks, lmk.name.c_str(), lmk.x, lmk.y);
     }
 
-    detections.push_back(entry);
+    detections.emplace_back(std::move(entry));
   }
 
   return true;
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

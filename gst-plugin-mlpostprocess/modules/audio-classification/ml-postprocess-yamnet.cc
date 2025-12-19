@@ -5,14 +5,13 @@
 
 #include "ml-postprocess-yamnet.h"
 
-#define DEFAULT_THRESHOLD 0.70
-
+static const float kDefaultThreshold = 0.70;
 
 /* kModuleCaps
 *
 * Description of the supported caps and the type of the module.
 */
-static const char* kModuleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "audio-classification",
   "tensors": [
@@ -28,17 +27,18 @@ static const char* kModuleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
 std::string Module::Caps() {
 
-  return std::string(kModuleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
+
   if (!labels_parser_.LoadFromFile(labels_file)) {
     LOG(logger_, kError, "Failed to parse labels");
     return false;
@@ -50,8 +50,7 @@ bool Module::Configure(const std::string& labels_file,
     if (!root || root->GetType() != JsonType::Object)
       return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
+    threshold_ = root->GetNumber("confidence") / 100.0;
     LOG(logger_, kLog, "Threshold: %f", threshold_);
   }
 
@@ -60,6 +59,7 @@ bool Module::Configure(const std::string& labels_file,
 
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
+
   double confidence = 0.0;
 
   if (output.type() != typeid(AudioClassifications)) {
@@ -76,8 +76,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
   // Fill the prediction table.
   for (uint32_t idx = 0; idx < n_inferences; ++idx) {
-    confidence = data[idx];
-    confidence *= 100;
+    confidence = data[idx] * 100;
 
     // Discard results with confidence below the set threshold.
     if (confidence < threshold_)
@@ -88,12 +87,13 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     entry.name = labels_parser_.GetLabel(idx);
     entry.color = labels_parser_.GetColor(idx);
 
-    classifications.push_back(entry);
+    classifications.emplace_back(std::move(entry));
   }
 
   return true;
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }
