@@ -13,11 +13,10 @@
 #define EXTRACT_BLUE_COLOR(color)  ((color >> 8) & 0xFF)
 #define EXTRACT_ALPHA_COLOR(color) ((color) & 0xFF)
 
-#define NMS_INTERSECTION_THRESHOLD 0.5F
+static const float kNMSIntersectionTreshold = 0.5;
+static const float kDefaultThreshold        = 0.70;
 
-#define DEFAULT_THRESHOLD 0.5
-
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "image-segmentation",
   "tensors": [
@@ -37,20 +36,20 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (!labels_parser_.LoadFromFile(labels_file)) {
-    LOG (logger_, kError, "Failed to parse labels");
+    LOG(logger_, kError, "Failed to parse labels");
     return false;
   }
 
@@ -62,10 +61,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the width of the intersecting rectangle.
   // 1st: Find out the X axis coordinate of left most Top-Right point.
-  float width = fmin (l_box.right, r_box.right);
+  float width = std::min(l_box.right, r_box.right);
   // 2nd: Find out the X axis coordinate of right most Top-Left point
   // and substract from the previously found value.
-  width -= fmax (l_box.left, r_box.left);
+  width -= std::max(l_box.left, r_box.left);
 
   // Negative width means that there is no overlapping.
   if (width <= 0.0F)
@@ -73,10 +72,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the height of the intersecting rectangle.
   // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
-  float height = fmin (l_box.bottom, r_box.bottom);
+  float height = std::min(l_box.bottom, r_box.bottom);
   // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
   // and substract from the previously found value.
-  height -= fmax (l_box.top, r_box.top);
+  height -= std::max(l_box.top, r_box.top);
 
   // Negative height means that there is no overlapping.
   if (height <= 0.0F)
@@ -93,9 +92,8 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
   return intersection / (l_area + r_area - intersection);
 }
 
-void
-Module::MlBoxRelativeTranslation (ObjectDetection * box,
-    const int width, const int height) {
+void Module::MlBoxRelativeTranslation(ObjectDetection * box, const int width,
+                                       const int height) {
 
   box->top /= height;
   box->bottom /= height;
@@ -113,10 +111,10 @@ int32_t Module::NonMaxSuppression(const ObjectDetection &l_box,
     if (l_box.name != r_box.name)
       continue;
 
-    double score = IntersectionScore (l_box, r_box);
+    double score = IntersectionScore(l_box, r_box);
 
     // If the score is below the threshold, continue with next list entry.
-    if (score <= NMS_INTERSECTION_THRESHOLD)
+    if (score <= kNMSIntersectionTreshold)
       continue;
 
     // If confidence of current box is higher, remove the old entry.
@@ -174,7 +172,7 @@ std::vector<uint32_t> Module::ParseMonoblockTensor(
   return colormask;
 }
 
-void Module::ParseTripleblockTensors (const Tensors& tensors,
+void Module::ParseTripleblockTensors(const Tensors& tensors,
                                       std::vector<ObjectDetection>& bboxes,
                                       std::vector<uint32_t>& mask_matrix_indices) {
 
@@ -199,7 +197,7 @@ void Module::ParseTripleblockTensors (const Tensors& tensors,
     bbox.right = mlboxes[idx * 4 + 2];
     bbox.bottom = mlboxes[idx * 4 + 3];
 
-    LOG (logger_, kTrace, "Class: %u Box[%f, %f, %f, %f] Confidence: %f",
+    LOG(logger_, kTrace, "Class: %u Box[%f, %f, %f, %f] Confidence: %f",
       class_idx, bbox.top, bbox.left, bbox.bottom, bbox.right, confidence);
 
     MlBoxRelativeTranslation(&bbox, source_width_, source_height_);
@@ -215,7 +213,7 @@ void Module::ParseTripleblockTensors (const Tensors& tensors,
     if (nms == (-2))
       continue;
 
-    LOG (logger_, kLog, "Label: %s  Box[%f, %f, %f, %f] Confidence: %f",
+    LOG(logger_, kLog, "Label: %s  Box[%f, %f, %f, %f] Confidence: %f",
         bbox.name.c_str(), bbox.top, bbox.left, bbox.bottom,
         bbox.right, bbox.confidence);
 
@@ -224,32 +222,18 @@ void Module::ParseTripleblockTensors (const Tensors& tensors,
       mask_matrix_indices.erase(mask_matrix_indices.begin() + nms);
     }
 
-    bboxes.push_back(bbox);
+    bboxes.emplace_back(std::move(bbox));
 
     uint32_t num = idx * tensors[2].dimensions[2];
-    mask_matrix_indices.push_back(num);
+    mask_matrix_indices.emplace_back(std::move(num));
   }
-}
-
-uint64_t Module::ScaleUint64Safe(const uint64_t val,
-                                 const int32_t num, const int32_t denom) {
-
-  if (denom == 0)
-    return UINT64_MAX;
-
-  // If multiplication won't overflow, perform it directly
-  if (val < (std::numeric_limits<uint32_t>::max() / num))
-    return (val * num) / denom;
-  else
-    // Use division first to avoid overflow
-    return (val / denom) * num + ((val % denom) * num) / denom;
 }
 
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     std::any& output) {
 
   if (output.type() != typeid(VideoFrame)) {
-    LOG (logger_, kError, "Unexpected output type!");
+    LOG(logger_, kError, "Unexpected output type!");
     return false;
   }
 
@@ -283,10 +267,10 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       std::any_cast<Region&>(mlparams["input-tensor-region"]);
 
   // Transform source tensor region dimensions to dimensions in the color mask.
-  region.x *= (tensors[4].dimensions[3] / (float)source_width_);
-  region.y *= (tensors[4].dimensions[2] / (float)source_height_);
-  region.width *= (tensors[4].dimensions[3] / (float)source_width_);
-  region.height *= (tensors[4].dimensions[2] / (float)source_height_);
+  region.x *= (tensors[4].dimensions[3] / static_cast<float>(resolution.width));
+  region.y *= (tensors[4].dimensions[2] / static_cast<float>(resolution.height));
+  region.width *= (tensors[4].dimensions[3] / static_cast<float>(resolution.width));
+  region.height *= (tensors[4].dimensions[2] / static_cast<float>(resolution.height));
 
   std::vector<uint32_t> colormask =
      ParseMonoblockTensor(tensors, bboxes, mask_matrix_indices);
@@ -298,16 +282,16 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
     for (uint32_t column = 0; column < width; column++, outidx += bpp) {
       uint32_t num = tensors[4].dimensions[3] *
-          (region.y + ScaleUint64Safe (row, region.height, height));
+         (region.y + row  * (region.height / static_cast<double>(height)));
 
-      num += region.x + ScaleUint64Safe (column, region.width, width);
+      num += region.x + column * (region.width / static_cast<double>(width));
 
-      outdata[outidx] = EXTRACT_RED_COLOR (colormask[num]);
-      outdata[outidx + 1] = EXTRACT_GREEN_COLOR (colormask[num]);
-      outdata[outidx + 2] = EXTRACT_BLUE_COLOR (colormask[num]);
+      outdata[outidx] = EXTRACT_RED_COLOR(colormask[num]);
+      outdata[outidx + 1] = EXTRACT_GREEN_COLOR(colormask[num]);
+      outdata[outidx + 2] = EXTRACT_BLUE_COLOR(colormask[num]);
 
       if (bpp == 4)
-        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR (colormask[num]);
+        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(colormask[num]);
     }
   }
 
@@ -315,5 +299,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

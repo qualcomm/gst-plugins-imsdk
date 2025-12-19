@@ -21,10 +21,9 @@ public:
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
-
 private:
-  uint32_t GetTensorTypeSize (const TensorType type);
-  bool ValidateTensorSize (const Tensor& l_tensor, const Tensor& r_tensor);
+  uint32_t GetTensorTypeSize(const TensorType type);
+  bool ValidateTensorSize(const Tensor& l_tensor, const Tensor& r_tensor);
 
   // Logging callback.
   LogCallback  logger_;

@@ -32,7 +32,6 @@ class Module : public IModule {
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
-
  private:
   void TransformDimensions(ObjectDetection &box, const Region& region);
   float IntersectionScore(ObjectDetection &l_box, ObjectDetection &r_box);

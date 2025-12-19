@@ -79,30 +79,33 @@ class Module : public IModule {
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
-
  private:
-  void KeypointTransformCoordinates (Keypoint& keypoint,
+  void KeypointTransformCoordinates(Keypoint& keypoint,
       Region& region);
+
   int32_t NonMaxSuppression(PoseEstimation &l_entry, PoseEstimations &entries);
+
   void ExtractRootpoints(const Tensors& tensors,
                          std::vector<RootPoint>& rootpoints);
-  void TraverseSkeletonLinks (const Tensors& tensors, PoseEstimation &l_entry,
+
+  void TraverseSkeletonLinks(const Tensors& tensors, PoseEstimation &l_entry,
                               bool backwards);
+
   bool LoadConnections(const std::vector<JsonValue::Ptr>& nodes,
                        std::vector<KeypointLinkIds>& connections);
+
   bool LoadLinks(const std::vector<JsonValue::Ptr>& nodes, const uint32_t idx,
                  std::vector<KeypointLinkIds>& links);
 
   // Logging callback.
-  LogCallback logger_;
+  LogCallback                  logger_;
   // Confidence threshold value.
-  double       threshold_;
+  double                       threshold_;
 
-  uint32_t     source_width_;
-  uint32_t     source_height_;
+  uint32_t                     source_width_;
+  uint32_t                     source_height_;
   // Labels parser.
-  LabelsParser labels_parser_;
-
+  LabelsParser                 labels_parser_;
   std::vector<KeypointLinkIds> links_;
   std::vector<KeypointLinkIds> connections_;
 };

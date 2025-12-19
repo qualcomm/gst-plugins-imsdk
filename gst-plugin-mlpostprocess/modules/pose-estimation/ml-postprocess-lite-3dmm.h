@@ -49,36 +49,31 @@ class Module : public IModule {
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
-
  private:
-  void KeypointTransformCoordinates (Keypoint& keypoint,
+  void KeypointTransformCoordinates(Keypoint& keypoint,
                                      const Region& region);
 
     bool MatrixMultiplication(Matrix3f& outmatrix,
                               const Matrix3f& l_matrix,
                               const Matrix3f& r_matrix);
 
-  std::vector<float> LoadBinaryDatabase (const std::string filename,
+  std::vector<float> LoadBinaryDatabase(const std::string filename,
                                          const uint32_t n_values);
 
-  bool LoadDatabases (std::map<std::string, std::string> settings);
+  bool LoadDatabases(std::map<std::string, std::string> settings);
 
   // Logging callback.
-  LogCallback logger_;
+  LogCallback                  logger_;
   // Confidence threshold value.
-  double       threshold_;
-
+  double                       threshold_;
   // Labels parser.
-  LabelsParser labels_parser_;
-
-  Matrix3f roll_matrix_;
-  Matrix3f pitch_matrix_;
-  Matrix3f yaw_matrix_;
-
-  std::vector <float> meanface_;
-  std::vector <float> shapebasis_;
-  std::vector <float> blendshape_;
-
+  LabelsParser                 labels_parser_;
+  Matrix3f                     roll_matrix_;
+  Matrix3f                     pitch_matrix_;
+  Matrix3f                     yaw_matrix_;
+  std::vector <float>          meanface_;
+  std::vector <float>          shapebasis_;
+  std::vector <float>          blendshape_;
   std::vector<KeypointLinkIds> links_;
   std::vector<KeypointLinkIds> connections_;
 };
