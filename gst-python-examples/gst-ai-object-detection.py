@@ -147,7 +147,7 @@ def parse_arguments():
     parser.add_argument('-l', '--labels', type=str, required=True,
                         help='Path to the labels file.')
 
-    parser.add_argument('--layers', type=str, help='Comma-separated list of layer names.')
+    parser.add_argument('--tensors', type=str, help='Comma-separated list of tensor names.')
 
     parser.add_argument('-p', '--threshold', type=float, default=75.0,
                         help='Optional parameter to override default threshold value. [0.0 - 100.0]')
@@ -164,12 +164,12 @@ def parse_arguments():
     args = parser.parse_args()
 
     # Validate arguments based on ml-framework
-    if args.ml_framework == SNPE and not args.layers:
-        parser.error("--layers is required when --ml-framework is 1 (SNPE)")
+    if args.ml_framework == SNPE and not args.tensors:
+        parser.error("--tensors is required when --ml-framework is 1 (SNPE)")
 
-    # Convert the layers argument to a list if provided
-    if args.layers:
-        args.layers = [layer.strip() for layer in args.layers.split(",")]
+    # Convert the tensors argument to a list if provided
+    if args.tensors:
+        args.tensors = [tensor.strip() for tensor in args.tensors.split(",")]
 
     return args
 
@@ -238,7 +238,7 @@ def set_snpe_properties(elements, args):
         elements["ml"].set_property("delegate", "dsp")
         print("Using DSP delegate")
 
-    elements["ml"].set_property("layers", args.layers)
+    elements["ml"].set_property("tensors", args.tensors)
 
 def set_tflite_properties(elements, args):
     """Set properties for TFLite element."""
