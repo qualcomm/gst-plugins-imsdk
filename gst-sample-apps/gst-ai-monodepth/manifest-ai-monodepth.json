@@ -1,5 +1,5 @@
 {
-  "Version": "1.4",
+  "Version": "1.7",
   "ApplicationName": "gst-ai-monodepth",
   "ApplicationType": "AI",
   "ApplicationSourceCheckSum": "",
@@ -9,7 +9,7 @@
       "ModelName": "midas_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Midas-V2/resolve/d182b62632d80d3d1690f6e13fec18dd09c05fdf/Midas-V2_w8a8.tflite",
       "LabelFile": "monodepth.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/monodepth.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/monodepth.json"
     }
   ],
   "AIModelsSupportedByApplication": [],
@@ -17,6 +17,9 @@
   "AILabelLocation": "/etc/labels/",
   "ConfigFile": "config_monodepth.json",
   "ConfigFileLocation": "/etc/configs/",
+  "MediaFileUrl": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/videos/video.mp4",
+  "MediaFileName": "video.mp4",
+  "MediaLocation": "/etc/media/",
   "ApplicationKeyWords": [
     "DepthEstimation",
     "MidasV2",

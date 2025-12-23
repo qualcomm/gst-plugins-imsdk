@@ -1,5 +1,5 @@
 {
-  "Version": "1.4",
+  "Version": "1.7",
   "ApplicationName": "gst-ai-parallel-inference",
   "ApplicationType": "AI",
   "ApplicationSourceCheckSum": "",
@@ -9,34 +9,38 @@
       "ModelName": "deeplabv3_plus_mobilenet_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/DeepLabV3-Plus-MobileNet/resolve/2751392b3ca5e6e8cd3316f4c62501aa17c268e8/DeepLabV3-Plus-MobileNet_w8a8.tflite",
       "LabelFile": "deeplabv3_resnet50.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/deeplabv3_resnet50.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/deeplabv3_resnet50.json"
     },
     {
       "ModelName": "hrnet_pose_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/HRNetPose/resolve/dbfe1866bd2dbfb9eecb32e54b8fcdc23d77098b/HRNetPose_w8a8.tflite",
       "LabelFile": "hrnet_pose.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/hrnet_pose.json",
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/hrnet_pose.json",
       "LabelSettingsFile": "hrnet_settings.json",
-      "LabelSettingsDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/hrnet_settings.json"
+      "LabelSettingsDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/hrnet_settings.json"
     },
     {
       "ModelName": "yolox_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Yolo-X/resolve/v0.30.5/Yolo-X_w8a8.tflite",
       "LabelFile": "yolox.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/yolox.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/yolox.json"
     },
     {
       "ModelName": "inception_v3_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Inception-v3/resolve/ba8121b0a74c7e28b45b250064c26efc7e7da29e/Inception-v3_w8a8.tflite",
       "LabelFile": "classification.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/classification.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/classification.json"
     }
   ],
   "AIModelsSupportedByApplication": [],
   "AIModelLocation": "/etc/models/",
   "AILabelLocation": "/etc/labels/",
-  "ConfigFile": "",
-  "ConfigFileLocation": "",
+  "AISettingFileLocation": "/etc/labels/",
+  "ConfigFile": "config-parallel-inference.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "MediaFileUrl": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/videos/video.mp4",
+  "MediaFileName": "video.mp4",
+  "MediaLocation": "/etc/media/",
   "ApplicationKeyWords": [
     "ParallelInference.",
     "ParallelAIFusion"
