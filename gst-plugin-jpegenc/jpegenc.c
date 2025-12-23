@@ -93,7 +93,8 @@ gst_jpeg_enc_orientation_get_type (void)
 }
 
 static GstBufferPool *
-gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
+gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps,
+    GstJPEGEncoderOutParams params)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -110,13 +111,8 @@ gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
     return NULL;
   }
 
-  // Align size to 64 lines
-  gint alignedw = (GST_VIDEO_INFO_WIDTH (&info) + 64-1) & ~(64-1);
-  gint alignedh = (GST_VIDEO_INFO_HEIGHT (&info) + 64-1) & ~(64-1);
-  gsize aligned_size = alignedw * alignedh * 4;
-
   config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_set_params (config, caps, aligned_size,
+  gst_buffer_pool_config_set_params (config, caps, params.jpeg_size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
 
   allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
@@ -196,6 +192,8 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   GstJPEGEncoder *jpegenc = GST_JPEG_ENC (encoder);
   GstVideoInfo *info = &state->info;
   GstStructure *params = NULL;
+  GstJPEGEncoderInParams in_params;
+  GstJPEGEncoderOutParams out_params;
   GstVideoCodecState *output_state = NULL;
   GstCaps *outcaps = NULL;
   guint informat = GST_VIDEO_INFO_FORMAT (info);
@@ -213,10 +211,20 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     gst_object_unref (jpegenc->outpool);
   }
 
+  in_params.camera_id = jpegenc->camera_id;
+  in_params.width = GST_VIDEO_INFO_WIDTH (info);
+  in_params.height = GST_VIDEO_INFO_HEIGHT (info);
+
+  if (!gst_jpeg_enc_context_get_params (jpegenc->context, in_params, &out_params)) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to get jpeg params!");
+    return FALSE;
+  }
+
   // Creat a new output memory pool
-  jpegenc->outpool = gst_jpeg_enc_create_pool (jpegenc, outcaps);
+  jpegenc->outpool = gst_jpeg_enc_create_pool (jpegenc, outcaps, out_params);
   if (!jpegenc->outpool) {
     GST_ERROR_OBJECT (jpegenc, "Failed to create output pool!");
+    return FALSE;
   }
 
   // Activate the pool
