@@ -117,7 +117,7 @@ typedef struct
   gchar *file_path;
   gchar *model_path;
   gchar *labels_path;
-  gchar **snpe_layers;
+  gchar **snpe_tensors;
   GstCameraSourceType camera_type;
   GstModelType model_type;
   GstYoloModelType yolo_model_type;
@@ -201,11 +201,11 @@ static void
     g_free ((gpointer) options->labels_path);
   }
 
-  if (options->snpe_layers != NULL) {
+  if (options->snpe_tensors != NULL) {
     for (gint i = 0; i < options->snpe_layer_count; i++) {
-      g_free ((gpointer)options->snpe_layers[i]);
+      g_free ((gpointer)options->snpe_tensors[i]);
     }
-    g_free ((gpointer) options->snpe_layers);
+    g_free ((gpointer) options->snpe_tensors);
   }
 
   if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
@@ -245,7 +245,7 @@ parse_json (gchar * file, GstAppOptions * options, GstCameraAppContext * appctx)
   JsonParser *parser = NULL;
   JsonNode *root = NULL;
   JsonObject *root_obj = NULL;
-  JsonArray *snpe_layers = NULL;
+  JsonArray *snpe_tensors = NULL;
   GError *error = NULL;
 
   parser = json_parser_new ();
@@ -419,15 +419,15 @@ parse_json (gchar * file, GstAppOptions * options, GstCameraAppContext * appctx)
     g_print ("delegate : %s\n", delegate);
   }
 
-  if (json_object_has_member (root_obj, "snpe-layers")) {
-    snpe_layers = json_object_get_array_member (root_obj, "snpe-layers");
-    options->snpe_layer_count = json_array_get_length (snpe_layers);
-    options->snpe_layers = (gchar **) g_malloc (
+  if (json_object_has_member (root_obj, "snpe-tensors")) {
+    snpe_tensors = json_object_get_array_member (root_obj, "snpe-tensors");
+    options->snpe_layer_count = json_array_get_length (snpe_tensors);
+    options->snpe_tensors = (gchar **) g_malloc (
         sizeof (gchar *) * options->snpe_layer_count);
 
     for (gint i = 0; i < options->snpe_layer_count; i++) {
-      options->snpe_layers[i] =
-          g_strdup (json_array_get_string_element (snpe_layers, i));
+      options->snpe_tensors[i] =
+          g_strdup (json_array_get_string_element (snpe_tensors, i));
     }
   }
 
@@ -946,7 +946,7 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
   gchar element_name[128], settings[128];
-  GValue layers = G_VALUE_INIT;
+  GValue tensors = G_VALUE_INIT;
   GValue value = G_VALUE_INIT;
   gint module_id;
 
@@ -1235,16 +1235,16 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   }
   g_print ("delegate : %d\n", options->model_type);
 
-  // 2.6 Set properties for ML postproc plugins - module, layers, threshold
-  g_value_init (&layers, GST_TYPE_ARRAY);
+  // 2.6 Set properties for ML postproc plugins - module, tensors, threshold
+  g_value_init (&tensors, GST_TYPE_ARRAY);
   g_value_init (&value, G_TYPE_STRING);
 
   if (options->model_type == GST_MODEL_TYPE_SNPE) {
     for (gint i = 0; i < options->snpe_layer_count; i++) {
-      g_value_set_string (&value, options->snpe_layers[i]);
-      gst_value_array_append_value (&layers, &value);
+      g_value_set_string (&value, options->snpe_tensors[i]);
+      gst_value_array_append_value (&tensors, &value);
     }
-    g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
+    g_object_set_property (G_OBJECT (qtimlelement), "tensors", &tensors);
     switch (options->yolo_model_type) {
         // YOLO_V5 specific settings
       case GST_YOLO_TYPE_V5:
@@ -1583,7 +1583,7 @@ main (gint argc, gchar * argv[])
   options.yolo_model_type = GST_YOLO_TYPE_NAS;
   options.model_path = NULL;
   options.labels_path = NULL;
-  options.snpe_layers = NULL;
+  options.snpe_tensors = NULL;
 
   // Structure to define the user options selected
   GOptionEntry entries[] = {
@@ -1649,9 +1649,9 @@ main (gint argc, gchar * argv[])
       "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
       "      This is an optional parameter. If not filled, "
       "  then default dsp runtime is selected\n"
-      "  snpe-layers: <json array>\n"
-      "      Set output layers for SNPE model. Example:\n"
-      "      [\"/heads/Mul\", \"/heads/Sigmoid\"]\n", app_name,
+      "  snpe-tensors: <json array>\n"
+      "      Set output tensors for SNPE model. Example:\n"
+      "      [\"boxes\", \"scores\", \"class_idx\"]\n", app_name,
       DEFAULT_CONFIG_FILE);
   help_description[4095] = '\0';
 
@@ -1804,34 +1804,6 @@ main (gint argc, gchar * argv[])
         return -EINVAL;
       }
     }
-
-  // Set default layers for SNPE models if not provided
-  if (options.snpe_layers == NULL && options.model_type == GST_MODEL_TYPE_SNPE) {
-    if (options.yolo_model_type == GST_YOLO_TYPE_V5) {
-      options.snpe_layer_count = 3;
-      options.snpe_layers = (gchar **) g_malloc (
-          sizeof (gchar **) * options.snpe_layer_count);
-      options.snpe_layers[0] = g_strdup ("Conv_198");
-      options.snpe_layers[1] = g_strdup ("Conv_232");
-      options.snpe_layers[2] = g_strdup ("Conv_266");
-    } else if (options.yolo_model_type == GST_YOLO_TYPE_V8) {
-      options.snpe_layer_count = 2;
-      options.snpe_layers = (gchar **) g_malloc (
-          sizeof (gchar **) * options.snpe_layer_count);
-      options.snpe_layers[0] = g_strdup ("Mul_248");
-      options.snpe_layers[1] = g_strdup ("Sigmoid_249");
-    } else if (options.yolo_model_type == GST_YOLO_TYPE_NAS) {
-      options.snpe_layer_count = 2;
-      options.snpe_layers = (gchar **) g_malloc (
-          sizeof (gchar **) * options.snpe_layer_count);
-      options.snpe_layers[0] = g_strdup ("/heads/Mul");
-      options.snpe_layers[1] = g_strdup ("/heads/Sigmoid");
-    } else {
-      g_printerr ("Given YOLO model type is not supported by SNPE framework\n");
-      gst_app_context_free (appctx, &options, config_file);
-      return -EINVAL;
-    }
-  }
 
     // Set default label path for execution
     if (options.labels_path == NULL) {
