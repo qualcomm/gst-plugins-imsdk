@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 project(GST_UVC_CAMERA_DAEMON LANGUAGES C)
 
 include_directories(${SYSROOT_INCDIR})

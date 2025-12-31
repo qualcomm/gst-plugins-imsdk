@@ -46,7 +46,7 @@
 #include <sys/ioctl.h>
 #include <json-glib/json-glib.h>
 
-#include <gst/sampleapps/gst_sample_apps_utils.h>
+#include <gst_sample_apps_utils.h>
 
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 project(GST_TEST_FRAMEWORK LANGUAGES C)
 
 set(GST_TEST_FRAMEWORK gst-test-framework)

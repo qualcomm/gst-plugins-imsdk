@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 project(GST-AUDIO-VIDEO-ENCODE LANGUAGES C CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -25,6 +25,7 @@ add_executable(${GST_EXAMPLE_BIN}
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
+  ${GST_INCLUDE_DIRS}/gstreamer-1.0/gst/sampleapps/
 )
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE

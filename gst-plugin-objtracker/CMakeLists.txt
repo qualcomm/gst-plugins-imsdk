@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 project(GST_PLUGIN_QTI_OSS_OBJTRACKER
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
   LANGUAGES C CXX
@@ -74,8 +74,5 @@ install(
               GROUP_EXECUTE GROUP_READ
               WORLD_EXECUTE WORLD_READ
 )
-
-# Define the path to the common pkg-config template file used by all subdirectories
-set(OBJTRACKER_COMMON_PC_IN ${CMAKE_CURRENT_SOURCE_DIR}/algorithm/common.pc.in)
 
 add_subdirectory(algorithm/bytetrack)

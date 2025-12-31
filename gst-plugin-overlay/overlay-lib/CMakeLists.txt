@@ -1,5 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
-
+cmake_minimum_required(VERSION 3.16)
 project(overlay_lib)
 
 if (NOT OVERLAY_ENABLED)
