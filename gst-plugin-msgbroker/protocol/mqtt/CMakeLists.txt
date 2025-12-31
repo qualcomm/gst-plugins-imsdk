@@ -8,10 +8,10 @@ add_library(${MQTT} SHARED
 
 target_include_directories(${MQTT} PRIVATE
   ${GST_INCLUDE_DIRS}
-  ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(${MQTT} PRIVATE
+  qtimsgadaptor_interface
   ${GST_LIBRARIES}
   ${CMAKE_DL_LIBS}
 )

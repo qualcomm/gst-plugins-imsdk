@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 project(GST_PLUGIN_TOOLS LANGUAGES C CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)

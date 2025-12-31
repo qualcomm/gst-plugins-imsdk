@@ -53,7 +53,7 @@
 
 #include <gst/gst.h>
 
-#include <gst/sampleapps/gst_sample_apps_utils.h>
+#include <gst_sample_apps_utils.h>
 
 #define DEFAULT_OUTPUT_FILE  "/etc/media/video_transform.mp4"
 

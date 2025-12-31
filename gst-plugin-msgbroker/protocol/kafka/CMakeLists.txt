@@ -10,11 +10,11 @@ pkg_check_modules(RDKAFKA REQUIRED rdkafka)
 
 target_include_directories(${KAFKA} PRIVATE
   ${GST_INCLUDE_DIRS}
-  ${CMAKE_SOURCE_DIR}
   ${RDKAFKA_INCLUDE_DIRS}
 )
 
 target_link_libraries(${KAFKA} PRIVATE
+  qtimsgadaptor_interface
   ${GST_LIBRARIES}
   ${CMAKE_DL_LIBS}
   ${RDKAFKA_LIBRARIES}

@@ -31,7 +31,7 @@
 
 #include <gst/gst.h>
 
-#include <gst/sampleapps/gst_sample_apps_utils.h>
+#include <gst_sample_apps_utils.h>
 
 #define ARRAY_LENGTH 20
 #define STREAM_CNT 2

@@ -26,7 +26,7 @@
 #include <glib-unix.h>
 #include <gst/gst.h>
 #include <unordered_map>
-#include <gst/sampleapps/gst_sample_apps_utils.h>
+#include <gst_sample_apps_utils.h>
 #include <qmmf-sdk/qmmf_camera_metadata.h>
 
 namespace camera = qmmf;

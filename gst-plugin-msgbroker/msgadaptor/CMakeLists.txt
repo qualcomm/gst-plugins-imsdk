@@ -8,7 +8,6 @@ add_library(${MSG_ADAPTOR} SHARED
 
 target_include_directories(${MSG_ADAPTOR} PRIVATE
   ${GST_INCLUDE_DIRS}
-  ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(${MSG_ADAPTOR} PRIVATE
