@@ -1,3 +1,137 @@
+gst-plugins-qti-oss (1.8.0-qcom0) noble; urgency=medium
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-qmmfsrc:Don't send an EOS event when in the EOS state."
+  * Merge "mlpostprocess/super-resolution/srnet: Clamp input to [0,1]"
+  * Merge "demo_setup_wizard: Update USB camera input pipeline"
+
+  [ Tushar Patra Jamula ]
+  * mlpostprocess/super-resolution/srnet: Clamp input to [0,1]
+
+  [ QCTECMDR Service ]
+  * Merge "mlpostprocess: Add support for latest model for EasyOCR detector"
+  * Merge "gst-gui-launcher-app.py: Updated Qdemo to download latest models"
+  * Merge "qmmfsrc: Return success if no request pads in delete_stream"
+  * Merge "gst-add-remove-streams-runtime: Fix memleaks"
+  * Merge "gst-ai-sample app: Includes below change:"
+  * Merge "gst-video-playback-example: optimize the default pipeline"
+  * Merge "gst-ai-multistream-inference: Updating config file"
+  * Merge "gst-plugin-codec2: handle intra refresh feature"
+  * Merge "gst-plugin-jpegenc: support downscale for jpegenc."
+  * Merge "jpegenc: use the new qmmf-sdk API to get JPEG size"
+  * Merge "gst-plugin-qmmfsrc: Add check for full range colorspace."
+  * Merge "CR4307966-  [QLI][UBUNTU][RB3][Camera][[Sample-apps][Regression] gst-camera-switch-example encode use case work as a preview only and not capturing encoded files"
+  * Merge "gst-ai-sample-apps: Updating manifest file"
+  * Merge "gst-ai-object-detection.py: Replacing layers with tensors"
+  * Merge "gst-plugins-qcom: Add plugin describing defines to source"
+  * Merge "venc: Refactor bitrate feature of codec2"
+
+  [ Ishu Raj ]
+  * demo_setup_wizard: Update USB camera input pipeline
+
+  [ Nitesh Kumar Pathak ]
+  * mlpostprocess: Add support for latest model for EasyOCR detector
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-vtransform: add Op Mode for FCV"
+  * Merge "mlvconverter: Adding NCHW, NDHWC and Batching support for CPU preprocess"
+  * Merge "mlpostprocess: minor fixes in submodules"
+
+  [ Bala Sai Kosuri ]
+  * qmmfsrc: Return success if no request pads in delete_stream
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-base: support fcv op mode selection"
+  * Merge "gst-plugin-dfs: Hardcode rvsdk version in CMake file"
+  * Merge "mlpostprocess: Add labels color generator"
+
+  [ lei shen ]
+  * gst-plugin-qmmfsrc:Don't send an EOS event when in the EOS state.
+
+  [ Bala Sai Kosuri ]
+  * gst-add-remove-streams-runtime: Fix memleaks
+
+  [ Ziyi Gai ]
+  * gst-plugin-jpegenc: support downscale for jpegenc.
+
+  [ Stilyan Uzunov ]
+  * gst-plugins-qcom: Add plugin describing defines to source
+
+  [ Sanjay Chitroda ]
+  * gst-plugin-codec2: handle intra refresh feature
+
+  [ Hongyong Huang ]
+  * gst-plugin-qmmfsrc: Add check for full range colorspace.
+
+  [ Rahul Khandelwal ]
+  * gst-gui-launcher-app.py: Updated Qdemo to download latest models
+
+  [ shanmaju ]
+  * CR4307966-  [QLI][UBUNTU][RB3][Camera][[Sample-apps][Regression] gst-camera-switch-example encode use case work as a preview only and not capturing encoded files
+
+  [ aditsaur ]
+  * gst-ai-sample-apps: Updating manifest file
+
+  [ vicky kumar ]
+  * gst-video-playback-example: optimize the default pipeline
+
+  [ aditsaur ]
+  * gst-ai-multistream-inference: Updating config file
+
+  [ Jiadong Huang ]
+  * gst-plugin-vtransform: add Op Mode for FCV
+  * gst-plugin-base: support fcv op mode selection
+
+  [ Stilyan Uzunov ]
+  * gst-plugin-dfs: Hardcode rvsdk version in CMake file
+
+  [ aditsaur ]
+  * gst-ai-object-detection.py: Replacing layers with tensors
+  * gst-ai-sample app: Includes below change:
+
+  [ Hui Liu ]
+  * jpegenc: use the new qmmf-sdk API to get JPEG size
+
+  [ Hongyong Huang ]
+  * gst-camera-metadata-example: Add plugin mode and capture metadata.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-hexagon: process with Hexagon SDK"
+  * Merge "ib2c: guard GL extension queries when no EGL context is current"
+  * Merge "vsplit: Add alignment meta to allocation query"
+
+  [ Jiadong Huang ]
+  * gst-plugin-hexagon: process with Hexagon SDK
+
+  [ QCTECMDR Service ]
+  * Merge "Fix propose_allocation to respond with video align requirements"
+
+  [ Tushar Patra Jamula ]
+  * vsplit: Add alignment meta to allocation query
+
+  [ Bala Sai Kosuri ]
+  * ib2c: guard GL extension queries when no EGL context is current
+
+  [ Nikolay Hristozov ]
+  * mlpostprocess: Add labels color generator
+
+  [ Plamen Marinov ]
+  * mlvconverter: Adding NCHW, NDHWC and Batching support for CPU preprocess
+
+  [ Bala Sai Kosuri ]
+  * Add HAVE_TFLITE_VERSION_H to compile flags
+
+  [ Victor Sokolov ]
+  * mlpostprocess: minor fixes in submodules
+
+  [ Tushar Patra Jamula ]
+  * Fix propose_allocation to respond with video align requirements
+
+  [ Sanjay Chitroda ]
+  * venc: Refactor bitrate feature of codec2
+
+ -- Bala Sai Kosuri <bkosuri@qti.qualcomm.com>  Wed, 31 Dec 2025 11:35:35 +0530
+
 gst-plugins-qti-oss (1.7.2-qcom0) noble; urgency=medium
 
   [ QCTECMDR Service ]
