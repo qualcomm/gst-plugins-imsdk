@@ -28,7 +28,7 @@
 #include <glib-unix.h>
 
 #include <gst/gst.h>
-#include <gst/sampleapps/gst_sample_apps_utils.h>
+#include <gst_sample_apps_utils.h>
 
 #define DEFAULT_OUTPUT_FILENAME "/etc/media/video.mp4"
 #define DEFAULT_WIDTH           1280

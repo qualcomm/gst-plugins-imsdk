@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 project(gstreamer-qcom-oss-base-1.0
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
   LANGUAGES C CXX
@@ -62,6 +62,9 @@ include_directories(
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
 )
+
+# Define path to gst-plugins-base tree
+set(QTI_PLUGINS_BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Define the path to the common pkg-config template file used by all subdirectories
 set(BASE_COMMON_PC_IN ${CMAKE_CURRENT_SOURCE_DIR}/gst/common.pc.in)

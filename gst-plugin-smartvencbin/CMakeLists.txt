@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 project(GST_PLUGINS_QTI_OSS_SMART_ENCODE_BIN
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION} LANGUAGES C CXX
 )

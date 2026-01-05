@@ -49,7 +49,7 @@
 #include <glib.h>
 #include <json-glib/json-glib.h>
 
-#include <gst/sampleapps/gst_sample_apps_utils.h>
+#include <gst_sample_apps_utils.h>
 
 /**
  * Default models and labels path, if not provided by user
@@ -970,7 +970,7 @@ main (gint argc, gchar * argv[])
       "      Default Face map settings path: " DEFAULT_FACEMAP_3DMM_SETTINGS
       "\n" "  Face recognition settings: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
-      "      Default Face recognition settings path: " 
+      "      Default Face recognition settings path: "
       DEFAULT_FACE_RECOGNITION_SETTINGS, app_name,
       DEFAULT_CONFIG_FILE, camera_description);
   help_description[8191] = '\0';

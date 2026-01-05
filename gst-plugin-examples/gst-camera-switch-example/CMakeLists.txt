@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 
 # GStreamer gst-camera-switch-example
 set(GST_EXAMPLE_BIN gst-camera-switch-example)
