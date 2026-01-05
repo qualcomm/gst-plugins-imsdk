@@ -318,6 +318,7 @@ const std::map<uint32_t, uint32_t> Format::kYuvFormatTable = {
   { ColorFormat::kUYVY,   DRM_FORMAT_UYVY   },
   { ColorFormat::kVYUY,   DRM_FORMAT_VYUY   },
   { ColorFormat::kNV12,   DRM_FORMAT_NV12   },
+  { ColorFormat::kP010,   DRM_FORMAT_P010   },
   { ColorFormat::kNV21,   DRM_FORMAT_NV21   },
   { ColorFormat::kNV16,   DRM_FORMAT_NV16   },
   { ColorFormat::kNV61,   DRM_FORMAT_NV61   },
