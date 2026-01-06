@@ -164,6 +164,9 @@ struct _GstQmmfSrcVideoPad {
 
   /// Select physical camera or layout to stitch images
   glong               log_stream_type;
+
+  /// attach_metadata is set by the custom queury need-metadata
+  gboolean attach_metadata;
 };
 
 struct _GstQmmfSrcVideoPadClass {
