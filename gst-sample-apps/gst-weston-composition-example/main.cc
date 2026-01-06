@@ -36,7 +36,7 @@
 
 #include <gst/gst.h>
 
-#include <gst/sampleapps/gst_sample_apps_utils.h>
+#include <gst_sample_apps_utils.h>
 
 #define INPUT_FILE_PATH "/etc/media/video.mp4"
 

@@ -7,9 +7,9 @@
 
 #include <cfloat>
 
-#define DEFAULT_THRESHOLD 0.70
+static const float kDefaultThreshold = 0.70;
 
-static const char* moduleCaps = R"(
+static const char* kModuleCaps = R"(
 {
   "type": "pose-estimation",
   "tensors": [
@@ -28,7 +28,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
@@ -45,37 +45,37 @@ void Module::KeypointTransformCoordinates(Keypoint& keypoint,
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (!labels_parser_.LoadFromFile(labels_file)) {
-    LOG (logger_, kError, "Failed to parse labels");
+    LOG(logger_, kError, "Failed to parse labels");
     return false;
   }
 
   if (json_settings.empty()) {
-    LOG (logger_, kWarning,
+    LOG(logger_, kWarning,
         "Failed to load connections! No JSON Settings provided!");
     return true;
   }
 
   auto root = JsonValue::Parse(json_settings);
+
   if (!root || root->GetType() != JsonType::Object) {
-    LOG (logger_, kError, "Failed extract type from settings!");
+    LOG(logger_, kError, "Failed extract type from settings!");
     return false;
   }
 
-  threshold_ = root->GetNumber("confidence");
-  threshold_ /= 100.0;
-  LOG (logger_, kLog, "Threshold: %f", threshold_);
+  threshold_ = root->GetNumber("confidence") / 100;
+  LOG(logger_, kLog, "Threshold: %f", threshold_);
 
   auto nodes = root->GetArray("connections");
 
   if (!LoadConnections(nodes)) {
-    LOG (logger_, kError, "Failed load connections from settings!");
+    LOG(logger_, kError, "Failed load connections from settings!");
     return false;
   }
 
@@ -106,12 +106,12 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
   if (output.type() != typeid(PoseEstimations)) {
-    LOG (logger_, kError, "Unexpected predictions type!");
+    LOG(logger_, kError, "Unexpected predictions type!");
     return false;
   }
 
   if (tensors[0].dimensions[1] != tensors[3].dimensions[1]) {
-    LOG (logger_, kError, "Second dimension of first and third tensor must be "
+    LOG(logger_, kError, "Second dimension of first and third tensor must be "
         "equal: %u != %u", tensors[0].dimensions[1], tensors[3].dimensions[1]);
     return false;
   }
@@ -145,13 +145,14 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
     KeypointTransformCoordinates(kp, region);
 
-    kp.x = std::min (std::max(kp.x, (float)0), (float)1);
-    kp.y = std::min (std::max(kp.y, (float)0), (float)1);
+    kp.x = std::min(std::max(kp.x,(float)0),(float)1);
+    kp.y = std::min(std::max(kp.y,(float)0),(float)1);
   }
 
   KeypointLinks links;
+
   for (const auto &lk : connections_) {
-    links.emplace_back (entry.keypoints[lk.s_kp_id], entry.keypoints[lk.d_kp_id]);
+    links.emplace_back(entry.keypoints[lk.s_kp_id], entry.keypoints[lk.d_kp_id]);
   }
 
   entry.links = std::move(links);

@@ -24,10 +24,6 @@
 
 #define DEFAULT_INPUT_FILESOURCE  "/etc/media/video.mp4"
 
-#define DEFAULT_PIPELINE    "filesrc location=DEFAULT_INPUT_FILESOURCE ! qtdemux " \
-  "! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 " \
-  "! video/x-raw,format=NV12 ! waylandsink enable-last-sample=false fullscreen=true" \
-
 #define GST_APP_SUMMARY \
   "This application enables users to create and utilize a video pipeline " \
   "for playback. It provides essential playback features such as play, " \
@@ -49,24 +45,27 @@
 
 // TODO: Add stop feature.
 
-typedef enum {
+typedef enum
+{
   GST_PLAY_OPTION = 1,
   GST_PAUSE_OPTION,
   GST_FAST_FORWARD_OPTION,
   GST_REWIND_OPTION
 } GstMainMenuOption;
 
-typedef enum {
+typedef enum
+{
   GST_TIME_BASED = 1,
   GST_SPEED_BASED
 } GstFFRMenuOption;
 
-typedef struct {
+typedef struct
+{
   // Main application event loop.
-  GMainLoop   *mloop;
+  GMainLoop *mloop;
 
   // GStreamer pipeline instance.
-  GstElement  *pipeline;
+  GstElement *pipeline;
 
   // Asynchronous queue for thread communication.
   GAsyncQueue *messages;
@@ -212,9 +211,9 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
           gst_element_state_get_name (newstate),
           gst_element_state_get_name (pending));
 
-      g_async_queue_push (appctx->messages, gst_structure_new (
-          PIPELINE_STATE_MESSAGE, "new", G_TYPE_UINT, newstate,
-          "pending", G_TYPE_UINT, pending, NULL));
+      g_async_queue_push (appctx->messages,
+          gst_structure_new (PIPELINE_STATE_MESSAGE, "new", G_TYPE_UINT,
+              newstate, "pending", G_TYPE_UINT, pending, NULL));
 
       break;
     }
@@ -239,7 +238,7 @@ handle_stdin_source (GIOChannel * source, GIOCondition condition,
 
     if ((G_IO_STATUS_ERROR == status) && (error != NULL)) {
       g_printerr ("ERROR: Failed to parse command line options: %s!\n",
-           GST_STR_NULL (error->message));
+          GST_STR_NULL (error->message));
       g_clear_error (&error);
 
       return FALSE;
@@ -255,7 +254,7 @@ handle_stdin_source (GIOChannel * source, GIOCondition condition,
 
   // Push stdin string into the inputs queue.
   g_async_queue_push (appctx->messages, gst_structure_new (STDIN_MESSAGE,
-      "input", G_TYPE_STRING, input, NULL));
+          "input", G_TYPE_STRING, input, NULL));
   g_free (input);
 
   return TRUE;
@@ -271,7 +270,7 @@ wait_stdin_message (GAsyncQueue * queue, gchar ** input)
   *input = NULL;
 
   // Block the thread until there's no input from the user or eos/error msg occurs.
-  while ((message = (GstStructure *)g_async_queue_pop (queue)) != NULL) {
+  while ((message = (GstStructure *) g_async_queue_pop (queue)) != NULL) {
     if (gst_structure_has_name (message, TERMINATE_MESSAGE) ||
         gst_structure_has_name (message, PIPELINE_EOS_MESSAGE)) {
       gst_structure_free (message);
@@ -283,7 +282,6 @@ wait_stdin_message (GAsyncQueue * queue, gchar ** input)
       *input = g_strdup (gst_structure_get_string (message, "input"));
       break;
     }
-
     // Clear message to terminate the loop after having popped the data.
     gst_structure_free (message);
   }
@@ -298,7 +296,7 @@ wait_pipeline_eos_message (GAsyncQueue * messages)
   GstStructure *message = NULL;
 
   // Wait for either a PIPELINE_EOS or TERMINATE message.
-  while ((message = (GstStructure*) g_async_queue_pop (messages)) != NULL) {
+  while ((message = (GstStructure *) g_async_queue_pop (messages)) != NULL) {
     if (gst_structure_has_name (message, TERMINATE_MESSAGE)) {
       gst_structure_free (message);
       return FALSE;
@@ -324,7 +322,7 @@ wait_pipeline_state_message (GAsyncQueue * messages, GstState state)
     return TRUE;
 
   // Wait for either a PIPELINE_STATE or TERMINATE message.
-  while ((message = (GstStructure*) g_async_queue_pop (messages)) != NULL) {
+  while ((message = (GstStructure *) g_async_queue_pop (messages)) != NULL) {
     if (gst_structure_has_name (message, TERMINATE_MESSAGE) ||
         gst_structure_has_name (message, PIPELINE_EOS_MESSAGE)) {
       gst_structure_free (message);
@@ -334,7 +332,7 @@ wait_pipeline_state_message (GAsyncQueue * messages, GstState state)
 
     if (gst_structure_has_name (message, PIPELINE_STATE_MESSAGE)) {
       GstState newstate = GST_STATE_VOID_PENDING;
-      gst_structure_get_uint (message, "new", (guint*) &newstate);
+      gst_structure_get_uint (message, "new", (guint *) & newstate);
 
       if (newstate == state)
         break;
@@ -346,7 +344,7 @@ wait_pipeline_state_message (GAsyncQueue * messages, GstState state)
 }
 
 static gboolean
-update_pipeline_state (GstAppContext *appctx, GstState state)
+update_pipeline_state (GstAppContext * appctx, GstState state)
 {
   GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
   GstState current, pending;
@@ -366,7 +364,6 @@ update_pipeline_state (GstAppContext *appctx, GstState state)
     g_print ("Pending %s state\n", gst_element_state_get_name (state));
     return TRUE;
   }
-
   // Check whether to send an EOS event on the pipeline.
   if (eos_on_shutdown && current == GST_STATE_PLAYING &&
       (state == GST_STATE_NULL || state == GST_STATE_READY)) {
@@ -464,11 +461,12 @@ perform_seek (GstAppContext * appctx, gdouble rate, gint64 position)
   // Whereas if rate < 0 (playing backwards), seek segment will be from
   // start of stream to given pos.
   if ((rate > 0 && gst_element_seek (appctx->pipeline, rate,
-      GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT,
-      GST_SEEK_TYPE_SET, position, GST_SEEK_TYPE_SET, GST_CLOCK_TIME_NONE)) ||
-      (rate < 0 && gst_element_seek (appctx->pipeline, rate,
-      GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT,
-      GST_SEEK_TYPE_SET, 0, GST_SEEK_TYPE_SET, position))) {
+              GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT,
+              GST_SEEK_TYPE_SET, position, GST_SEEK_TYPE_SET,
+              GST_CLOCK_TIME_NONE)) || (rate < 0
+          && gst_element_seek (appctx->pipeline, rate, GST_FORMAT_TIME,
+              GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, GST_SEEK_TYPE_SET,
+              0, GST_SEEK_TYPE_SET, position))) {
     appctx->rate = rate;
     return TRUE;
   }
@@ -532,7 +530,7 @@ handle_ffr_menu (GstAppContext * appctx, gint * opt)
         }
         pos = query_position (appctx);
 
-        if (pos >= 0 && perform_seek (appctx, mul*speed, pos))
+        if (pos >= 0 && perform_seek (appctx, mul * speed, pos))
           g_print ("Seeked...\n");
         else
           g_print ("Couldn't seek!\n");
@@ -626,7 +624,7 @@ main_menu (gpointer userdata)
 }
 
 gint
-main (gint argc, gchar *argv[])
+main (gint argc, gchar * argv[])
 {
   GstAppContext *appctx;
   GOptionContext *optctx;
@@ -649,10 +647,9 @@ main (gint argc, gchar *argv[])
 
   GOptionEntry options[] = {
     {"eos-on-shutdown", 'e', 0, G_OPTION_ARG_NONE, &eos_on_shutdown,
-     "Send EOS event before transition from PLAYING to READY/NULL state.",
-     NULL},
+     "Send EOS event before transition from PLAYING to READY/NULL state.", NULL},
     {G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &pipeline, NULL, NULL},
-    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
+    {NULL, 0, 0, (GOptionArg) 0, NULL, NULL, NULL}
   };
 
   optctx = g_option_context_new ("<pipeline>");
@@ -679,11 +676,18 @@ main (gint argc, gchar *argv[])
   }
 
   if (pipeline == NULL) {
-    appctx->pipeline = gst_parse_launchv ((const gchar **) DEFAULT_PIPELINE, &error);
+    gchar *default_pipeline_str =
+        g_strdup_printf
+        ("filesrc location=%s ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! waylandsink enable-last-sample=false fullscreen=true",
+        DEFAULT_INPUT_FILESOURCE);
+    appctx->pipeline = gst_parse_launch (default_pipeline_str, &error);
+    g_free (default_pipeline_str);
+    if (appctx->pipeline == NULL) {
+      goto exit;
+    }
   } else {
     appctx->pipeline = gst_parse_launchv ((const gchar **) pipeline, &error);
   }
-
   // Check for errors on pipe creation.
   if ((NULL == appctx->pipeline) && (error != NULL)) {
     g_printerr ("ERROR: Failed to create pipeline, error: %s!\n",
@@ -702,32 +706,27 @@ main (gint argc, gchar *argv[])
     g_clear_error (&error);
     goto exit;
   }
-
   // Initialize main loop.
   if ((appctx->mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("ERROR: Failed to create Main loop!\n");
     goto exit;
   }
-
   // Initiate the menu thread.
   if ((mthread = g_thread_new ("MainMenu", main_menu, appctx)) == NULL) {
     g_printerr ("ERROR: Failed to create menu thread!\n");
     goto exit;
   }
-
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->pipeline))) == NULL) {
     g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
     goto exit;
   }
-
   // Create a GIOChannel to listen to the standard input stream.
   if ((gio = g_io_channel_unix_new (fileno (stdin))) == NULL) {
     g_printerr ("ERROR: Failed to initialize I/O support!\n");
     gst_object_unref (bus);
     goto exit;
   }
-
   // Watch for messages on the pipeline's bus.
   bus_watch_id = gst_bus_add_watch (bus, handle_bus_message, appctx);
   gst_object_unref (bus);

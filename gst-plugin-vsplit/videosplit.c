@@ -954,6 +954,8 @@ gst_video_split_sinkpad_query (GstPad * pad, GstObject * parent,
     {
       GstCaps *caps = NULL;
       GstBufferPool *pool = NULL;
+      GstStructure *config = NULL;
+      GstVideoAlignment align = { 0, };
       GstVideoInfo info;
       gboolean needpool = FALSE;
 
@@ -970,22 +972,19 @@ gst_video_split_sinkpad_query (GstPad * pad, GstObject * parent,
         return FALSE;
       }
 
+      if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+        GST_ERROR_OBJECT (pad, "Failed to get alignment!");
+        return FALSE;
+      }
+
       if (needpool) {
-        GstStructure *structure = NULL;
-        GstVideoAlignment align = { 0, };
-
-        if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
-          GST_ERROR_OBJECT (pad, "Failed to get alignment!");
-          return FALSE;
-        }
-
         pool = gst_video_split_create_pool (pad, caps, &align, NULL);
-        structure = gst_buffer_pool_get_config (pool);
+        config = gst_buffer_pool_get_config (pool);
 
         // Set caps and size in query.
-        gst_buffer_pool_config_set_params (structure, caps, info.size, 0, 0);
+        gst_buffer_pool_config_set_params (config, caps, info.size, 0, 0);
 
-        if (!gst_buffer_pool_set_config (pool, structure)) {
+        if (!gst_buffer_pool_set_config (pool, config)) {
           GST_ERROR_OBJECT (pad, "Failed to set buffer pool configuration!");
           gst_object_unref (pool);
           return FALSE;
@@ -998,7 +997,11 @@ gst_video_split_sinkpad_query (GstPad * pad, GstObject * parent,
       if (pool != NULL)
         gst_object_unref (pool);
 
-      gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+      config = gst_structure_new_empty ("video-meta");
+      gst_buffer_pool_config_set_video_alignment (config, &align);
+
+      // Add video meta with alignment information for upstream.
+      gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, config);
 
       return TRUE;
     }

@@ -1,5 +1,5 @@
 {
-  "Version": "1.4",
+  "Version": "1.7",
   "ApplicationName": "gst-ai-usb-camera-detection",
   "ApplicationType": "AI",
   "ApplicationSourceCheckSum": "",
@@ -9,13 +9,13 @@
       "ModelName": "yolox_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Yolo-X/resolve/v0.30.5/Yolo-X_w8a8.tflite",
       "LabelFile": "yolox.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/yolox.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/yolox.json"
     }
   ],
   "AIModelsSupportedByApplication": [],
   "AIModelLocation": "/etc/models/",
   "AILabelLocation": "/etc/labels/",
-  "ConfigFile": "config_daisychain_detection_classification.json",
+  "ConfigFile": "config-usb-camera-app.json",
   "ConfigFileLocation": "/etc/configs/",
   "ApplicationKeyWords": [
     "ObjectDetection",

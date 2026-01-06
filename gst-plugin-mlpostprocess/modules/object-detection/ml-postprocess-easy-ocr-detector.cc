@@ -6,17 +6,17 @@
 #include "ml-postprocess-easy-ocr-detector.h"
 
 #include <cmath>
-#define INTERSECTION_THRESHOLD 0.05
 
-static const char* moduleCaps = R"(
+static const float kIntersectionTreshold = 0.5;
+
+static const char* kModuleCaps = R"(
 {
   "type": "object-detection",
   "tensors": [
     {
       "format": ["FLOAT32"],
       "dimensions": [
-        [1, [8, 480], [8, 480], [1, 5]],
-        [1, [1,32], [8, 480], [8, 480]]
+        [1, [8, 480], [8, 480], [1, 5]]
       ]
     }
   ]
@@ -25,7 +25,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(INTERSECTION_THRESHOLD),
+      threshold_(kIntersectionTreshold),
       detector_args_{} {
 }
 
@@ -35,7 +35,7 @@ Module::~Module() {
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 static inline cv::Mat CreateMatView(const std::vector<float>& score_map,
@@ -44,21 +44,24 @@ static inline cv::Mat CreateMatView(const std::vector<float>& score_map,
   return cv::Mat(height, width, CV_32F, const_cast<float*>(score_map.data()));
 }
 
-// Reorder 4 points to clockwise starting from top-left (min x+y)
+// Reorder 4 points to clockwise starting from top-left(min x+y)
 static inline void orderBoxClockwise(cv::Point2f pts[4]) {
 
-  // Compute sums and index of top-left (min sum)
+  // Compute sums and index of top-left(min sum)
   float sums[4];
+
   for (int i = 0; i < 4; ++i)
     sums[i] = pts[i].x + pts[i].y;
 
   int startidx = 0;
+
   for (int i = 1; i < 4; ++i)
     if (sums[i] < sums[startidx])
       startidx = i;
 
   // Rotate so that top-left is first
   std::array<cv::Point2f, 4> tmp;
+
   for (int i = 0; i < 4; ++i)
     tmp[(i + (4 - startidx)) % 4] = pts[i];
 
@@ -93,6 +96,7 @@ void GetDetBoxesCore(const std::vector<float>& text_score_map,
 
   for (int k = 1; k < nLabels; ++k) {
     int area = stats.at<int>(k, cv::CC_STAT_AREA);
+
     if (area < 10) continue;
 
     // Build mask for this component: (labels == k)
@@ -101,6 +105,7 @@ void GetDetBoxesCore(const std::vector<float>& text_score_map,
     // Max(text) over component; if < text_threshold, skip
     double maxTextVal = 0.0;
     cv::minMaxLoc(text, nullptr, &maxTextVal, nullptr, nullptr, compMask);
+
     if (maxTextVal < static_cast<double>(text_threshold))
         continue;
 
@@ -123,9 +128,10 @@ void GetDetBoxesCore(const std::vector<float>& text_score_map,
     int h = stats.at<int>(k, cv::CC_STAT_HEIGHT);
 
     int niter = 0;
+
     if (w > 0 && h > 0) {
       float ratio = std::sqrt(static_cast<float>(area) * static_cast<float>(std::min(w, h)) /
-                             (static_cast<float>(w) * static_cast<float>(h)));
+                            (static_cast<float>(w) * static_cast<float>(h)));
       niter = static_cast<int>(ratio * 2.0f);
     }
 
@@ -135,17 +141,22 @@ void GetDetBoxesCore(const std::vector<float>& text_score_map,
     int ey = std::min(static_cast<int>(height), y + h + niter);
 
     int ksize = 2 * niter + 1;
+
     if (ksize < 1) ksize = 1;
+
     cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(ksize, ksize));
 
     cv::Rect roi(sx, sy, ex - sx, ey - sy);
+
     if (roi.width > 0 && roi.height > 0) {
         cv::Mat segROI = segmap(roi);
         cv::dilate(segROI, segROI, kernel);
     }
+
     // Gather non-zero points in segmap
     std::vector<cv::Point> nz;
     cv::findNonZero(segmap, nz);
+
     if (nz.empty())
       continue;
 
@@ -164,12 +175,14 @@ void GetDetBoxesCore(const std::vector<float>& text_score_map,
     if (std::fabs(1.0f - box_ratio) <= 0.1f) {
       // Replace with axis-aligned bounding box from nz points
       int l = width, r = 0, t = height, b = 0;
+
       for (const auto& p : nz) {
         l = std::min(l, p.x);
         r = std::max(r, p.x);
         t = std::min(t, p.y);
         b = std::max(b, p.y);
       }
+
       boxPts[0] = cv::Point2f(static_cast<float>(l), static_cast<float>(t));
       boxPts[1] = cv::Point2f(static_cast<float>(r), static_cast<float>(t));
       boxPts[2] = cv::Point2f(static_cast<float>(r), static_cast<float>(b));
@@ -181,6 +194,7 @@ void GetDetBoxesCore(const std::vector<float>& text_score_map,
     std::array<cv::Point2f, 4> box = { boxPts[0], boxPts[1], boxPts[2], boxPts[3] };
     det.push_back(box);
   }
+
   return;
 }
 
@@ -188,26 +202,26 @@ bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (!labels_parser_.LoadFromFile(labels_file)) {
-    LOG (logger_, kError, "Failed to parse labels");
+    LOG(logger_, kError, "Failed to parse labels");
     return false;
   }
 
   if (!json_settings.empty()) {
     auto root = JsonValue::Parse(json_settings);
+
     if (!root || root->GetType() != JsonType::Object) return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
-    LOG (logger_, kLog, "Threshold: %f", threshold_);
+    threshold_ = root->GetNumber("confidence") / 100;
+    LOG(logger_, kLog, "Threshold: %f", threshold_);
 
     detector_args_.text_threshold = static_cast<float>(root->GetNumber("text_threshold"));
-    LOG (logger_, kLog, "Text threshold: %f", detector_args_.text_threshold);
+    LOG(logger_, kLog, "Text threshold: %f", detector_args_.text_threshold);
 
     detector_args_.link_threshold = static_cast<float>(root->GetNumber("link_threshold"));
-    LOG (logger_, kLog, "Link threshold: %f", detector_args_.link_threshold);
+    LOG(logger_, kLog, "Link threshold: %f", detector_args_.link_threshold);
 
     detector_args_.low_text = static_cast<float>(root->GetNumber("low_text"));
-    LOG (logger_, kLog, "Low text: %f", detector_args_.low_text);
+    LOG(logger_, kLog, "Low text: %f", detector_args_.low_text);
   }
 
   return true;
@@ -218,10 +232,10 @@ float Module::IntersectionScore(ObjectDetection &l_box, ObjectDetection &r_box) 
 
   // Figure out the width of the intersecting rectangle.
   // 1st: Find out the X axis coordinate of left most Top-Right point.
-  float width = fmin (l_box.right, r_box.right);
+  float width = fmin(l_box.right, r_box.right);
   // 2nd: Find out the X axis coordinate of right most Top-Left point
   // and substract from the previously found value.
-  width -= fmax (l_box.left, r_box.left);
+  width -= fmax(l_box.left, r_box.left);
 
   // Negative width means that there is no overlapping.
   if (width <= 0.0F)
@@ -229,10 +243,10 @@ float Module::IntersectionScore(ObjectDetection &l_box, ObjectDetection &r_box) 
 
   // Figure out the height of the intersecting rectangle.
   // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
-  float height = fmin (l_box.bottom, r_box.bottom);
+  float height = fmin(l_box.bottom, r_box.bottom);
   // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
   // and substract from the previously found value.
-  height -= fmax (l_box.top, r_box.top);
+  height -= fmax(l_box.top, r_box.top);
 
   // Negative height means that there is no overlapping.
   if (height <= 0.0F)
@@ -274,8 +288,8 @@ void Module::MergeOverlappingBoxes(ObjectDetection &l_box,
     double score = IntersectionScore(l_box, r_box);
 
     // If the score is below the threshold, continue with next list entry.
-    if (score >= INTERSECTION_THRESHOLD) {
-      UnionInto (l_box, r_box);
+    if (score >= kIntersectionTreshold) {
+      UnionInto(l_box, r_box);
       boxes.erase(boxes.begin() + idx);
     } else {
       idx++;
@@ -292,7 +306,7 @@ void Module::GetDetBoxes(const std::vector<float>& text_score_map,
   std::vector<std::array<cv::Point2f, 4>> det;
   cv::Mat labels;
 
-  GetDetBoxesCore (text_score_map, link_score_map, width, height, text_threshold,
+  GetDetBoxesCore(text_score_map, link_score_map, width, height, text_threshold,
                     link_threshold, low_text, det, labels);
 
   boxes.clear();
@@ -317,6 +331,7 @@ std::vector<ObjectDetection> Module::PolygonsToBoxes(const std::vector<Poly>& bo
 
   std::vector<ObjectDetection> detections;
   detections.reserve(boxes.size());
+
   for (const auto& poly : boxes) {
     float minX = std::numeric_limits<float>::max();
     float minY = std::numeric_limits<float>::max();
@@ -346,7 +361,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
   if (output.type() != typeid(ObjectDetections)) {
-    LOG (logger_, kError, "Unexpected output type!");
+    LOG(logger_, kError, "Unexpected output type!");
     return false;
   }
 
@@ -394,6 +409,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   }
 
   entries = PolygonsToBoxes(boxes);
+
   for (auto& det : entries) {
     TransformDimensions(det, region);
     MergeOverlappingBoxes(det, detections);

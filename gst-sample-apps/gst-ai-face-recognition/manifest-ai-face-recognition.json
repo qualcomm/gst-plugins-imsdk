@@ -1,5 +1,5 @@
 {
-  "Version": "1.4",
+  "Version": "1.7",
   "ApplicationName": "gst-ai-face-recognition",
   "ApplicationType": "AI",
   "ApplicationSourceCheckSum": "",
@@ -9,26 +9,44 @@
       "ModelName": "face_attrib_net_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Facial-Attribute-Detection/resolve/228624993581944d488f232ae50174795d489661/Facial-Attribute-Detection_w8a8.tflite",
       "LabelFile": "face_recognition.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/face_recognition.json",
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/face_recognition.json",
       "LabelSettingsFile":"face_recognition_settings.json",
-      "LabelSettingsDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/face_recognition_settings.json"
+      "LabelSettingsDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/face_recognition_settings.json"
     },
     {
       "ModelName": "face_det_lite_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Lightweight-Face-Detection/resolve/e80b4d954ffaaefe2958e70b27bee77e74cc8550/Lightweight-Face-Detection_w8a8.tflite",
       "LabelFile": "face_detection.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/face_detection.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/face_detection.json"
     },
     {
       "ModelName": "facemap_3dmm_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Facial-Landmark-Detection/resolve/2353f012b24fd407902e38d0c5fdd591cd2b1380/Facial-Landmark-Detection_w8a8.tflite",
-      "LabelFile": "facemap_3dmm_settings.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/facemap_3dmm_settings.json"
+      "LabelSettingsFile": "facemap_3dmm_settings.json",
+      "LabelSettingsDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/facemap_3dmm_settings.json"
+    }
+  ],
+  "binaries": [
+    {
+        "fileName": "blendShape.bin",
+        "fileUrl": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/data/blendShape.bin",
+        "fileLocation": "/etc/data/"
+    },
+    {
+        "fileName": "meanFace.bin",
+        "fileUrl": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/data/meanFace.bin",
+        "fileLocation": "/etc/data/"
+    },
+    {
+        "fileName": "shapeBasis.bin",
+        "fileUrl": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/data/shapeBasis.bin",
+        "fileLocation": "/etc/data/"
     }
   ],
   "AIModelsSupportedByApplication": [],
   "AIModelLocation": "/etc/models/",
   "AILabelLocation": "/etc/labels/",
+  "AISettingFileLocation": "/etc/labels/",
   "ConfigFile": "config-face-recognition.json",
   "ConfigFileLocation": "/etc/configs/",
   "ApplicationKeyWords": [

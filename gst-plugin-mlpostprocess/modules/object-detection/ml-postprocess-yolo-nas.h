@@ -22,24 +22,25 @@ class Module : public IModule {
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
-
  private:
   void TransformDimensions(ObjectDetection &box, const Region& region);
   float IntersectionScore(const ObjectDetection &l_box,
                           const ObjectDetection &r_box);
+
   int32_t NonMaxSuppression(const ObjectDetection &l_box,
-      const ObjectDetections &boxes);
+                            const ObjectDetections &boxes);
+
   void ParseDualblockFrame(const Tensors& tensors, Dictionary& mlparams,
                            std::any& output);
+
   void ParseTripleblockFrame(const Tensors& tensors, Dictionary& mlparams,
                              std::any& output);
   int32_t
   TensorCompareValues(const float *data,
                       const uint32_t& l_idx, const uint32_t& r_idx);
 
-
   // Logging callback.
-  LogCallback logger_;
+  LogCallback  logger_;
   // Confidence threshold value.
   double       threshold_;
   // Labels parser.

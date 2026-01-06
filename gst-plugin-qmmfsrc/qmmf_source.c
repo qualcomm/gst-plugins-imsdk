@@ -990,6 +990,10 @@ qmmfsrc_delete_stream (GstQmmfSrc * qmmfsrc)
 
   GST_TRACE_OBJECT (qmmfsrc, "Delete stream");
 
+  // No source pads, nothing to do but return.
+  if (g_hash_table_size (qmmfsrc->srcpads) == 0)
+    return TRUE;
+
   success = gst_element_foreach_src_pad (GST_ELEMENT (qmmfsrc),
       qmmfsrc_pad_flush_buffers, GUINT_TO_POINTER (TRUE));
   QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,

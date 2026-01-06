@@ -254,6 +254,10 @@ gst_ml_frame_to_module_tensors (const GstMLFrame * mlframe, const gint index,
     // Additional offset based on whether we are asked to convert a batch index.
     tensor.data = GST_ML_FRAME_BLOCK_DATA (mlframe, num) +
         ((index != -1) ? (index * size) : 0);
+
+    // Add dequantization parameters
+    tensor.qscale = mlmeta->qscale;
+    tensor.qoffset = mlmeta->qoffset;
   }
 
   return TRUE;

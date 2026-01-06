@@ -30,7 +30,7 @@
 
 #include <gst/gst.h>
 
-#include <gst/sampleapps/gst_sample_apps_utils.h>
+#include <gst_sample_apps_utils.h>
 
 #define GST_APP_SUMMARY "This application uses the two cameras of the " \
   "device and switch them without changing the state of the pipeline. \n" \
@@ -58,7 +58,7 @@ struct GstCameraSwitchCtxStruct {
   gboolean is_camera0;
   GMutex lock;
   gboolean exit;
-  gboolean use_display;
+  guint use_display;
   guint camera0_id;
   guint camera1_id;
 };
@@ -356,7 +356,7 @@ main (gint argc, gchar * argv[])
   gboolean ret = FALSE;
   GstCameraSwitchCtx cameraswitchctx = {};
   cameraswitchctx.exit = false;
-  cameraswitchctx.use_display = TRUE;
+  cameraswitchctx.use_display = 1;
   cameraswitchctx.camera0_id = 0;
   cameraswitchctx.camera1_id = 1;
   g_mutex_init (&cameraswitchctx.lock);
@@ -369,7 +369,7 @@ main (gint argc, gchar * argv[])
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   GOptionEntry entries[] = {
-      { "display", 'd', 0, G_OPTION_ARG_NONE,
+      { "display", 'd', 0, G_OPTION_ARG_INT,
         &cameraswitchctx.use_display,
         "Enable display",
         "Parameter for enable display output"

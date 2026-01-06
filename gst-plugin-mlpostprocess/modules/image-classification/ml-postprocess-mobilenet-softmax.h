@@ -58,7 +58,7 @@ class Module : public IModule {
 
  private:
   // Logging callback.
-  LogCallback logger_;
+  LogCallback  logger_;
   // Confidence threshold value.
   double       threshold_;
   // Labels parser.

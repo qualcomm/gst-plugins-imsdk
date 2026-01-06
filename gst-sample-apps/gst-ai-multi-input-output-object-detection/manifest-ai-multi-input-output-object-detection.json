@@ -1,5 +1,5 @@
 {
-  "Version": "1.4",
+  "Version": "1.7",
   "ApplicationName": "gst-ai-multi-input-output-object-detection",
   "ApplicationType": "AI",
   "ApplicationSourceCheckSum": "",
@@ -9,14 +9,17 @@
       "ModelName": "yolov5.tflite",
       "ModelLabelDownloadURL": "",
       "LabelFile": "yolov5.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/yolox.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/json_labels/yolox.json"
     }
   ],
   "AIModelsSupportedByApplication": [],
   "AIModelLocation": "/etc/models/",
   "AILabelLocation": "/etc/labels/",
-  "ConfigFile": "",
-  "ConfigFileLocation": "",
+  "ConfigFile": "config-multi-input-output-object-detection.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "MediaFileUrl": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/artifacts/videos/video.mp4",
+  "MediaFileName": "video.mp4",
+  "MediaLocation": "/etc/media/",
   "ApplicationKeyWords": [
     "MultiInputOuputObjectDetection",
     "MultiInputOutputInferencing"

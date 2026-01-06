@@ -92,6 +92,9 @@ typedef enum {
 GST_VIDEO_API GType gst_video_converter_backend_get_type (void);
 #define GST_TYPE_VCE_BACKEND (gst_video_converter_backend_get_type())
 
+GST_API GType gst_fcv_op_mode_get_type (void);
+#define GST_TYPE_FCV_OP_MODE (gst_fcv_op_mode_get_type())
+
 /**
  * GstVideoConvRotate:
  * @GST_VCE_ROTATE_0: No rotation.

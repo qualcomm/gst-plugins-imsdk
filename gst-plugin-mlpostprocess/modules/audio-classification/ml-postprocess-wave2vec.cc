@@ -7,7 +7,7 @@
 
 #include <climits>
 
-#define DEFAULT_THRESHOLD 0.70
+static const float kDefaultThreshold = 0.70;
 
 /* kModuleCaps
 *
@@ -29,17 +29,18 @@ static const char* kModuleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
 std::string Module::Caps() {
 
-  return std::string(kModuleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
+
   if (!labels_parser_.LoadFromFile(labels_file)) {
     LOG(logger_, kError, "Failed to parse labels");
     return false;
@@ -51,8 +52,7 @@ bool Module::Configure(const std::string& labels_file,
     if (!root || root->GetType() != JsonType::Object)
       return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
+    threshold_ = root->GetNumber("confidence") / 100;
     LOG(logger_, kLog, "Threshold: %f", threshold_);
   }
 
@@ -91,6 +91,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
     for (uint32_t c = 0; c < num_classes; ++c) {
       float val = data[idx * num_classes + c];
+
       if (val > max_conf) {
         max_conf = val;
         max_class = c;
@@ -120,5 +121,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

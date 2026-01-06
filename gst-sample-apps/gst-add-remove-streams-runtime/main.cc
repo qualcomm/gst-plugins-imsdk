@@ -485,6 +485,8 @@ cleanup:
   if (stream->qmmf_pad) {
     // Release the unlinked pad
     gst_element_release_request_pad (qtiqmmfsrc, stream->qmmf_pad);
+
+    gst_object_unref(stream->qmmf_pad);
   }
 
   gst_object_unref (qtiqmmfsrc);
@@ -517,6 +519,8 @@ release_stream (GstAppContext * appctx, GstStreamInf * stream)
 
   // Release the unlinked pad
   gst_element_release_request_pad (qtiqmmfsrc, stream->qmmf_pad);
+
+  gst_object_unref(stream->qmmf_pad);
 
   gst_object_unref (qtiqmmfsrc);
 
@@ -773,7 +777,6 @@ main (gint argc, gchar * argv[])
   g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
   g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), mloop);
   g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), &appctx);
-  gst_object_unref (bus);
 
   // Register function for handling interrupt signals with the main loop.
   intrpt_watch_id =
@@ -793,6 +796,7 @@ main (gint argc, gchar * argv[])
   gst_element_set_state (pipeline, GST_STATE_NULL);
 
   g_source_remove (intrpt_watch_id);
+
   g_main_loop_unref (mloop);
 
   // Unlink all stream if any
@@ -800,6 +804,11 @@ main (gint argc, gchar * argv[])
 
   // Remove qmmfsrc from the pipeline
   gst_bin_remove (GST_BIN (appctx.pipeline), qtiqmmfsrc);
+
+  gst_bus_remove_signal_watch (bus);
+  gst_object_unref(bus);
+
+  gst_object_unref(pipeline);
 
   // Free the streams list
   if (appctx.streams_list != NULL) {

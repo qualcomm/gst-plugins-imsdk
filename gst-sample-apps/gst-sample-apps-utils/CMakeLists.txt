@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 project(GST_SAMPLE_APPS_UTILS_LIB
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
   LANGUAGES C CXX
@@ -29,6 +29,11 @@ set_target_properties(${GST_SAMPLE_APPS_UTILS} PROPERTIES
 
 target_include_directories(${GST_SAMPLE_APPS_UTILS} PUBLIC
   ${GST_INCLUDE_DIRS})
+
+target_include_directories(${GST_SAMPLE_APPS_UTILS} INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0/gst/sampleapps>
+)
 
 target_link_libraries(${GST_SAMPLE_APPS_UTILS} PRIVATE
   ${GST_LIBRARIES}

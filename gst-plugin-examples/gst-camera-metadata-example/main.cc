@@ -34,6 +34,11 @@ namespace camera = qmmf;
   g_string_append_printf (string, " %.*s Plugin Properties %.*s\n", \
       30, EQUAL_LINE, 30, EQUAL_LINE);
 
+#define APPEND_PAD_PROPERTIES_SECTION(name, string) \
+  g_string_append_printf (string, " %.*s %s Pad %.*s\n", \
+      (gint)(36 - strlen(name) / 2), DASH_LINE, name, \
+      (gint)(37 - (strlen(name) / 2) - (strlen(name) % 2)), DASH_LINE);
+
 #define APPEND_ELEMENT_SIGNALS_SECTION(string) \
   g_string_append_printf (string, " %.*s Plugin Signals %.*s\n", \
       31, EQUAL_LINE, 32, EQUAL_LINE);
@@ -54,6 +59,7 @@ namespace camera = qmmf;
 #define PAUSED_STATE_OPTION            "2"
 #define PLAYING_STATE_OPTION           "3"
 #define CHECK_METADATA_OPTION          "4"
+#define CAPTURE_META_OPTION            "5"
 
 #define PLUGIN_MODE_OPTION             "p"
 #define QUIT_OPTION                    "q"
@@ -88,7 +94,8 @@ typedef enum {
   DUMP_ALL_TAGS,
   DUMP_CUSTOM_TAGS,
   GET_TAG,
-  SET_TAG
+  SET_TAG,
+  CAPTURE_TAG
 } GstMetadataMenuOption;
 
 typedef enum {
@@ -164,6 +171,13 @@ gst_sample_release (GstSample * sample)
 #endif
 }
 
+static void
+gst_camera_metadata_release (gpointer data)
+{
+  ::camera::CameraMetadata *meta = (::camera::CameraMetadata*) data;
+  delete meta;
+}
+
 static gboolean
 wait_stdin_message (GAsyncQueue * queue, gchar ** input)
 {
@@ -217,8 +231,8 @@ print_pipeline_elements (GstElement * pipeline, GstStructure * plugins,
         gchar *name = gst_element_get_name (element);
         gchar *field = g_strdup_printf ("%u", index);
 
-        if (gst_element_get_factory (element) ==
-            gst_element_factory_find (factory_name)) {
+        if ((factory_name == NULL) || (gst_element_get_factory (element) ==
+            gst_element_factory_find (factory_name))) {
           gst_structure_set (plugins, field, G_TYPE_STRING, name, NULL);
           g_string_append_printf (graph, "   (%2u) %-25s\n", index, name);
 
@@ -450,6 +464,9 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
       g_async_queue_push (appctx->messages,
           gst_structure_new_empty (PIPELINE_EOS_MESSAGE));
 
+      // Stop pipeline and quit main loop in case user interrupt has been sent.
+      gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+      g_main_loop_quit (appctx->mloop);
       break;
     }
     case GST_MESSAGE_REQUEST_STATE: {
@@ -1790,6 +1807,26 @@ print_metadata_menu (gchar * prop)
 }
 
 static void
+print_metadata_menu_for_capture (gchar * prop)
+{
+  gint spaces = (strlen (prop) > 14 ? 67 : 66);
+
+  g_print ("\n%.25s %s %.25s\n", DASH_LINE, prop, DASH_LINE);
+
+  g_print ("   (%d) %-25s\n", LIST_ALL_TAGS, "List all available tags");
+  g_print ("   (%d) %-25s\n", DUMP_ALL_TAGS, "Dump all tags values in a file");
+  g_print ("   (%d) %-25s\n", DUMP_CUSTOM_TAGS,
+      "Dump custom tags values in a file");
+  g_print ("   (%d) %-25s\n", GET_TAG, "Get a tag");
+  g_print ("   (%d) %-25s\n", SET_TAG, "Set a tag");
+  g_print ("   (%d) %-25s\n", CAPTURE_TAG, "Capture with metadata settings");
+
+  g_print ("%.*s\n", spaces, DASH_LINE);
+  g_print ("   (%s) %-25s\n", MENU_BACK_OPTION, "Back");
+  g_print ("\nChoose an option: ");
+}
+
+static void
 print_menu ()
 {
   g_print ("\n%.25s MENU %.25s\n", DASH_LINE, DASH_LINE);
@@ -1797,6 +1834,17 @@ print_menu ()
   g_print ("   (%d) %-25s\n", IMAGE_METADATA_OPTION, "image-metadata");
   g_print ("   (%d) %-25s\n", STATIC_METADATA_OPTION, "static-metadata");
   g_print ("   (%d) %-25s\n", SESSION_METADATA_OPTION, "session-metadata");
+
+  g_print ("%.56s\n", DASH_LINE);
+  g_print ("   (%s) %-25s\n", QUIT_OPTION, "Quit");
+  g_print ("\nChoose an option: ");
+}
+
+static void
+print_menu_for_capture ()
+{
+  g_print ("\n%.25s MENU %.25s\n", DASH_LINE, DASH_LINE);
+  g_print ("   (%d) %-25s\n", VIDEO_METADATA_OPTION, "video-metadata");
 
   g_print ("%.56s\n", DASH_LINE);
   g_print ("   (%s) %-25s\n", QUIT_OPTION, "Quit");
@@ -1883,6 +1931,343 @@ handle_tag_menu (GstAppContext * appctx, gchar * prop,
 
 exit:
   g_free (str);
+  return active;
+}
+
+static void
+get_object_properties (GObject * object, GstState state, guint * index,
+    GstStructure * props, GString * options)
+{
+  GParamSpec **propspecs;
+  guint i = 0, nprops = 0;
+
+  propspecs = g_object_class_list_properties (
+      G_OBJECT_GET_CLASS (object), &nprops);
+
+  for (i = 0; i < nprops; i++) {
+    GParamSpec *param = propspecs[i];
+    gchar *field = NULL, *property = NULL;
+    const gchar *name = NULL;
+
+    // List only the properties that are mutable in current state.
+    if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (param, state))
+      continue;
+
+    name = g_param_spec_get_name (param);
+
+    field = g_strdup_printf ("%u", (*index));
+    property = !GST_IS_PAD (object) ? g_strdup (name) :
+        g_strdup_printf ("%s::%s", GST_PAD_NAME (object), name);
+
+    gst_structure_set (props, field, G_TYPE_STRING, property, NULL);
+
+    g_string_append_printf (options, "   (%2u) %-25s: %s\n", (*index),
+        name, g_param_spec_get_blurb (param));
+
+    g_free (property);
+    g_free (field);
+
+    // Increment the index for the next option.
+    (*index)++;
+  }
+
+  return;
+}
+
+static void
+get_object_signals (GObject * object, guint * index, GstStructure * signals,
+    GString * options)
+{
+  GType type;
+
+  for (type = G_OBJECT_TYPE (object); type; type = g_type_parent (type)) {
+    guint i = 0, n = 0, *signal_ids = NULL, n_signals = 0;
+    gchar *field = NULL;
+
+    if (type == GST_TYPE_ELEMENT || type == GST_TYPE_OBJECT)
+      break;
+
+    // Ignore GstBin elements.
+    if (type == GST_TYPE_BIN && G_OBJECT_TYPE (object) != GST_TYPE_BIN)
+      continue;
+
+    // Lists the signals that this element type has.
+    signal_ids = g_signal_list_ids (type, &n_signals);
+
+    // Go over each signal and query additional information.
+    for (i = 0; i < n_signals; i++) {
+      GSignalQuery query = {};
+
+      g_signal_query (signal_ids[i], &query);
+
+      if (query.signal_flags & G_SIGNAL_ACTION) {
+        field = g_strdup_printf ("%u", (*index));
+        gst_structure_set (signals, field, G_TYPE_UINT,
+            query.signal_id, NULL);
+
+        g_clear_pointer (&field, g_free);
+
+        g_string_append_printf (options, "   (%2u) %-25s: %s (%s* object",
+            (*index), query.signal_name, g_type_name (query.return_type),
+            g_type_name (type));
+
+        for (n = 0; n < query.n_params; n++) {
+          GType ptype = query.param_types[n];
+          gboolean asterisk = g_type_is_pointer (ptype);
+
+          g_string_append_printf (options, ", %s%s arg%d",
+              g_type_name (ptype), asterisk ? "*" : "", n);
+        }
+
+        g_string_append_printf (options, ")\n");
+
+        // Increment the index for the next option.
+        (*index)++;
+      }
+    }
+
+    // Free the allocated resources for the next iteration.
+    g_free (signal_ids);
+    signal_ids = NULL;
+  }
+
+  return;
+}
+
+static void
+print_element_options (GstElement * element, GstStructure * props,
+    GstStructure * signals, gboolean is_capture)
+{
+  GString *options = g_string_new (NULL);
+  GstState state = GST_STATE_VOID_PENDING;
+  guint index = 0;
+
+  APPEND_MENU_HEADER (options);
+
+  if (!is_capture) {
+    // Get the current state of the element.
+    gst_element_get_state (element, &state, NULL, 0);
+
+    // Get the plugin element properties.
+    APPEND_ELEMENT_PROPERTIES_SECTION (options);
+    get_object_properties (G_OBJECT (element), state, &index, props, options);
+
+    {
+      GstIterator *it = NULL;
+      gboolean done = FALSE;
+
+      // Iterate over the element pads and check their properties.
+      it = gst_element_iterate_pads (element);
+
+      while (!done) {
+        GValue item = G_VALUE_INIT;
+        GObject *object = NULL;
+
+        switch (gst_iterator_next (it, &item)) {
+          case GST_ITERATOR_OK:
+            object = G_OBJECT (g_value_get_object (&item));
+
+            APPEND_PAD_PROPERTIES_SECTION (GST_PAD_NAME (object), options);
+            get_object_properties (object, state, &index, props, options);
+
+            g_value_reset (&item);
+            break;
+          case GST_ITERATOR_RESYNC:
+            gst_iterator_resync (it);
+            break;
+          case GST_ITERATOR_ERROR:
+          case GST_ITERATOR_DONE:
+            done = TRUE;
+            break;
+        }
+      }
+
+      gst_iterator_free (it);
+    }
+  }
+
+  // Get the plugin element signals.
+  APPEND_ELEMENT_SIGNALS_SECTION (options);
+  get_object_signals (G_OBJECT (element), &index, signals, options);
+
+  APPEND_OTHER_OPTS_SECTION (options);
+  g_string_append_printf (options, "   (%2s) %-25s: %s\n", MENU_BACK_OPTION,
+      "Back", "Return to the previous menu");
+
+  g_print ("%s", options->str);
+  g_string_free (options, TRUE);
+}
+
+static gboolean
+gst_signal_menu (GstElement * element, GAsyncQueue * messages,
+    const guint signal_id, gboolean is_capture)
+{
+  GValue *arguments = NULL, value = G_VALUE_INIT;
+  GSignalQuery query;
+  gchar *input = NULL, *status = NULL;
+  guint num = 0;
+  ::camera::CameraMetadata *meta = nullptr;
+  GPtrArray *metas = NULL;
+  gboolean success = FALSE;
+  gint imgtype = 0;
+  guint n_images = 0;
+
+  // Query the signal parameters.
+  g_signal_query (signal_id, &query);
+
+  // Allocate memory for the array if signal arguments.
+  arguments = g_new0 (GValue, query.n_params + 1);
+
+  // First signal argument is always the GsElement to which it belongs.
+  g_value_init (&arguments[0], GST_TYPE_ELEMENT);
+  g_value_set_object (&arguments[0], element);
+
+  for (num = 0; num < query.n_params; num++) {
+    GString *info = NULL;
+    GType gtype = query.param_types[num];
+    gboolean asterisk = g_type_is_pointer (gtype);
+
+    // Initilaize the GValue container for current argument.
+    g_value_init (&arguments[num + 1], gtype);
+
+    // TODO Ignore arguments of type GPtrArray, for now.
+    if (gtype == G_TYPE_PTR_ARRAY)
+      continue;
+
+    info = g_string_new (NULL);
+
+    // Add additional information if the argument is enum.
+    if (G_TYPE_IS_ENUM (gtype)) {
+      GEnumClass *enumklass = NULL;
+      guint idx = 0;
+
+      g_string_append_printf (info, "\nPossible enum values:\n");
+      enumklass = G_ENUM_CLASS (g_type_class_ref (gtype));
+
+      for (idx = 0; idx < enumklass->n_values; idx++) {
+        GEnumValue *genum = &(enumklass->values[idx]);
+
+        g_string_append_printf (info, "   (%d): %s - %s\n",
+            genum->value, genum->value_nick, genum->value_name);
+      }
+
+      g_type_class_unref (enumklass);
+    }
+
+    g_string_append_printf (info, "Enter '%s%s' value for arg%u: ",
+        g_type_name (gtype), asterisk ? "*" : "", num);
+
+    do {
+      g_print ("%s", info->str);
+
+      // If FALSE is returned termination signal has been issued.
+      if (!wait_stdin_message (messages, &input))
+        return FALSE;
+
+      // Empty inputs are not acceptable, deserialization must be successful.
+    } while (g_str_equal (input, "") ||
+        !gst_value_deserialize (&arguments[num + 1], input));
+
+    g_clear_pointer (&input, g_free);
+    g_string_free (info, TRUE);
+  }
+
+  g_value_init (&value, query.return_type);
+
+  // Used for capture image with metadata
+  if (is_capture) {
+    g_object_get (G_OBJECT (element), "video-metadata", &meta, NULL);
+
+    metas = g_ptr_array_new_full (0, gst_camera_metadata_release);
+
+    imgtype = g_value_get_enum (&arguments[1]);
+    n_images = g_value_get_uint (&arguments[2]);
+
+    for (guint idx = 0; idx < n_images; idx++) {
+      // Clone metadata for each image to avoid use-after-free
+      ::camera::CameraMetadata *meta_copy = new ::camera::CameraMetadata(*meta);
+      g_ptr_array_add (metas, (gpointer) meta_copy);
+    }
+
+    g_signal_emit_by_name (element, "capture-image", imgtype, n_images, metas,
+        &success);
+
+    // Clean up the original metadata
+    delete meta;
+    meta = nullptr;
+
+    // Free the metadatas array as it's no longer needed.
+    g_ptr_array_free (metas, TRUE);
+  } else {
+    g_signal_emitv (arguments, signal_id, 0, &value);
+  }
+
+  for (num = 0; num < (query.n_params + 1); num++)
+    g_value_reset (&arguments[num]);
+
+  g_free (arguments);
+
+  if (is_capture)
+    g_print ("\n Capture signal return value: %d\n", success);
+  else {
+    status = gst_value_serialize (&value);
+
+    g_print ("\n Signal return value: '%s'\n", status);
+    g_free (status);
+  }
+
+  g_value_reset (&value);
+
+  return TRUE;
+}
+
+static gboolean
+capture_with_metadata (GstAppContext * appctx, gchar * prop,
+    GstMetadataMenuOption option, gchar * chosen_index)
+{
+  GstElement *camsrc = auto_select_qmmf_element_from_pipeline (appctx,
+      chosen_index);
+  GstStructure *props = NULL, *signals = NULL;
+  gchar *input = NULL;
+  gboolean active = TRUE;
+
+  if (NULL == camsrc) {
+    g_printerr ("ERROR: camsrc is NULL\n");
+    return FALSE;
+  }
+
+  props = gst_structure_new_empty ("properties");
+  signals = gst_structure_new_empty ("signals");
+
+  // Print signal only for choosen qtiqmmfsrc
+  print_element_options (camsrc, props, signals, TRUE);
+
+  g_print ("\n\nChoose an option inside qtiqmmfsrc signals: ");
+
+  // If FALSE is returned termination signal has been issued.
+  active = wait_stdin_message (appctx->messages, &input);
+
+  if (active && gst_structure_has_field (signals, input)) {
+    guint signal_id = 0;
+
+    gst_structure_get_uint (signals, input, &signal_id);
+
+    // Check if choosen signal is "capture-image"
+    GSignalQuery query;
+    g_signal_query (signal_id, &query);
+    active = gst_signal_menu (camsrc, appctx->messages, signal_id,
+        (query.signal_name &&
+        g_strcmp0 (query.signal_name, "capture-image") == 0 ? TRUE : FALSE));
+  } else if (active) {
+    g_print ("Invalid option: '%s'\n", input);
+  }
+
+  g_free (input);
+
+  gst_structure_free (props);
+  gst_structure_free (signals);
+  gst_object_unref (camsrc);
+
   return active;
 }
 
@@ -2029,6 +2414,83 @@ exit:
 }
 
 static gboolean
+capture_metadata_menu (GstAppContext * appctx,
+    gchar ** prop, ::camera::CameraMetadata *meta_collect)
+{
+  ::camera::CameraMetadata *meta = nullptr;
+  GstElement *camsrc = NULL;
+  gchar *str = NULL, *endptr = NULL;
+  gboolean active = TRUE;
+  gint input = 0;
+  gchar *chosen_index = NULL;
+
+  print_metadata_menu_for_capture (*prop);
+
+  if (!wait_stdin_message (appctx->messages, &str))
+    return FALSE;
+
+  if (g_str_equal (str, MENU_BACK_OPTION)) {
+    *prop = NULL;
+    goto exit;
+  }
+
+  camsrc = select_element_from_pipeline (appctx, "qtiqmmfsrc", &chosen_index);
+  if (NULL == camsrc) {
+    g_printerr ("ERROR: camsrc is NULL\n");
+    goto exit;
+  }
+
+  g_object_get (G_OBJECT (camsrc), *prop, &meta, NULL);
+  gst_object_unref (camsrc);
+
+  if (meta == NULL) {
+    g_printerr ("ERROR: Meta not found\n");
+    goto exit;
+  }
+
+  input = g_ascii_strtoll ((const gchar *) str, &endptr, 0);
+
+  switch (input) {
+    case LIST_ALL_TAGS:
+      list_all_tags (meta);
+      break;
+    case DUMP_ALL_TAGS:
+      dump_all_tags (meta, *prop);
+      break;
+    case DUMP_CUSTOM_TAGS:
+      g_print ("Enter full path of config file (or press Enter to return): ");
+      if (!wait_stdin_message (appctx->messages, &str)) {
+        active = FALSE;
+        goto exit;
+      } else if (!g_str_equal (str, "\n")) {
+        dump_custom_tags (meta, str, *prop);
+      }
+      break;
+    case GET_TAG:
+      active = handle_tag_menu (appctx, *prop, GET_TAG, chosen_index);
+      break;
+    case SET_TAG:
+      active = handle_tag_menu (appctx, *prop, SET_TAG, chosen_index);
+      break;
+    case CAPTURE_TAG:
+      active = capture_with_metadata (appctx, *prop, SET_TAG, chosen_index);
+      break;
+    default:
+      break;
+  }
+
+exit:
+  if (meta != NULL) {
+    delete meta;
+    meta = NULL;
+  }
+
+  g_free (str);
+  g_free (chosen_index);
+  return active;
+}
+
+static gboolean
 handle_meta_menu (GstAppContext * appctx, gchar ** prop)
 {
   const static gchar *prop_names[] = {"video-metadata", "image-metadata",
@@ -2057,6 +2519,44 @@ handle_meta_menu (GstAppContext * appctx, gchar ** prop)
   return TRUE;
 }
 
+static gboolean
+handle_meta_menu_for_capture (GstAppContext * appctx, gchar ** capture)
+{
+  const static gchar *prop_names[] = {"video-metadata"};
+  gchar *str = NULL;
+  GstState current_state = GST_STATE_VOID_PENDING;
+
+  // Validate pipeline is in PLAYING state
+  gst_element_get_state (appctx->pipeline, &current_state, NULL, 0);
+  if (current_state != GST_STATE_PLAYING) {
+    g_printerr ("ERROR: Capture metadata can only be set in PLAYING state\n");
+    return FALSE;
+  }
+
+  print_menu_for_capture ();
+
+  if (!wait_stdin_message (appctx->messages, &str))
+    return FALSE;
+
+  if (g_str_equal (str, QUIT_OPTION)) {
+    g_free (str);
+    return FALSE;
+  }
+
+  {
+    gchar *endptr;
+    gint input = g_ascii_strtoll ((const gchar *) str, &endptr, 0);
+
+    if (input == VIDEO_METADATA_OPTION)
+      *capture = const_cast <gchar *> (prop_names[input-1]);
+    else
+      g_printerr ("Input is outside the GstMainMenuOption.\n");
+  }
+
+  g_free (str);
+  return TRUE;
+}
+
 static void
 print_pipeline_options (GstElement * pipeline)
 {
@@ -2077,6 +2577,8 @@ print_pipeline_options (GstElement * pipeline)
   APPEND_OTHER_OPTS_SECTION (options);
   g_string_append_printf (options, "   (%s) %-25s: %s\n", CHECK_METADATA_OPTION,
       "META", "Check or set metadata in READY/PAUSED/PLAYING state");
+  g_string_append_printf (options, "   (%s) %-25s: %s\n", CAPTURE_META_OPTION,
+      "Capture with META", "Input metadata for image capture");
   g_string_append_printf (options, "   (%s) %-25s: %s\n", PLUGIN_MODE_OPTION,
       "Plugin Mode", "Choose a plugin which to control");
   g_string_append_printf (options, "   (%s) %-25s: %s\n", QUIT_OPTION,
@@ -2087,7 +2589,8 @@ print_pipeline_options (GstElement * pipeline)
 }
 
 static gboolean
-gst_pipeline_menu (GstAppContext *appctx, GstElement ** element, gchar ** prop)
+gst_pipeline_menu (GstAppContext *appctx, GstElement ** element, gchar ** prop,
+    gchar ** capture)
 {
   gchar *input = NULL;
   gboolean active = TRUE;
@@ -2146,39 +2649,49 @@ gst_pipeline_menu (GstAppContext *appctx, GstElement ** element, gchar ** prop)
       goto exit;
     }
 
+  } else if (g_str_equal (input, CAPTURE_META_OPTION)) {
+    gst_element_get_state (pipeline, &target_state, NULL, 0);
+
+    if (target_state == GST_STATE_PLAYING) {
+      g_print ("\nCheck metadata now: \n");
+      if ((*prop) == NULL)
+        active = handle_meta_menu_for_capture (appctx, capture);
+      else {
+        g_printerr ("(*prop) == NULL in handle_meta_menu_for_capture()\n");
+        active = FALSE;
+      }
+      goto exit;
+    } else {
+      g_print ("\nMetadata for capture should be set or check in PLAYING state.\n");
+      active = FALSE;
+      goto exit;
+    }
+
   } else if (g_str_equal (input, PLUGIN_MODE_OPTION)) {
     GstStructure *plugins = gst_structure_new_empty ("plugins");
 
     // Print a graph with all plugins in the pipeline.
-    gint index = print_pipeline_elements (pipeline, plugins, "qtiqmmfsrc");
+    print_pipeline_elements (pipeline, plugins, NULL);
 
-    if (index == 1) {
-      g_print ("\nChoose the only one selection.\n");
+    // Choose a plugin to control.
+    g_print ("\nEnter plugin name or its index (or press Enter to return): ");
 
-      const gchar *name = gst_structure_get_string (plugins, "0");
+    // If FALSE is returned termination signal has been issued.
+    if (!wait_stdin_message (messages, &input)) {
+      gst_structure_free (plugins);
+      active = FALSE;
+      goto exit;
+    }
+
+    if (gst_structure_has_field (plugins, input)) {
+      const gchar *name = gst_structure_get_string (plugins, input);
 
       if ((*element = gst_bin_get_by_name (GST_BIN (pipeline), name)) == NULL)
         g_printerr ("Invalid plugin index!\n");
-    } else {
-      // Choose a plugin to control.
-      g_print ("\nEnter plugin name or its index (or press Enter to return): ");
 
-      // If FALSE is returned termination signal has been issued.
-      if (!wait_stdin_message (messages, &input)) {
-        gst_structure_free (plugins);
-        goto exit;
-      }
-
-      if (gst_structure_has_field (plugins, input)) {
-        const gchar *name = gst_structure_get_string (plugins, input);
-
-        if ((*element = gst_bin_get_by_name (GST_BIN (pipeline), name)) == NULL)
-          g_printerr ("Invalid plugin index!\n");
-
-      } else if (!g_str_equal (input, "")) {
-        if ((*element = gst_bin_get_by_name (GST_BIN (pipeline), input)) == NULL)
-          g_printerr ("Invalid plugin name!\n");
-      }
+    } else if (!g_str_equal (input, "")) {
+      if ((*element = gst_bin_get_by_name (GST_BIN (pipeline), input)) == NULL)
+        g_printerr ("Invalid plugin name!\n");
     }
 
     gst_structure_free (plugins);
@@ -2193,136 +2706,6 @@ gst_pipeline_menu (GstAppContext *appctx, GstElement ** element, gchar ** prop)
 exit:
   g_free (input);
   return active;
-}
-
-static void
-get_object_properties (GObject * object, GstState state, guint * index,
-    GstStructure * props, GString * options)
-{
-  GParamSpec **propspecs;
-  guint i = 0, nprops = 0;
-
-  propspecs = g_object_class_list_properties (
-      G_OBJECT_GET_CLASS (object), &nprops);
-
-  for (i = 0; i < nprops; i++) {
-    GParamSpec *param = propspecs[i];
-    gchar *field = NULL, *property = NULL;
-    const gchar *name = NULL;
-
-    // List only the properties that are mutable in current state.
-    if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (param, state))
-      continue;
-
-    name = g_param_spec_get_name (param);
-
-    field = g_strdup_printf ("%u", (*index));
-    property = !GST_IS_PAD (object) ? g_strdup (name) :
-        g_strdup_printf ("%s::%s", GST_PAD_NAME (object), name);
-
-    gst_structure_set (props, field, G_TYPE_STRING, property, NULL);
-
-    g_string_append_printf (options, "   (%2u) %-25s: %s\n", (*index),
-        name, g_param_spec_get_blurb (param));
-
-    g_free (property);
-    g_free (field);
-
-    // Increment the index for the next option.
-    (*index)++;
-  }
-
-  return;
-}
-
-static void
-get_object_signals (GObject * object, guint * index, GstStructure * signals,
-    GString * options)
-{
-  GType type;
-
-  for (type = G_OBJECT_TYPE (object); type; type = g_type_parent (type)) {
-    guint i = 0, n = 0, *signal_ids = NULL, n_signals = 0;
-    gchar *field = NULL;
-
-    if (type == GST_TYPE_ELEMENT || type == GST_TYPE_OBJECT)
-      break;
-
-    // Ignore GstBin elements.
-    if (type == GST_TYPE_BIN && G_OBJECT_TYPE (object) != GST_TYPE_BIN)
-      continue;
-
-    // Lists the signals that this element type has.
-    signal_ids = g_signal_list_ids (type, &n_signals);
-
-    // Go over each signal and query additional information.
-    for (i = 0; i < n_signals; i++) {
-      GSignalQuery query = {};
-
-      g_signal_query (signal_ids[i], &query);
-
-      // Remain capture-image and cancel-capture. Index starts from capture.
-      if (query.signal_flags & G_SIGNAL_ACTION) {
-        field = g_strdup_printf ("%u", (*index));
-        gst_structure_set (signals, field, G_TYPE_UINT,
-            query.signal_id, NULL);
-
-        g_clear_pointer (&field, g_free);
-
-        g_string_append_printf (options, "   (%2u) %-25s: %s (%s* object",
-            (*index), query.signal_name, g_type_name (query.return_type),
-            g_type_name (type));
-
-        for (n = 0; n < query.n_params; n++) {
-          GType ptype = query.param_types[n];
-          gboolean asterisk = g_type_is_pointer (ptype);
-
-          g_string_append_printf (options, ", %s%s arg%d",
-              g_type_name (ptype), asterisk ? "*" : "", n);
-        }
-
-        g_string_append_printf (options, ")\n");
-
-        // Increment the index for the next option.
-        (*index)++;
-      }
-    }
-
-    // Free the allocated resources for the next iteration.
-    g_free (signal_ids);
-    signal_ids = NULL;
-  }
-
-  return;
-}
-
-static void
-print_element_options (GstElement * element, GstStructure * props,
-    GstStructure * signals)
-{
-  GString *options = g_string_new (NULL);
-  GstState state = GST_STATE_VOID_PENDING;
-  guint index = 0;
-
-  APPEND_MENU_HEADER (options);
-
-  // Get the current state of the element.
-  gst_element_get_state (element, &state, NULL, 0);
-
-  // Get the plugin element properties.
-  APPEND_ELEMENT_PROPERTIES_SECTION (options);
-  get_object_properties (G_OBJECT (element), state, &index, props, options);
-
-  // Get the plugin element signals.
-  APPEND_ELEMENT_SIGNALS_SECTION (options);
-  get_object_signals (G_OBJECT (element), &index, signals, options);
-
-  APPEND_OTHER_OPTS_SECTION (options);
-  g_string_append_printf (options, "   (%2s) %-25s: %s\n", MENU_BACK_OPTION,
-      "Back", "Return to the previous menu");
-
-  g_print ("%s", options->str);
-  g_string_free (options, TRUE);
 }
 
 static void
@@ -2545,92 +2928,6 @@ gst_property_menu (GstElement * element, GAsyncQueue * messages,
 }
 
 static gboolean
-gst_signal_menu (GstElement * element, GAsyncQueue * messages,
-    const guint signal_id)
-{
-  GValue *arguments = NULL, value = G_VALUE_INIT;
-  GSignalQuery query;
-  gchar *input = NULL, *status = NULL;
-  guint num = 0;
-
-  // Query the signal parameters.
-  g_signal_query (signal_id, &query);
-
-  // Allocate memory for the array if signal arguments.
-  arguments = g_new0 (GValue, query.n_params + 1);
-
-  // First signal argument is always the GsElement to which it belongs.
-  g_value_init (&arguments[0], GST_TYPE_ELEMENT);
-  g_value_set_object (&arguments[0], element);
-
-  for (num = 0; num < query.n_params; num++) {
-    GString *info = NULL;
-    GType gtype = query.param_types[num];
-    gboolean asterisk = g_type_is_pointer (gtype);
-
-    // Initilaize the GValue container for current argument.
-    g_value_init (&arguments[num + 1], gtype);
-
-    // TODO Ignore arguments of type GPtrArray, for now.
-    if (gtype == G_TYPE_PTR_ARRAY)
-      continue;
-
-    info = g_string_new (NULL);
-
-    // Add additional information if the argument is enum.
-    if (G_TYPE_IS_ENUM (gtype)) {
-      GEnumClass *enumklass = NULL;
-      guint idx = 0;
-
-      g_string_append_printf (info, "\nPossible enum values:\n");
-      enumklass = G_ENUM_CLASS (g_type_class_ref (gtype));
-
-      for (idx = 0; idx < enumklass->n_values; idx++) {
-        GEnumValue *genum = &(enumklass->values[idx]);
-
-        g_string_append_printf (info, "   (%d): %s - %s\n",
-            genum->value, genum->value_nick, genum->value_name);
-      }
-
-      g_type_class_unref (enumklass);
-    }
-
-    g_string_append_printf (info, "Enter '%s%s' value for arg%u: ",
-        g_type_name (gtype), asterisk ? "*" : "", num);
-
-    do {
-      g_print ("%s", info->str);
-
-      // If FALSE is returned termination signal has been issued.
-      if (!wait_stdin_message (messages, &input))
-        return FALSE;
-
-      // Empty inputs are not acceptable, deserialization must be successful.
-    } while (g_str_equal (input, "") ||
-        !gst_value_deserialize (&arguments[num + 1], input));
-
-    g_clear_pointer (&input, g_free);
-    g_string_free (info, TRUE);
-  }
-
-  g_value_init (&value, query.return_type);
-  g_signal_emitv (arguments, signal_id, 0, &value);
-
-  for (num = 0; num < (query.n_params + 1); num++)
-    g_value_reset (&arguments[num]);
-
-  g_free (arguments);
-
-  status = gst_value_serialize (&value);
-  g_value_reset (&value);
-
-  g_print ("\n Signal return value: '%s'\n", status);
-  g_free (status);
-
-  return TRUE;
-}
-
-static gboolean
 gst_element_menu (GstElement ** element, GAsyncQueue * messages)
 {
   GstStructure *props = NULL, *signals = NULL;
@@ -2640,7 +2937,7 @@ gst_element_menu (GstElement ** element, GAsyncQueue * messages)
   props = gst_structure_new_empty ("properties");
   signals = gst_structure_new_empty ("signals");
 
-  print_element_options (*element, props, signals);
+  print_element_options (*element, props, signals, FALSE);
 
   g_print ("\n\nChoose an option: ");
 
@@ -2656,16 +2953,17 @@ gst_element_menu (GstElement ** element, GAsyncQueue * messages)
     guint signal_id = 0;
 
     gst_structure_get_uint (signals, input, &signal_id);
-    active = gst_signal_menu (*element, messages, signal_id);
+    active = gst_signal_menu (*element, messages, signal_id, FALSE);
   } else if (active && g_str_equal (input, MENU_BACK_OPTION)) {
     gst_object_unref (*element);
     *element = NULL;
   } else if (active) {
-    g_print ("Invalid option: '%s', and don't input properties here.\n", input);
+    g_print ("Invalid option: '%s'\n", input);
   }
 
   g_free (input);
 
+  gst_structure_free (props);
   gst_structure_free (signals);
 
   return active;
@@ -2677,6 +2975,7 @@ main_menu (gpointer userdata)
   GstAppContext *appctx = GST_APP_CONTEXT_CAST (userdata);
   GstElement *element = NULL;
   gchar *prop = NULL;
+  gchar *capture = NULL;
   gboolean active = TRUE;
 
   ::camera::CameraMetadata *meta_collect = nullptr;
@@ -2684,12 +2983,14 @@ main_menu (gpointer userdata)
 
   while (active) {
     // In case no element has been chosen enter in the pipeline menu.
-    if (NULL == element && prop == NULL)
-      active = gst_pipeline_menu (appctx, &element, &prop);
+    if (NULL == element && prop == NULL && capture == NULL)
+      active = gst_pipeline_menu (appctx, &element, &prop, &capture);
     else if (NULL != element && prop == NULL)
       active = gst_element_menu (&element, appctx->messages);
-    else if (NULL == element && prop != NULL)
+    else if (NULL == element && prop != NULL && capture == NULL)
       active = handle_metadata_menu (appctx, &prop, meta_collect);
+    else if (NULL == element && prop == NULL && capture != NULL)
+      active = capture_metadata_menu (appctx, &capture, meta_collect);
     else
       g_printerr ("Invalid menu state, element != NULL && prop != NULL\n");
   }

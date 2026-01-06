@@ -8,12 +8,12 @@ add_library(${GST_QTI_C2_ADEC} SHARED
 )
 
 target_include_directories(${GST_QTI_C2_ADEC} PRIVATE
-  ${CMAKE_SOURCE_DIR}
   ${GST_INCLUDE_DIRS}
   ${GST_QCOM_UTILS_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_C2_ADEC} PRIVATE
+  c2engine_interface
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}

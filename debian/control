@@ -363,6 +363,7 @@ Depends:
  ${misc:Depends},
  gstreamer1.0-plugins-qcom,
 Description: Sample applications or utilities for Qualcomm GStreamer (sample apps).
+Build-Profiles: <sample_apps>
 
 Package: gstreamer1.0-qcom-python-examples
 Section: utils

@@ -93,7 +93,8 @@ gst_jpeg_enc_orientation_get_type (void)
 }
 
 static GstBufferPool *
-gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
+gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps,
+    GstJPEGEncoderOutParams params)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -110,13 +111,8 @@ gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
     return NULL;
   }
 
-  // Align size to 64 lines
-  gint alignedw = (GST_VIDEO_INFO_WIDTH (&info) + 64-1) & ~(64-1);
-  gint alignedh = (GST_VIDEO_INFO_HEIGHT (&info) + 64-1) & ~(64-1);
-  gsize aligned_size = alignedw * alignedh * 4;
-
   config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_set_params (config, caps, aligned_size,
+  gst_buffer_pool_config_set_params (config, caps, params.jpeg_size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
 
   allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
@@ -194,18 +190,79 @@ static gboolean
 gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 {
   GstJPEGEncoder *jpegenc = GST_JPEG_ENC (encoder);
-  GstVideoInfo *info = &state->info;
-  GstStructure *params = NULL;
+  GstVideoInfo *info = &state->info, *out_info = NULL;
+  GstStructure *params = NULL, *ostructure = NULL;
   GstVideoCodecState *output_state = NULL;
   GstCaps *outcaps = NULL;
-  guint informat = GST_VIDEO_INFO_FORMAT (info);
-  guint outformat = GST_VIDEO_FORMAT_ENCODED;
+  GstJPEGEncoderInParams in_params;
+  GstJPEGEncoderOutParams out_params;
 
   // Set output caps
-  outcaps = gst_caps_new_simple ("image/jpeg",
-      "width", G_TYPE_INT, GST_VIDEO_INFO_WIDTH (info),
-      "height", G_TYPE_INT, GST_VIDEO_INFO_HEIGHT (info),
-      NULL);
+  outcaps = gst_pad_get_allowed_caps (GST_VIDEO_ENCODER_SRC_PAD (jpegenc));
+  if ((outcaps == NULL) || gst_caps_is_empty (outcaps)) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to get output caps!");
+    return FALSE;
+  }
+
+  output_state = gst_video_encoder_set_output_state (
+      GST_VIDEO_ENCODER (jpegenc), outcaps, state);
+  if (!output_state) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to set output state");
+    goto cleanup;
+  }
+
+  out_info = &output_state->info;
+
+  outcaps = gst_caps_make_writable (outcaps);
+  ostructure = gst_caps_get_structure (outcaps, 0);
+
+  if (gst_structure_has_field (ostructure, "width")) {
+    gint width = 0;
+    gboolean success = TRUE;
+
+    success = gst_structure_get_int (ostructure, "width", &width);
+    if (!success)
+      gst_structure_set (ostructure, "width", G_TYPE_INT,
+          GST_VIDEO_INFO_WIDTH (info), NULL);
+    else
+      GST_VIDEO_INFO_WIDTH (out_info) = width;
+  }
+
+  if (gst_structure_has_field (ostructure, "height")) {
+    gint height = 0;
+    gboolean success = TRUE;
+
+    success = gst_structure_get_int (ostructure, "height", &height);
+    if (!success)
+      gst_structure_set (ostructure, "height", G_TYPE_INT,
+          GST_VIDEO_INFO_HEIGHT (info), NULL);
+    else
+      GST_VIDEO_INFO_HEIGHT (out_info) = height;
+  }
+
+  if (gst_structure_has_field (ostructure, "framerate")) {
+    gint32 fps_n = 0, fps_d = 0;
+    gboolean success = TRUE;
+
+    success = gst_structure_get_fraction (ostructure, "framerate", &fps_n,
+        &fps_d);
+    if (!success) {
+      gst_structure_fixate_field_nearest_fraction (ostructure, "framerate",
+          GST_VIDEO_INFO_FPS_N (info), GST_VIDEO_INFO_FPS_D (info));
+    } else {
+      GST_VIDEO_INFO_FPS_N (out_info) = fps_n;
+      GST_VIDEO_INFO_FPS_D (out_info) = fps_d;
+    }
+  }
+
+  outcaps = gst_caps_fixate (outcaps);
+
+  if (!gst_caps_is_fixed (outcaps) && !gst_video_encoder_negotiate (encoder)) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to set src caps.");
+    goto cleanup;
+  }
+
+  GST_INFO_OBJECT (jpegenc, "SrcPad caps fixated: %" GST_PTR_FORMAT, outcaps);
 
   // Unref previouly created pool
   if (jpegenc->outpool) {
@@ -213,27 +270,37 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     gst_object_unref (jpegenc->outpool);
   }
 
+  in_params.camera_id = jpegenc->camera_id;
+  in_params.width = GST_VIDEO_INFO_WIDTH (info);
+  in_params.height = GST_VIDEO_INFO_HEIGHT (info);
+
+  if (!gst_jpeg_enc_context_get_params (jpegenc->context, in_params, &out_params)) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to get jpeg params!");
+    goto cleanup;
+  }
+
   // Creat a new output memory pool
-  jpegenc->outpool = gst_jpeg_enc_create_pool (jpegenc, outcaps);
+  jpegenc->outpool = gst_jpeg_enc_create_pool (jpegenc, outcaps, out_params);
   if (!jpegenc->outpool) {
     GST_ERROR_OBJECT (jpegenc, "Failed to create output pool!");
+    goto cleanup;
   }
 
   // Activate the pool
   if (!gst_buffer_pool_is_active (jpegenc->outpool) &&
       !gst_buffer_pool_set_active (jpegenc->outpool, TRUE)) {
     GST_ERROR_OBJECT (jpegenc, "Failed to activate output buffer pool!");
-    return FALSE;
+    goto cleanup;
   }
 
   // Configuration of the JPEG encoder
   params = gst_structure_new ("qtijpegenc",
       GST_JPEG_ENC_INPUT_WIDTH, G_TYPE_UINT, GST_VIDEO_INFO_WIDTH (info),
       GST_JPEG_ENC_INPUT_HEIGHT, G_TYPE_UINT, GST_VIDEO_INFO_HEIGHT (info),
-      GST_JPEG_ENC_INPUT_FORMAT, G_TYPE_UINT, informat,
-      GST_JPEG_ENC_OUTPUT_WIDTH, G_TYPE_UINT, GST_VIDEO_INFO_WIDTH (info),
-      GST_JPEG_ENC_OUTPUT_HEIGHT, G_TYPE_UINT, GST_VIDEO_INFO_HEIGHT (info),
-      GST_JPEG_ENC_OUTPUT_FORMAT, G_TYPE_UINT, outformat,
+      GST_JPEG_ENC_INPUT_FORMAT, G_TYPE_UINT, GST_VIDEO_INFO_FORMAT (info),
+      GST_JPEG_ENC_OUTPUT_WIDTH, G_TYPE_UINT, GST_VIDEO_INFO_WIDTH (out_info),
+      GST_JPEG_ENC_OUTPUT_HEIGHT, G_TYPE_UINT, GST_VIDEO_INFO_HEIGHT (out_info),
+      GST_JPEG_ENC_OUTPUT_FORMAT, G_TYPE_UINT, GST_VIDEO_INFO_FORMAT(out_info),
       GST_JPEG_ENC_QUALITY, G_TYPE_UINT, jpegenc->quality,
       GST_JPEG_ENC_ORIENTATION, GST_TYPE_JPEG_ENC_ORIENTATION,
           jpegenc->orientation,
@@ -244,18 +311,21 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     GST_ERROR_OBJECT (jpegenc, "Failed to create the encoder!");
     gst_buffer_pool_set_active (jpegenc->outpool, FALSE);
     gst_object_unref (jpegenc->outpool);
-    return FALSE;
+    goto cleanup;
   }
 
   GST_DEBUG_OBJECT (jpegenc, "Encoder configured: width - %d, height - %d",
-      GST_VIDEO_INFO_WIDTH (info), GST_VIDEO_INFO_HEIGHT (info));
+      GST_VIDEO_INFO_WIDTH (out_info), GST_VIDEO_INFO_HEIGHT (out_info));
 
-  output_state =
-      gst_video_encoder_set_output_state (GST_VIDEO_ENCODER (jpegenc),
-      outcaps, state);
   gst_video_codec_state_unref (output_state);
 
   return TRUE;
+
+cleanup:
+  g_clear_pointer (&outcaps, gst_caps_unref);
+  g_clear_pointer (&output_state, gst_video_codec_state_unref);
+
+  return FALSE;
 }
 
 static void
@@ -293,6 +363,34 @@ gst_jpeg_enc_handle_frame (GstVideoEncoder * encoder,
   GST_DEBUG_OBJECT (jpegenc, "Handle a new frame, put in the queue");
 
   return GST_FLOW_OK;
+}
+
+static GstCaps *
+gst_jpeg_enc_getcaps (GstVideoEncoder *encoder, GstCaps *filter)
+{
+  GstJPEGEncoder *jpegenc = NULL;
+  GstPad *sinkpad = NULL;
+  GstCaps *result = NULL, *sink_templ = NULL;
+
+  g_return_val_if_fail (encoder != NULL, NULL);
+
+  jpegenc = GST_JPEG_ENC (encoder);
+  sinkpad = GST_VIDEO_ENCODER_SINK_PAD (encoder);
+
+  GST_LOG_OBJECT (jpegenc, "Filter caps %" GST_PTR_FORMAT, filter);
+
+  sink_templ = gst_pad_get_pad_template_caps (sinkpad);
+  result = sink_templ;
+
+  GST_LOG_OBJECT (jpegenc, "Template caps %" GST_PTR_FORMAT, sink_templ);
+
+  if (filter) {
+    result = gst_caps_intersect_full (sink_templ, filter,
+        GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref (sink_templ);
+  }
+
+  return result;
 }
 
 static gboolean
@@ -482,6 +580,7 @@ gst_jpeg_enc_class_init (GstJPEGEncoderClass * klass)
   venc_class->stop = gst_jpeg_enc_stop;
   venc_class->set_format = gst_jpeg_enc_set_format;
   venc_class->handle_frame = gst_jpeg_enc_handle_frame;
+  venc_class->getcaps = gst_jpeg_enc_getcaps;
 }
 
 static gboolean

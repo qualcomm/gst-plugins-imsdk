@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 project(GST_PLUGINS_QTI_OSS_DFS
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
   LANGUAGES C CXX
@@ -54,14 +54,12 @@ if(HAVE_DFS_FACTORY_H)
   )
 
   # Add target specific precompiler defintions.
-  add_definitions(-DRVSDK_API_VERSION=${RVSDK_API_VERSION})
+  set(RVSDK_API_VERSION "0x202404" CACHE STRING "RVSDK_API_VERSION")
+  target_compile_definitions(${GST_DFS} PRIVATE
+    RVSDK_API_VERSION=${RVSDK_API_VERSION})
 
   target_include_directories(${GST_DFS} PRIVATE
     ${GST_INCLUDE_DIRS}
-    ${CMAKE_SOURCE_DIR}
-    ${GST_QCOM_UTILS_INCLUDE_DIRS}
-    ${GST_QCOM_VIDEO_INCLUDE_DIRS}
-    ${GST_QCOM_ALLOC_INCLUDE_DIRS}
   )
 
   target_link_libraries(${GST_DFS} PRIVATE

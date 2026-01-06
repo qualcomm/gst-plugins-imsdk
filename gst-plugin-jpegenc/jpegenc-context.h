@@ -103,11 +103,25 @@ typedef enum {
   GST_JPEG_ENC_ORIENTATION_270,
 } GstJpegEncodeOrientation;
 
+typedef struct _GstJPEGEncoderInParams {
+  guint camera_id;
+  guint width;
+  guint height;
+} GstJPEGEncoderInParams;
+
+typedef struct _GstJPEGEncoderOutParams {
+  guint jpeg_size;
+} GstJPEGEncoderOutParams;
+
 GST_API GstJPEGEncoderContext *
 gst_jpeg_enc_context_new (GstJPEGEncoderCallback callback, gpointer userdata);
 
 GST_API void
 gst_jpeg_enc_context_free (GstJPEGEncoderContext * context);
+
+GST_API gboolean
+gst_jpeg_enc_context_get_params (GstJPEGEncoderContext * context,
+    const GstJPEGEncoderInParams in_params, GstJPEGEncoderOutParams * out_params);
 
 GST_API gboolean
 gst_jpeg_enc_context_create (GstJPEGEncoderContext * context,

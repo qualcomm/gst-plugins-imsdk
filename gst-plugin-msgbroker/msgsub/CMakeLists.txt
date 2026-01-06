@@ -8,10 +8,10 @@ add_library(${MSG_SUB} SHARED
 
 target_include_directories(${MSG_SUB} PRIVATE
   ${GST_INCLUDE_DIRS}
-  ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(${MSG_SUB} PRIVATE
+  qtimsgadaptor_interface
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
   gstqtimsgadaptor

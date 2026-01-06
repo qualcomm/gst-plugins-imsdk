@@ -36,21 +36,19 @@
 
 #include <cfloat>
 
-#define DEFAULT_THRESHOLD 0.70
-
+static const float kDefaultThreshold = 0.70;
 // Minimum distance in pixels between keypoints of poses.
-#define NMS_THRESHOLD_RADIUS  20.0F
+static const float kNMSTresholdRadius = 20.0f;
 // Radius in which to search for highest root keypoint of given type.
-#define LOCAL_MAXIMUM_RADIUS  1
+static const int32_t kLocalMaximumRadius = 1;
 // Number of refinement steps to apply when traversing skeleton links.
-#define NUM_REFINEMENT_STEPS  2
-
+static const uint32_t kNumRefinementSteps = 2;
 
 /* kModuleCaps
 *
 * Description of the supported caps and the type of the module.
 */
-static const char* kModuleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "pose-estimation",
   "tensors": [
@@ -68,7 +66,7 @@ static const char* kModuleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD),
+      threshold_(kDefaultThreshold),
       source_width_(0),
       source_height_(0) {
 
@@ -81,7 +79,7 @@ int32_t Module::NonMaxSuppression(PoseEstimation &l_entry,
   uint32_t n_keypoints = l_entry.keypoints.size();
 
   // The threhold distance between 2 keypoints.
-  double threshold = NMS_THRESHOLD_RADIUS * NMS_THRESHOLD_RADIUS;
+  double threshold = kNMSTresholdRadius * kNMSTresholdRadius;
 
   for (uint32_t idx = 0; idx < entries.size();  idx++, n_overlaps = 0) {
     PoseEstimation& r_entry = entries[idx];
@@ -91,7 +89,7 @@ int32_t Module::NonMaxSuppression(PoseEstimation &l_entry,
       Keypoint& l_kp = l_entry.keypoints[num];
       Keypoint& r_kp = r_entry.keypoints[num];
 
-      double distance = pow (l_kp.x - r_kp.x, 2) + pow (l_kp.y - r_kp.y, 2);
+      double distance = pow(l_kp.x - r_kp.x, 2) + pow(l_kp.y - r_kp.y, 2);
 
       // If the distance is below the threshold, increase the overlap score.
       if (distance <= threshold)
@@ -138,7 +136,7 @@ void Module::ExtractRootpoints(const Tensors& tensors,
   // Pointer to the keypoints coordinate offsets inside the 2nd tensor.
   const float *offsets = static_cast<const float*>(tensors[1].data);
 
-  // The width (position 0) and height (position 1) of the paxel block.
+  // The width(position 0) and height(position 1) of the paxel block.
   uint32_t paxelsize[2] = {0, 0};
   paxelsize[0] = (source_width_ - 1) / (n_columns - 1);
   paxelsize[1] = (source_height_ - 1) / (n_rows - 1);
@@ -150,6 +148,7 @@ void Module::ExtractRootpoints(const Tensors& tensors,
   for (int32_t row = 0; row < n_rows; row++) {
     for (int32_t column = 0; column < n_columns; column++) {
       for (uint32_t num = 0; num < n_parts; num++) {
+
         RootPoint rootpoint;
         uint32_t x = 0, y = 0, xmin = 0, xmax = 0, ymin = 0, ymax = 0;
         float score = FLT_MIN;
@@ -164,15 +163,15 @@ void Module::ExtractRootpoints(const Tensors& tensors,
           continue;
 
         // Calculate the X and Y range of the local window.
-        ymin = std::max(row - LOCAL_MAXIMUM_RADIUS, 0);
-        ymax = std::min(row + LOCAL_MAXIMUM_RADIUS + 1, n_rows);
+        ymin = std::max(row - kLocalMaximumRadius, 0);
+        ymax = std::min(row + kLocalMaximumRadius + 1, n_rows);
 
-        xmin = std::max(column - LOCAL_MAXIMUM_RADIUS, 0);
-        xmax = std::min(column + LOCAL_MAXIMUM_RADIUS + 1, n_columns);
+        xmin = std::max(column - kLocalMaximumRadius, 0);
+        xmax = std::min(column + kLocalMaximumRadius + 1, n_columns);
 
         // Check if this root point is the maximum in the local window.
-        for (y = ymin; (confidence >= score) && (y < ymax); y++) {
-          for (x = xmin; (confidence >= score) && (x < xmax); x++) {
+        for (y = ymin;(confidence >= score) && (y < ymax); y++) {
+          for (x = xmin;(confidence >= score) && (x < xmax); x++) {
             idx = (((y * n_columns) + x) * n_parts) + num;
 
             score = heatmap[idx];
@@ -203,7 +202,7 @@ void Module::ExtractRootpoints(const Tensors& tensors,
         LOG(logger_, kTrace, "Root Keypoint %u [%.2f x %.2f], confidence %.2f",
             rootpoint.id, rootpoint.x, rootpoint.y, rootpoint.confidence);
 
-        rootpoints.push_back(rootpoint);
+        rootpoints.emplace_back(std::move(rootpoint));
       }
     }
   }
@@ -217,7 +216,6 @@ void Module::TraverseSkeletonLinks(const Tensors& tensors,
                                    PoseEstimation &entry, bool backwards) {
 
   uint32_t num = 0;
-
   // The 2nd dimension of each tensor represents the matrix height.
   uint32_t n_rows = tensors[0].dimensions[1];
   // The 3rd dimension of each tensor represents the matrix width.
@@ -236,12 +234,12 @@ void Module::TraverseSkeletonLinks(const Tensors& tensors,
   // Pointer to the displacement data inside the 3rd tensor.
   const float *displacements = static_cast<const float*>(tensors[2].data);
 
-  // The width (position 0) and height (position 1) of the paxel block.
+  // The width(position 0) and height(position 1) of the paxel block.
   uint32_t paxelsize[2] = {0, 0};
   paxelsize[0] = (source_width_ - 1) / (n_columns - 1);
   paxelsize[1] = (source_height_ - 1) / (n_rows - 1);
 
-  int32_t base = backwards ? (n_edges - 1) : 0;
+  int32_t base = backwards ?(n_edges - 1) : 0;
 
   for (int32_t edge = 0; edge < n_edges; edge++, num = 0) {
     uint32_t id = std::abs(base - edge);
@@ -259,15 +257,15 @@ void Module::TraverseSkeletonLinks(const Tensors& tensors,
       continue;
 
     // Calculate original X & Y axis values in the matrix coordinate system.
-    uint32_t row = std::clamp(round (s_kp.y / paxelsize[1]),
-        (double)0, (double)(n_rows - 1));
-    uint32_t column = std::clamp(round (s_kp.x / paxelsize[0]),
-        (double)0, (double)(n_columns - 1));
+    uint32_t row = std::clamp(round(s_kp.y / paxelsize[1]),
+       (double)0,(double)(n_rows - 1));
+    uint32_t column = std::clamp(round(s_kp.x / paxelsize[0]),
+       (double)0,(double)(n_columns - 1));
 
     // Calculate the position of source keypoint inside the displacements tensor.
     uint32_t idx = (((row * n_columns) + column) * (n_edges * 4)) + id;
     // For reverse iteration an additional offset by half of the edges is needed.
-    idx += backwards ? (n_edges * 2) : 0;
+    idx += backwards ?(n_edges * 2) : 0;
 
     // Calculate the displaced Y axis value in the matrix coordinate system.
     float displacement = displacements[idx];
@@ -281,9 +279,9 @@ void Module::TraverseSkeletonLinks(const Tensors& tensors,
     do {
       // Calculate original X & Y axis values in the matrix coordinate system.
       row = std::clamp(round(d_kp.y / paxelsize[1]),
-          (double)0, (double)(n_rows - 1));
+         (double)0,(double)(n_rows - 1));
       column = std::clamp(round(d_kp.x / paxelsize[0]),
-          (double)0, (double)(n_columns - 1));
+         (double)0,(double)(n_columns - 1));
 
       // Calculate the position of target keypoint inside the offsets tensor.
       idx = (((row * n_columns) + column) * n_parts * 2) + d_kp_id;
@@ -295,19 +293,19 @@ void Module::TraverseSkeletonLinks(const Tensors& tensors,
       // Dequantize the keypoint X axis offset and add it ot the end coordinate.
       offset = offsets[idx + n_parts];
       d_kp.x = column * paxelsize[0] + offset;
-    } while (++num < NUM_REFINEMENT_STEPS);
+    } while (++num < kNumRefinementSteps);
 
     // Clamp values outside the range.
     d_kp.y = std::clamp((double)d_kp.y,
-        (double)0, (double)(source_height_ - 1));
+       (double)0,(double)(source_height_ - 1));
     d_kp.x = std::clamp((double)d_kp.x,
-        (double)0, (double)(source_width_ - 1));
+       (double)0,(double)(source_width_ - 1));
 
     // Calculate original X & Y axis values in the matrix coordinate system.
     row = std::clamp(round(d_kp.y / paxelsize[1]),
-        (double)0, (double)(n_rows - 1));
+       (double)0,(double)(n_rows - 1));
     column = std::clamp(round(d_kp.x / paxelsize[0]),
-        (double)0, (double)(n_columns - 1));
+       (double)0,(double)(n_columns - 1));
 
     // Calculate the position of target keypoint inside the heatmap tensor.
     idx = (((row * n_columns) + column) * n_parts) + d_kp_id;
@@ -339,6 +337,7 @@ bool Module::LoadLinks(const std::vector<JsonValue::Ptr>& nodes,
     return false;
 
   const auto& node = nodes[idx];
+
   if (!node)
     return false;
 
@@ -354,12 +353,13 @@ bool Module::LoadLinks(const std::vector<JsonValue::Ptr>& nodes,
     return true;
 
   auto link_arr = node->GetArray("links");
+
   for (const auto& val : link_arr) {
     if (!val || val->GetType() != JsonType::Number)
       continue;
 
     uint32_t d_kp_id = static_cast<uint32_t>(val->AsNumber());
-    links.push_back({s_kp_id, d_kp_id});
+    links.emplace_back(s_kp_id, d_kp_id);
 
     // Recursively check and load the next link in the chain/tree.
     if (!LoadLinks(nodes, d_kp_id, links))
@@ -384,7 +384,7 @@ bool Module::LoadConnections(const std::vector<JsonValue::Ptr>& nodes,
     uint32_t label_id = static_cast<uint32_t>(node->GetNumber("id"));
     uint32_t con_id = static_cast<uint32_t>(node->GetNumber("connection"));
 
-    connections.push_back({label_id, con_id});
+    connections.emplace_back(label_id, con_id);
   }
   return true;
 }
@@ -398,7 +398,7 @@ void Module::KeypointTransformCoordinates(Keypoint& keypoint,
 
 std::string Module::Caps() {
 
-  return std::string(kModuleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
@@ -415,8 +415,7 @@ bool Module::Configure(const std::string& labels_file,
     if (!root || root->GetType() != JsonType::Object)
       return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
+    threshold_ = root->GetNumber("confidence") / 100.0;
     LOG(logger_, kLog, "Threshold: %f", threshold_);
 
     auto nodes = root->GetArray("posenet");
@@ -469,7 +468,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     // Init all keypoints
     for (uint32_t num = 0; num < n_parts; num++) {
       Keypoint kp;
-      entry.keypoints.push_back(kp);
+      entry.keypoints.emplace_back(std::move(kp));
     }
 
     Keypoint& keypoint = entry.keypoints[rootpoint.id];
@@ -490,7 +489,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     // Iterate forward over the skeleton links to find all other keypoints.
     TraverseSkeletonLinks(tensors, entry, false);
 
-    // Non-Max Suppression (NMS) algorithm.
+    // Non-Max Suppression(NMS) algorithm.
     // If the NMS result is below 0 don't create new pose prediction.
     int32_t nms = NonMaxSuppression(entry, estimations);
 
@@ -500,11 +499,11 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     }
 
     KeypointLinks links;
+
     for (uint32_t num = 0; num < connections_.size(); num++) {
       KeypointLinkIds& lk = connections_[num];
-      links.push_back(
-          KeypointLink(entry.keypoints[lk.s_kp_id],
-              entry.keypoints[lk.d_kp_id]));
+      links.emplace_back(entry.keypoints[lk.s_kp_id],
+                         entry.keypoints[lk.d_kp_id]);
     }
     entry.links = links;
 
@@ -512,7 +511,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     if (nms >= 0)
       estimations.erase(estimations.begin() + nms);
 
-    estimations.push_back(entry);
+    estimations.emplace_back(std::move(entry));
   }
 
   // TODO Optimize?
@@ -530,5 +529,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

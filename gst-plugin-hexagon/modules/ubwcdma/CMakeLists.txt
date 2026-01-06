@@ -1,0 +1,32 @@
+cmake_minimum_required(VERSION 3.16)
+project(QTI_OSS_HEXAGON_MODULES LANGUAGES C)
+
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
+set(QTI_OSS_HEXAGON_MODULES ubwcdma)
+
+include_directories(${SYSROOT_INCDIR})
+link_directories(${SYSROOT_LIBDIR})
+
+add_library(${QTI_OSS_HEXAGON_MODULES} SHARED
+  ubwcdma.c
+)
+
+set_target_properties(${QTI_OSS_HEXAGON_MODULES} PROPERTIES OUTPUT_NAME "hexagon-ubwcdma")
+
+target_include_directories(${QTI_OSS_HEXAGON_MODULES} PUBLIC
+  ${GST_INCLUDE_DIRS}
+)
+
+target_link_libraries(${QTI_OSS_HEXAGON_MODULES} PRIVATE
+  ${GST_LIBRARIES}
+  ${GST_VIDEO_LIBRARIES}
+)
+
+install(
+  TARGETS ${QTI_OSS_HEXAGON_MODULES}
+  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/hexagon/modules
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
+)

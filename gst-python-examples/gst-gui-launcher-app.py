@@ -310,10 +310,6 @@ class DemoWindow(Gtk.Window):
         DEFAULT_POSE_SETTINGS = "/etc/labels/hrnet_pose_settings.json"
         DEFAULT_INPUT_VIDEO = "/etc/media/video.mp4"
 
-        version = "GA1.6-rel"
-        target = "QCS6490"
-        output_path = "/etc/models/"
-
         # Check if all required files and models exist
         if os.path.exists(file_path) \
                 and os.path.exists(DEFAULT_TFLITE_OBJECT_DETECTION_MODEL) \
@@ -373,7 +369,7 @@ class DemoWindow(Gtk.Window):
                     self.popup.show_all()
 
                     # URL of the file to be downloaded
-                    url = "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/download_artifacts.sh?raw=true"
+                    url = "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/qualcomm-linux/scripts/download_artifacts.sh?raw=true"
 
                     # Download the file from the URL to the specified file path
                     urllib.request.urlretrieve(url, file_path)
@@ -383,7 +379,7 @@ class DemoWindow(Gtk.Window):
                     os.chmod(file_path, 0o755)
 
                     # Start a subprocess to execute the downloaded file with specified arguments
-                    self.process = subprocess.Popen([file_path + " -v " + version + " -c " + target + " -o " + output_path], preexec_fn=os.setsid, shell=True)
+                    self.process = subprocess.Popen([file_path], preexec_fn=os.setsid, shell=True)
 
                     # Wait for the subprocess to complete
                     self.process.wait()

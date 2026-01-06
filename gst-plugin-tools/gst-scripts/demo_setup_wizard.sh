@@ -29,7 +29,7 @@ do
         "2")
             echo "Selected input: USB camera!"
             read -p 'Please enter the video node for the USB video device (for ex:"/dev/video2"):' device_id
-            pipeline+='v4l2src io-mode=dmabuf-import device="'${device_id}'" ! video/x-raw,width=1920,height=1080 ! qtivtransform ! '
+            pipeline+='v4l2src io-mode=dmabuf device="'${device_id}'" ! video/x-raw,width=1920,height=1080 ! qtivtransform ! video/x-raw,format=NV12 ! '
             livesrc=true
             usbsrc=true
             help+="Make sure the video device mentioned in v4l2src's device property is the USB camera.\n"

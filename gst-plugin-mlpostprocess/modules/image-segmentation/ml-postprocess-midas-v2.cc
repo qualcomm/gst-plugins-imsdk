@@ -9,14 +9,14 @@
 #include <climits>
 #include <cmath>
 
-#define DEFAULT_THRESHOLD 0.70
+static const float kDefaultThreshold = 0.70;
 
 #define EXTRACT_RED_COLOR(color)   ((color >> 24) & 0xFF)
 #define EXTRACT_GREEN_COLOR(color) ((color >> 16) & 0xFF)
 #define EXTRACT_BLUE_COLOR(color)  ((color >> 8) & 0xFF)
 #define EXTRACT_ALPHA_COLOR(color) ((color) & 0xFF)
 
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "image-segmentation",
   "tensors": [
@@ -38,7 +38,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
@@ -48,41 +48,27 @@ Module::~Module() {
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (!labels_parser_.LoadFromFile(labels_file)) {
-    LOG (logger_, kError, "Failed to parse labels");
+    LOG(logger_, kError, "Failed to parse labels");
     return false;
   }
 
   if (!json_settings.empty()) {
     auto root = JsonValue::Parse(json_settings);
+
     if (!root || root->GetType() != JsonType::Object) return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
-    LOG (logger_, kLog, "Threshold: %f", threshold_);
+    threshold_ = root->GetNumber("confidence") / 100.0;
+    LOG(logger_, kLog, "Threshold: %f", threshold_);
   }
 
   return true;
-}
-
-uint64_t Module::ScaleUint64Safe(const uint64_t val, const int32_t num,
-                                 const int32_t denom) {
-
-  if (denom == 0)
-    return UINT64_MAX;
-
-  // If multiplication won't overflow, perform it directly
-  if (val < (std::numeric_limits<uint64_t>::max() / num))
-    return (val * num) / denom;
-  else
-    // Use division first to avoid overflow
-    return (val / denom) * num + ((val % denom) * num) / denom;
 }
 
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
@@ -92,7 +78,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   double maxdepth = std::numeric_limits<double>::min();
 
   if (output.type() != typeid(VideoFrame)) {
-    LOG (logger_, kError, "Unexpected output type!");
+    LOG(logger_, kError, "Unexpected output type!");
     return false;
   }
 
@@ -107,9 +93,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   Resolution& resolution =
       std::any_cast<Resolution&>(mlparams["input-tensor-dimensions"]);
 
-  uint32_t source_width = resolution.width;
-  uint32_t source_height = resolution.height;
-
   uint32_t width = frame.width;
   uint32_t height = frame.height;
 
@@ -122,10 +105,10 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   uint32_t mlwidth = tensors[0].dimensions[2];
   uint32_t mlheight = tensors[0].dimensions[1];
 
-  region.x *= mlwidth / source_width;
-  region.y *= mlheight / source_height;
-  region.width *= mlwidth / source_width;
-  region.height *= mlheight / source_height;
+  region.x *= mlwidth / resolution.width;
+  region.y *= mlheight / resolution.height;
+  region.width *= mlwidth / resolution.width;
+  region.height *= mlheight / resolution.height;
 
   for (uint32_t row = 0; row < region.height; row++) {
     for (uint32_t column = 0; column < region.width; column++) {
@@ -148,23 +131,23 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       uint32_t id = std::numeric_limits<uint8_t>::max();
 
       uint32_t inidx = mlwidth * (region.y +
-         ScaleUint64Safe(row, region.height, height));
+          row * (region.height / static_cast<double>(height)));
 
-      inidx += region.x + ScaleUint64Safe(column, region.width, width);
+      inidx += region.x + column * (region.width / static_cast<double>(width));
 
       float value = indata[inidx];
 
       id *= (value - mindepth) / (maxdepth - mindepth);
 
-      uint32_t color = labels_parser_.GetColor(id);
+      uint32_t color = labels_parser_.GetLabel(id) == "unknown" ?
+          0x00000000 : labels_parser_.GetColor(id);
 
-      outdata[outidx] = EXTRACT_RED_COLOR (color);
-      outdata[outidx + 1] = EXTRACT_GREEN_COLOR (color);
-      outdata[outidx + 2] = EXTRACT_BLUE_COLOR (color);
+      outdata[outidx] = EXTRACT_RED_COLOR(color);
+      outdata[outidx + 1] = EXTRACT_GREEN_COLOR(color);
+      outdata[outidx + 2] = EXTRACT_BLUE_COLOR(color);
 
-      if (bpp == 4) {
-        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR (color);
-      }
+      if (bpp == 4)
+        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(color);
     }
   }
 
@@ -172,5 +155,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

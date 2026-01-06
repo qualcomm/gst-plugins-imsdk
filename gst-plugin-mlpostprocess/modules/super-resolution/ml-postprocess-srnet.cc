@@ -36,12 +36,11 @@
 
 #include <climits>
 
-
 /* kModuleCaps
 *
 * Description of the supported caps and the type of the module.
 */
-static const char* kModuleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "super-resolution",
   "tensors": [
@@ -68,7 +67,7 @@ Module::Module(LogCallback cb)
 
 std::string Module::Caps() {
 
-  return std::string(kModuleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
@@ -103,9 +102,12 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
     for (uint32_t column = 0; column < frame.width; column++) {
 
-      outdata[outidx] = (uint8_t)(indata[inidx] * 255.0f);
-      outdata[outidx + 1] = (uint8_t)(indata[inidx + 1] * 255.0f);
-      outdata[outidx + 2] = (uint8_t)(indata[inidx + 2] * 255.0f);
+      outdata[outidx] =
+          (uint8_t)(std::clamp(indata[inidx], 0.0f, 1.0f) * 255.0f);
+      outdata[outidx + 1] =
+          (uint8_t)(std::clamp(indata[inidx + 1], 0.0f, 1.0f) * 255.0f);
+      outdata[outidx + 2] =
+          (uint8_t)(std::clamp(indata[inidx + 2], 0.0f, 1.0f) * 255.0f);
 
       // If output has an alpha channel set it to opaque.
       if (bpp == 4)
@@ -120,5 +122,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

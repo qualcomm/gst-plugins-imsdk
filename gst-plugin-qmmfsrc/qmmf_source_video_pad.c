@@ -167,15 +167,17 @@ video_pad_worker_task (GstPad * pad)
     if (ret == GST_FLOW_EOS) {
       GST_DEBUG_OBJECT (pad, "EOS received on pad %s", gst_pad_get_name (pad));
 
-      success = gst_pad_push_event (pad, gst_event_new_eos ());
-      if (success == FALSE) {
-        GST_ERROR_OBJECT (pad, "Failed to push EOS event on pad %s",
-            gst_pad_get_name (pad));
-
-        gst_pad_pause_task (pad);
+      if (!GST_PAD_IS_EOS (pad)) {
+        success = gst_pad_push_event (pad, gst_event_new_eos ());
+        if (success == FALSE) {
+          GST_WARNING_OBJECT (pad, "Failed to push EOS event on pad %s",
+              gst_pad_get_name (pad));
+        }
       }
+
+      gst_pad_pause_task (pad);
     } else if (ret != GST_FLOW_OK) {
-      GST_ERROR_OBJECT (pad, "Error pushing buffer to pad %s: %s",
+      GST_WARNING_OBJECT (pad, "Error pushing buffer to pad %s: %s",
           gst_pad_get_name (pad), gst_flow_get_name (ret));
 
       gst_pad_pause_task (pad);

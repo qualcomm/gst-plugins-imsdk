@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.2)
+cmake_minimum_required(VERSION 3.16)
 
 # Get the pkgconfigs exported by the automake tools
 pkg_check_modules(GST

@@ -389,17 +389,62 @@ load_symbol (gpointer* method, gpointer handle, const gchar* name)
   return TRUE;
 }
 
+GType
+gst_fcv_op_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_FCV_OP_MODE_LOW_POWER,
+        "Uses lowest power consuming implementation", "low-power"
+    },
+    { GST_FCV_OP_MODE_PERFORMANCE,
+        "Uses highest performance implementation", "performance"
+    },
+    {
+      GST_FCV_OP_MODE_CPU_OFFLOAD,
+        "Uses highest performance implementation", "cpu-offload"
+    },
+    {
+      GST_FCV_OP_MODE_CPU_PERFORMANCE,
+        "Uses CPU highest performance implementation", "cpu-performance"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+      gtype = g_enum_register_static ("GstFcvOpMode", variants);
+
+  return gtype;
+}
+
 static inline gint
 gst_fcv_get_opmode (const GstStructure * settings)
 {
-  gint value = GST_FCV_OP_MODE_PERFORMANCE;
+  const GValue *value = NULL;
+  const gchar *string = NULL;
+  GValue newvalue = G_VALUE_INIT;
+  gint mode = GST_FCV_OP_MODE_PERFORMANCE;
 
   if ((settings == NULL) ||
       !gst_structure_has_field (settings, GST_VCE_OPT_FCV_OP_MODE))
-    return value;
+    return mode;
 
-  gst_structure_get_enum (settings, GST_VCE_OPT_FCV_OP_MODE, G_TYPE_ENUM, &value);
-  return value;
+  value = gst_structure_get_value (settings, GST_VCE_OPT_FCV_OP_MODE);
+
+  if (G_VALUE_TYPE (value) == gst_fcv_op_mode_get_type ())
+    return g_value_get_enum (value);
+
+  // Try to reinitialize the settings value if expected type does not match.
+  string = g_value_get_string (value);
+  g_value_init (&newvalue, gst_fcv_op_mode_get_type ());
+
+  if (!gst_value_deserialize (&newvalue, string))
+    GST_ERROR ("Failed to decipher mode, using default: PERFORMANCE");
+  else
+    mode = g_value_get_enum (&newvalue);
+
+  g_value_unset (&newvalue);
+  return mode;
 }
 
 static inline void
