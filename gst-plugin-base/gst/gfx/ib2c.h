@@ -126,6 +126,7 @@ enum ColorFormat : uint32_t {
   kVYUY,
 
   kNV12,
+  kP010,
   kNV21,
   kNV16,
   kNV61,

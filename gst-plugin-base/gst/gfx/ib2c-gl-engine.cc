@@ -1103,7 +1103,8 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
       // Depending on the surface format the chroma plane has different size.
       if (surface.format == ColorFormat::kNV12 ||
-          surface.format == ColorFormat::kNV21) {
+          surface.format == ColorFormat::kNV21 ||
+          surface.format == ColorFormat::kP010) {
         subsurface.width /= 2;
         subsurface.height /= 2;
       } else if (surface.format == ColorFormat::kNV16 ||
