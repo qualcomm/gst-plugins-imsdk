@@ -7,7 +7,7 @@
 #define GST_CAMERA_META_H
 
 #include <gst/gst.h>
-#include "system/camera_metadata.h"
+#include <qmmf-sdk/qmmf_camera_metadata.h>
 
 G_BEGIN_DECLS
 
