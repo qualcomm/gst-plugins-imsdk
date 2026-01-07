@@ -75,6 +75,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_PROP_ROTATE              ROTATE_NONE
 #define DEFAULT_PROP_LOGICAL_STREAM_TYPE GST_PAD_LOGICAL_STREAM_TYPE_NONE
 #define DEFAULT_PROP_SUPER_BUFFER        FALSE
+#define DEFAULT_PROP_WRAP_META           FALSE
 
 enum
 {
@@ -95,6 +96,7 @@ enum
   PROP_VIDEO_TYPE,
   PROP_VIDEO_ROTATE,
   PROP_VIDEO_LOGICAL_STREAM_TYPE,
+  PROP_VIDEO_WRAP_META,
 };
 
 static guint signals[LAST_SIGNAL];
@@ -752,6 +754,9 @@ video_pad_set_property (GObject * object, guint property_id,
     case PROP_VIDEO_LOGICAL_STREAM_TYPE:
       pad->log_stream_type = (glong) g_value_get_enum (value);
       break;
+    case PROP_VIDEO_WRAP_META:
+      pad->attach_metadata = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -813,6 +818,9 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
       break;
     case PROP_VIDEO_LOGICAL_STREAM_TYPE:
       g_value_set_enum (value, (GstPadLogicalStreamType) pad->log_stream_type);
+      break;
+    case PROP_VIDEO_WRAP_META:
+      g_value_set_boolean (value, pad->attach_metadata);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
@@ -939,6 +947,13 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PAUSED));
 #endif // FEATURE_LOGICAL_CAMERA_SUPPORT
+  g_object_class_install_property (gobject, PROP_VIDEO_WRAP_META,
+      g_param_spec_boolean ("attach-cam-meta", "Attach cam-meta with gstbuffer",
+          "this flag if TRUE, Along with GstBuffer the camera"
+          " metadata will be attached.",
+          DEFAULT_PROP_WRAP_META,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
 
   signals[SIGNAL_PAD_RECONFIGURE] =
       g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),
