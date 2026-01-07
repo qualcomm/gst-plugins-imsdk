@@ -21,6 +21,7 @@ option(ENABLE_GST_PLUGIN_CAMREPROC "Enable gst-plugin-camreproc" OFF)
 option(ENABLE_GST_PLUGIN_JPEGENC "Enable gst-plugin-jpegenc" OFF)
 option(ENABLE_GST_PLUGIN_JPEGPACKER "Enable gst-plugin-jpegpacker" OFF)
 option(ENABLE_GST_PLUGIN_VIDEOTEMPLATE "Enable gst-plugin-videotemplate" OFF)
+option(ENABLE_GST_PLUGIN_HEIFMUX "Enable gst-plugin-heifmux" OFF)
 
 # === ML Plugins ===
 option(ENABLE_GST_PLUGIN_MLACONVERTER "Enable gst-plugin-mlaconverter" OFF)
@@ -137,6 +138,10 @@ endif()
 
 if(ENABLE_GST_PLUGIN_VIDEOTEMPLATE)
   add_subdirectory(gst-plugin-videotemplate)
+endif()
+
+if(ENABLE_GST_PLUGIN_HEIFMUX)
+  add_subdirectory(gst-plugin-heifmux)
 endif()
 
 # === ML Plugins ===
