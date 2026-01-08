@@ -9,6 +9,7 @@
 
 #include <json-glib/json-glib.h>
 #include <gst/utils/common-utils.h>
+#include <gst/utils/gsttextmeta.h>
 #include <gst/video/video-utils.h>
 #include <gst/video/gstvideoclassificationmeta.h>
 #include <gst/video/gstvideolandmarksmeta.h>
@@ -179,6 +180,37 @@ gst_parser_module_process_classification_structure (
     json_builder_end_object (submodule->builder);
     g_free (name);
   }
+}
+
+static void
+gst_parser_module_process_text_structure (GstParserSubModule * submodule,
+    GstStructure * structure)
+{
+  guint color = 0x000000FF;
+  gdouble confidence = 0.0;
+  const gchar *contents = NULL;
+
+  contents = gst_structure_get_string (structure, "contents");
+  gst_structure_get_double (structure, "confidence", &confidence);
+  gst_structure_get_uint (structure, "color", &color);
+
+  json_builder_begin_object (submodule->builder);
+
+  json_builder_set_member_name (submodule->builder, "contents");
+  json_builder_add_string_value (submodule->builder, contents);
+  json_builder_set_member_name (submodule->builder, "confidence");
+  json_builder_add_double_value (submodule->builder, confidence);
+  json_builder_set_member_name (submodule->builder, "color");
+  json_builder_add_int_value (submodule->builder, color);
+
+  if (gst_structure_has_field (structure, "xtraparams")) {
+    GstStructure *xtraparams = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "xtraparams")));
+
+    gst_parser_module_process_structure (submodule, "xtraparams", xtraparams);
+  }
+
+  json_builder_end_object (submodule->builder);
 }
 
 static void
@@ -455,6 +487,19 @@ gst_parser_module_process_detection_structure (GstParserSubModule * submodule,
 
     GST_JSON_END_META_ARRAY (submodule->builder, metalist);
 
+    // Parse derived class structs and add section if there are any available.
+    metalist = gst_value_list_get_meta_structs (valist,
+        g_quark_from_static_string ("Text"), id);
+
+    GST_JSON_BEGIN_META_ARRAY (submodule->builder, metalist, "text");
+
+    for (list = g_list_last (metalist); list != NULL; list = list->prev) {
+      structure = GST_STRUCTURE (list->data);
+      gst_parser_module_process_text_structure (submodule, structure);
+    }
+
+    GST_JSON_END_META_ARRAY (submodule->builder, metalist);
+
     json_builder_end_object (submodule->builder);
   }
 }
@@ -488,6 +533,29 @@ gst_parser_module_process_classification_meta (GstParserSubModule * submodule,
 
     json_builder_end_object (submodule->builder);
   }
+}
+
+static void
+gst_parser_module_process_text_meta (GstParserSubModule * submodule,
+    GstTextMeta * textmeta)
+{
+  json_builder_begin_object (submodule->builder);
+
+  json_builder_set_member_name (submodule->builder, "contents");
+  json_builder_add_string_value (submodule->builder, textmeta->contents);
+
+  json_builder_set_member_name (submodule->builder, "confidence");
+  json_builder_add_double_value (submodule->builder, textmeta->confidence);
+
+  json_builder_set_member_name (submodule->builder, "color");
+  json_builder_add_int_value (submodule->builder, textmeta->color);
+
+  if (textmeta->xtraparams != NULL) {
+    gst_parser_module_process_structure (submodule, "xtraparams",
+        textmeta->xtraparams);
+  }
+
+  json_builder_end_object (submodule->builder);
 }
 
 static void
@@ -688,6 +756,17 @@ gst_parser_module_process_roi_meta (GstParserSubModule * submodule,
 
   GST_JSON_END_META_ARRAY (submodule->builder, metalist);
 
+  metalist = gst_buffer_get_text_metas_parent_id (buffer, roimeta->id);
+  GST_JSON_BEGIN_META_ARRAY (submodule->builder, metalist, "text");
+
+  for (list = g_list_last (metalist); list != NULL; list = list->prev) {
+    GstTextMeta *textmeta = GST_TEXT_META_CAST (list->data);
+
+    gst_parser_module_process_text_meta (submodule, textmeta);
+  }
+
+  GST_JSON_END_META_ARRAY (submodule->builder, metalist);
+
   json_builder_end_object (submodule->builder);
 }
 
@@ -774,6 +853,19 @@ gst_parser_module_process_text_buffer (GstParserSubModule * submodule,
 
   GST_JSON_END_META_ARRAY (submodule->builder, metalist);
 
+  // Parse root class structs and add array section if there are any available.
+  metalist = gst_value_list_get_meta_structs (&valist,
+      g_quark_from_static_string ("Text"), -1);
+
+  GST_JSON_BEGIN_META_ARRAY (submodule->builder, metalist, "text");
+
+  for (list = g_list_last (metalist); list != NULL; list = list->prev) {
+    structure = GST_STRUCTURE (list->data);
+    gst_parser_module_process_text_structure (submodule, structure);
+  }
+
+  GST_JSON_END_META_ARRAY (submodule->builder, metalist);
+
 cleanup:
   g_value_unset (&valist);
   return success;
@@ -823,6 +915,16 @@ gst_parser_module_process_video_buffer (GstParserSubModule * submodule,
         GST_VIDEO_CLASSIFICATION_META_CAST (list->data);
 
     gst_parser_module_process_classification_meta (submodule, classmeta);
+  }
+
+  // Parse root class metas and add array section if there are any available.
+  metalist = gst_buffer_get_text_metas_parent_id (buffer, -1);
+  GST_JSON_BEGIN_META_ARRAY (submodule->builder, metalist, "text");
+
+  for (list = g_list_last (metalist); list != NULL; list = list->prev) {
+    GstTextMeta *textmeta = GST_TEXT_META_CAST (list->data);
+
+    gst_parser_module_process_text_meta (submodule, textmeta);
   }
 
   GST_JSON_END_META_ARRAY (submodule->builder, metalist);

@@ -9,6 +9,7 @@ set(TARGET_NAME gstqtiutilsbase)
 set(TARGET_HEADERS
   common-utils.h
   batch-utils.h
+  gsttextmeta.h
   $<$<BOOL:${ENABLE_RUNTIME_PARSER}>:${CMAKE_CURRENT_SOURCE_DIR}/runtime-flags-parser.h>
   $<$<BOOL:${ENABLE_RUNTIME_PARSER}>:${CMAKE_CURRENT_SOURCE_DIR}/runtime-flags-parser-c-api.h>
 )
@@ -16,6 +17,7 @@ set(TARGET_HEADERS
 add_library(${TARGET_NAME} SHARED
   common-utils.c
   batch-utils.c
+  gsttextmeta.c
   $<$<BOOL:${ENABLE_RUNTIME_PARSER}>:runtime-flags-parser.cc>
   $<$<BOOL:${ENABLE_RUNTIME_PARSER}>:runtime-flags-parser-c-api.cc>
 )
