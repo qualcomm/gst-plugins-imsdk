@@ -17,6 +17,7 @@
 #include <gst/audio/audio.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
+#include <gst/utils/gsttextmeta.h>
 #include <gst/cv/gstcvmeta.h>
 #include <gst/video/gstvideoclassificationmeta.h>
 #include <gst/video/gstvideolandmarksmeta.h>
@@ -580,6 +581,50 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
       " and parent ID[0x%X] to buffer %p", meta->id, meta->parent_id, buffer);
 }
 
+static void
+gst_metamux_process_text_metadata (GstMetaMux * muxer,
+    GstBuffer * buffer, GstStructure * structure)
+{
+  GstTextMeta *meta = NULL;
+  const GValue *value = NULL;
+  const gchar *contents;
+  gdouble confidence = 0.0;
+  guint32 color = 0x000000FF;
+  guint id = 0;
+
+  if (!gst_buffer_is_writable (buffer)) {
+    GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
+        "not writable!", buffer);
+    return;
+  }
+
+  contents = gst_structure_get_string (structure, "contents");
+
+  gst_structure_get_double (structure, "confidence", &(confidence));
+  gst_structure_get_uint (structure, "color", &(color));
+
+  gst_structure_get_uint (structure, "id", &id);
+
+  meta = gst_buffer_add_text_meta (buffer, contents, confidence, color);
+
+  if (NULL == meta)
+    return;
+
+  if ((value = gst_structure_get_value (structure, "xtraparams")) != NULL) {
+    meta->xtraparams =
+        gst_structure_copy (GST_STRUCTURE (g_value_get_boxed (value)));
+  }
+
+  meta->id = id;
+
+  // Check if result is not derived from ROI, overwrite the parent_id field.
+  if ((value = gst_structure_get_value (structure, "parent-id")) != NULL)
+    meta->parent_id = g_value_get_int (value);
+
+  GST_TRACE_OBJECT (muxer, "Attached 'Text' meta with ID[0x%X]"
+      " and parent ID[0x%X] to buffer %p", meta->id, meta->parent_id, buffer);
+}
+
 static gboolean
 gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
     GstClockTime timestamp)
@@ -623,6 +668,8 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
         gst_metamux_process_landmarks_metadata (muxer, buffer, structure);
       else if (gst_structure_has_name (structure, "ImageClassification"))
         gst_metamux_process_classification_metadata (muxer, buffer, structure);
+      else if (gst_structure_has_name (structure, "Text"))
+        gst_metamux_process_text_metadata (muxer, buffer, structure);
     }
 
     // Overwrite previous last meta entry with the new currently processed one.
