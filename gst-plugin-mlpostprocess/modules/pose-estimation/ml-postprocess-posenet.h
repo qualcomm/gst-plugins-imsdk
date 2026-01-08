@@ -89,7 +89,10 @@ class Module : public IModule {
                          std::vector<RootPoint>& rootpoints);
 
   void TraverseSkeletonLinks(const Tensors& tensors, PoseEstimation &l_entry,
-                              bool backwards);
+                             bool backwards);
+
+  void ParseTensorFrame(const Tensors& tensors, Dictionary& mlparams,
+                        std::any& output);
 
   bool LoadConnections(const std::vector<JsonValue::Ptr>& nodes,
                        std::vector<KeypointLinkIds>& connections);
