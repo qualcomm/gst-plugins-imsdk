@@ -509,7 +509,7 @@ qmmfsrc_release_video_pad (GstElement * element, GstPad * pad)
 gboolean
 video_pad_set_super_buffer_mode (GstPad * pad, GstStructure *structure)
 {
-  GstQmmfSrc * qmmfsrc = GST_QMMFSRC (gst_object_get_parent (GST_OBJECT (pad)));
+  GstQmmfSrc *qmmfsrc = GST_QMMFSRC (gst_pad_get_parent_element (pad));
   GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
   gint fps_n, fps_d, fps;
   GstClockTime duration;
@@ -517,10 +517,11 @@ video_pad_set_super_buffer_mode (GstPad * pad, GstStructure *structure)
   gint superframerate = 0;
   const gchar *viewmode;
   guint batch = 0;
+  gboolean success = TRUE;
 
   // if super_buffer_mode is not enabled in this vpad, return true directly
   if (vpad->super_buffer_mode != TRUE)
-    return TRUE;
+    goto exit;
 
   g_value_init (&isslave, G_TYPE_BOOLEAN);
   gst_qmmf_context_get_camera_param (qmmfsrc->context, PARAM_CAMERA_SLAVE,
@@ -529,7 +530,7 @@ video_pad_set_super_buffer_mode (GstPad * pad, GstStructure *structure)
   // if camera is under slave mode, return true directly
   if (g_value_get_boolean (&isslave)) {
     GST_DEBUG ("camera is in slave mode, super buffer disabled");
-    return TRUE;
+    goto exit;
   }
 
   g_value_init (&sframerate, G_TYPE_INT);
@@ -541,7 +542,8 @@ video_pad_set_super_buffer_mode (GstPad * pad, GstStructure *structure)
   if (superframerate <= 0) {
     GST_ERROR_OBJECT (pad, "Invalid HFR platform capability: %d",
         superframerate);
-    return FALSE;
+    success = FALSE;
+    goto exit;
   }
 
   gst_structure_get_fraction (structure, "framerate", &fps_n, &fps_d);
@@ -551,7 +553,8 @@ video_pad_set_super_buffer_mode (GstPad * pad, GstStructure *structure)
   batch = fps / superframerate;
   if (!((batch == 2) || (batch == 4) || (batch == 8) || (batch == 16))) {
     GST_ERROR_OBJECT (pad, "Don't support super buffer with batch %u.", batch);
-    return FALSE;
+    success = FALSE;
+    goto exit;
   }
 
   GST_DEBUG ("super buffer mode enabled on pad %s with batch %d",
@@ -563,7 +566,10 @@ video_pad_set_super_buffer_mode (GstPad * pad, GstStructure *structure)
       "multiview-mode", G_TYPE_STRING, viewmode,
       "views", G_TYPE_INT, batch, NULL);
 
-  return TRUE;
+exit:
+  gst_object_unref (qmmfsrc);
+
+  return success;
 }
 
 gboolean
