@@ -1001,7 +1001,8 @@ gst_qmmf_context_unregister_metadata_pad (GstQmmfContext * context, GstPad * pad
               " after pad unregistration", meta_pair.first);
 
           if (ref_info.metadata) {
-            free_camera_metadata (ref_info.metadata);
+            ::camera::CameraMetadata meta_wrapper(ref_info.metadata);
+            meta_wrapper.clear();
             ref_info.metadata = NULL;
           }
         }
@@ -1087,7 +1088,9 @@ gst_qmmf_context_store_metadata (GstQmmfContext * context, gpointer metadata)
     return;
   }
 
-  camerameta = clone_camera_metadata (buffer);
+  ::camera::CameraMetadata cloned_meta;
+  cloned_meta = buffer;
+  camerameta = cloned_meta.release();
 
   MetadataRefCount ref_count_info;
   ref_count_info.metadata = camerameta;
@@ -1714,7 +1717,8 @@ gst_qmmf_context_free (GstQmmfContext * context)
         GST_WARNING ("Freeing unreleased metadata for timestamp %" G_GUINT64_FORMAT
             " with ref_count %u/%u", pair.first, pair.second.ref_count,
             pair.second.total_pads);
-        free_camera_metadata (pair.second.metadata);
+        ::camera::CameraMetadata meta_wrapper(pair.second.metadata);
+        meta_wrapper.clear();
         pair.second.metadata = NULL;
       }
     }
