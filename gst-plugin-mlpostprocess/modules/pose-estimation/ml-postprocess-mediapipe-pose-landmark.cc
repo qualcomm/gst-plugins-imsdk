@@ -7,6 +7,7 @@
 
 #include <cfloat>
 #include <utility>
+#include <algorithm>
 
 static const float kDefaultThreshold = 0.50f;
 
