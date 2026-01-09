@@ -263,6 +263,11 @@ gst_ml_video_disposition_get_type (void)
         "Ignore the source image AR (Aspect Ratio) and if required stretch it's "
         "AR in order to fit completely inside the output tensor", "stretch"
     },
+    { GST_ML_VIDEO_DISPOSITION_CENTRE_CROP,
+        "Ignore the source image AR (Aspect Ratio) and if required crop "
+        "the source around its center to fit completely inside the output tensor",
+        "centre-crop"
+    },
     { 0, NULL, NULL },
   };
 
@@ -398,6 +403,35 @@ gst_region_of_interest_is_valid (GstVideoRegionOfInterestMeta * roimeta,
   }
 
   return FALSE;
+}
+
+static gboolean
+gst_region_of_interest_contains_affine_matrix (
+    GstVideoRegionOfInterestMeta * roimeta)
+{
+  GstStructure *param = NULL, *xtraparams = NULL;
+  const GValue *value = NULL;
+
+  // No ROI meta so nothing to do, simply return.
+  if (roimeta == NULL)
+    return FALSE;
+
+  // ROI meta doesn't have ObjectDetection parameters, nothing to do.
+  param = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
+  if (param == NULL)
+    return FALSE;
+
+  // ROI ObjectDetection parameters do not have 'xtraparams', nothing to do.
+  if ((value = gst_structure_get_value (param, "xtraparams")) == NULL)
+    return FALSE;
+
+  xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
+
+  // No 'affine-matrix' field in 'xtraparams', nothing to do.
+  if (!gst_structure_has_field (xtraparams, "affine-matrix"))
+    return FALSE;
+
+  return TRUE;
 }
 
 static inline guint
@@ -631,6 +665,89 @@ gst_video_source_inverse_affine_matrix (GstVideoQuadrilateral * source,
   return TRUE;
 }
 
+static gboolean
+gst_ml_video_converter_apply_affine_matrix (GstMLVideoConverter * mlconverter,
+    GstVideoRegionOfInterestMeta * roimeta, GstVideoQuadrilateral * source)
+{
+  GstStructure *param = NULL, *xtraparams = NULL;
+  const GValue *value = NULL;
+  gdouble matrix[3][3] = {0};
+  guint idx = 0, row = 0, col = 0;
+
+  // No affine matrix present, nothing to do
+  if (!gst_region_of_interest_contains_affine_matrix (roimeta))
+    return TRUE;
+
+  param = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
+  value = gst_structure_get_value (param, "xtraparams");
+  xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
+  value = gst_structure_get_value (xtraparams, "affine-matrix");
+
+  // Expected number of values is 9 for a 3x3 affine matrix.
+  if (gst_value_array_get_size (value) != 9) {
+    GST_TRACE_OBJECT (mlconverter, "Invalid number of values in the "
+        "'affine-matrix' field!");
+    return FALSE;
+  }
+
+  for (idx = 0; idx < 9; idx++, row = (idx / 3), col = (idx % 3))
+    matrix[row][col] = g_value_get_double (gst_value_array_get_value (value, idx));
+
+  gst_video_point_affine_correction (&(source->a), matrix);
+  gst_video_point_affine_correction (&(source->b), matrix);
+  gst_video_point_affine_correction (&(source->c), matrix);
+  gst_video_point_affine_correction (&(source->d), matrix);
+
+  GST_TRACE_OBJECT (mlconverter, "Affine transformation quadrilateral: A(%f, %f)"
+      " B(%f, %f) C(%f, %f) D(%f, %f)", source->a.x, source->a.y, source->b.x,
+      source->b.y, source->c.x, source->c.y, source->d.x, source->d.y);
+
+  return TRUE;
+}
+
+static void
+gst_ml_video_converter_apply_centre_crop (GstMLVideoConverter * mlconverter,
+    const GstVideoRectangle * region, GstVideoQuadrilateral * source)
+{
+  guint outwidth = 0, outheight = 0, n_batch = 0, depth = 0, offset = 0;
+
+  n_batch = GST_ML_INFO_TENSOR_DIM_N (mlconverter->tensorlayout,
+      mlconverter->mlinfo);
+  depth = GST_ML_INFO_TENSOR_DIM_D (mlconverter->tensorlayout,
+      mlconverter->mlinfo);
+
+  outwidth = GST_VIDEO_INFO_WIDTH (mlconverter->composition.info);
+  outheight = GST_VIDEO_INFO_HEIGHT (mlconverter->composition.info) /
+      (n_batch * depth);
+
+  // Crop the source based on its aspect-ratio
+  if ((region->w * outheight) > (region->h * outwidth)) {
+    // Source is wider, so we crop the width
+    gint newwidth = gst_util_uint64_scale_int (outwidth, region->h, outheight);
+
+    offset = (region->w - newwidth) / 2;
+
+    source->a.x += offset;
+    source->b.x += offset;
+    source->c.x -= offset;
+    source->d.x -= offset;
+  } else if ((region->w * outheight) < (region->h * outwidth)) {
+    // Source is higher, so we crop the height
+    gint newheight = gst_util_uint64_scale_int (outheight, region->w, outwidth);
+
+    offset = (region->h - newheight) / 2;
+
+    source->a.y += offset;
+    source->b.y -= offset;
+    source->c.y += offset;
+    source->d.y -= offset;
+  }
+
+  GST_TRACE_OBJECT (mlconverter, "Updated source quadrilateral: A(%f, %f)"
+      " B(%f, %f) C(%f, %f) D(%f, %f)", source->a.x, source->a.y, source->b.x,
+      source->b.y, source->c.x, source->c.y, source->d.x, source->d.y);
+}
+
 static GstProtectionMeta*
 gst_ml_video_converter_retrieve_protection_meta (GstMLVideoConverter * mlconverter,
       GstBuffer * inbuffer, GstBuffer * outbuffer)
@@ -678,88 +795,73 @@ gst_ml_video_converter_update_source (GstMLVideoConverter * mlconverter,
     GstProtectionMeta * pmeta)
 {
   GstVideoQuadrilateral *source = NULL;
-  GstStructure *param = NULL, *xtraparams = NULL;
-  const GValue *value = NULL;
-  GValue matvals = G_VALUE_INIT, val = G_VALUE_INIT;
+  GstVideoRectangle region = { 0, };
+  GValue matvals = G_VALUE_INIT, value = G_VALUE_INIT;
   gdouble matrix[3][3] = {0}, inverse[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE] = {0};
   gdouble intermediary[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE] = {0};
-  guint idx = 0, num = 0, row = 0, column = 0;
-  const gchar *label = NULL;
+  guint num = 0, row = 0, column = 0;
 
   source = &(vblit->source);
   vblit->mask |= GST_VCE_MASK_SOURCE;
 
-  // Initialize the source region with full dimensions of the blit buffer.
-  source->a.x = source->a.y = source->b.x = source->c.y = 0;
-  source->c.x = source->d.x = GST_VIDEO_INFO_WIDTH (vblit->info);
-  source->b.y = source->d.y = GST_VIDEO_INFO_HEIGHT (vblit->info);
+  if (roimeta == NULL) {
+    // Initialize the source region with full dimensions of the blit frame.
+    region.w = GST_VIDEO_INFO_WIDTH (vblit->info);
+    region.h = GST_VIDEO_INFO_HEIGHT (vblit->info);
+  } else {
+    GstStructure *param = NULL;
+    const GValue *value = NULL;
+    const gchar *label = NULL;
 
-  if (roimeta == NULL)
-    return TRUE;
+    // Initialize the source region with the data from the ROI meta.
+    region = (GstVideoRectangle){roimeta->x, roimeta->y, roimeta->w, roimeta->h};
 
-  // Update the quadrilateral coordinates with the data from the ROI meta.
-  source->a = (GstVideoPoint){roimeta->x, roimeta->y};
-  source->b = (GstVideoPoint){roimeta->x, roimeta->y + roimeta->h};
-  source->c = (GstVideoPoint){roimeta->x + roimeta->w, roimeta->y};
-  source->d = (GstVideoPoint){roimeta->x + roimeta->w, roimeta->y + roimeta->h};
+    // Propagate the ID of the ROI from which this batch position was created.
+    // TODO Protection meta needs revision when tensors with depth are involved.
+    gst_structure_set (pmeta->info, "parent-id", G_TYPE_INT, roimeta->id, NULL);
 
-  GST_TRACE_OBJECT (mlconverter, "ROI[%d %d %d %d]: A(%f, %f) B(%f, %f) "
-      "C(%f, %f) D(%f, %f)", roimeta->x, roimeta->y, roimeta->w, roimeta->h,
+    param = gst_video_region_of_interest_meta_get_param (
+        roimeta, "ObjectDetection");
+
+    if (param != NULL) {
+      label = ((value = gst_structure_get_value (param, "label")) != NULL) ?
+          g_value_get_string (value) : g_quark_to_string (roimeta->roi_type);
+      gst_structure_set (pmeta->info, "parent-label", G_TYPE_STRING, label, NULL);
+    }
+  }
+
+  // Update the quadrilateral coordinates with the source region dimensions.
+  source->a = (GstVideoPoint){region.x, region.y};
+  source->b = (GstVideoPoint){region.x, region.y + region.h};
+  source->c = (GstVideoPoint){region.x + region.w, region.y};
+  source->d = (GstVideoPoint){region.x + region.w, region.y + region.h};
+
+  GST_TRACE_OBJECT (mlconverter, "Region[%d %d %d %d]: A(%f, %f) B(%f, %f) "
+      "C(%f, %f) D(%f, %f)", region.x, region.y, region.w, region.h,
       source->a.x, source->a.y, source->b.x, source->b.y, source->c.x,
       source->c.y, source->d.x, source->d.y);
 
-  // Propagate the ID of the ROI from which this batch position was created.
-  // TODO Protection meta needs revision when tensors with depth are involved.
-  gst_structure_set (pmeta->info, "parent-id", G_TYPE_INT, roimeta->id, NULL);
-
-  param = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
-  if (param == NULL)
+  if ((mlconverter->disposition != GST_ML_VIDEO_DISPOSITION_CENTRE_CROP) &&
+      (!gst_region_of_interest_contains_affine_matrix (roimeta)))
     return TRUE;
 
-  label = ((value = gst_structure_get_value (param, "label")) != NULL) ?
-      g_value_get_string (value) : g_quark_to_string (roimeta->roi_type);
+  if (mlconverter->disposition == GST_ML_VIDEO_DISPOSITION_CENTRE_CROP)
+    gst_ml_video_converter_apply_centre_crop (mlconverter, &region, source);
 
-  gst_structure_set (pmeta->info, "parent-label", G_TYPE_STRING, label, NULL);
-
-  if ((value = gst_structure_get_value (param, "xtraparams")) == NULL)
-    return TRUE;
-
-  xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
-  value = gst_structure_get_value (xtraparams, "affine-matrix");
-
-  if (value == NULL)
-    return TRUE;
-
-  // Expected number of values is 9 for a 3x3 affine matrix.
-  if (gst_value_array_get_size (value) != 9) {
-    GST_ERROR_OBJECT (mlconverter, "Invalid number of values in the "
-        "'affine-matrix' field!");
+  if (!gst_ml_video_converter_apply_affine_matrix (mlconverter, roimeta, source))
     return FALSE;
-  }
 
-  for (idx = 0; idx < 9; idx++, row = (idx / 3), num = (idx % 3))
-    matrix[row][num] = g_value_get_double (gst_value_array_get_value (value, idx));
-
-  gst_video_point_affine_correction (&(source->a), matrix);
-  gst_video_point_affine_correction (&(source->b), matrix);
-  gst_video_point_affine_correction (&(source->c), matrix);
-  gst_video_point_affine_correction (&(source->d), matrix);
-
-  GST_TRACE_OBJECT (mlconverter, "Affine transformation quadrilateral: A(%f, %f)"
-      " B(%f, %f) C(%f, %f) D(%f, %f)", source->a.x, source->a.y, source->b.x,
-      source->b.y, source->c.x, source->c.y, source->d.x, source->d.y);
-
-  // Calcualte the inverse affine matrix for source -> relative destination.
+  // Calculate the inverse affine matrix for source -> relative destination.
   if (!gst_video_source_inverse_affine_matrix (source, inverse)) {
     GST_ERROR_OBJECT (mlconverter, "The inverse affine matrix is singular!");
     return FALSE;
   }
 
   // Matrix for converting the coordinates after inverse affine into relative.
-  intermediary[0][0] = 1.0 / roimeta->w;
-  intermediary[1][1] = 1.0 / roimeta->h;
-  intermediary[0][2] = -((gdouble) roimeta->x / roimeta->w);
-  intermediary[1][2] = -((gdouble) roimeta->y / roimeta->h);
+  intermediary[0][0] = 1.0 / region.w;
+  intermediary[1][1] = 1.0 / region.h;
+  intermediary[0][2] = -((gdouble) region.x / region.w);
+  intermediary[1][2] = -((gdouble) region.y / region.h);
   intermediary[2][2] = 1.0;
 
   // Multiply the matrices from above in order to get final matrix.
@@ -774,19 +876,19 @@ gst_ml_video_converter_update_source (GstMLVideoConverter * mlconverter,
 
   // Create an inverse affine matrix entry for correction downstream.
   g_value_init (&matvals, GST_TYPE_ARRAY);
-  g_value_init (&val, G_TYPE_DOUBLE);
+  g_value_init (&value, G_TYPE_DOUBLE);
 
   for (row = 0; row < 3; row++) {
     for (column = 0; column < 3; column++) {
-      g_value_set_double (&val, matrix[row][column]);
-      gst_value_array_append_value (&matvals, &val);
+      g_value_set_double (&value, matrix[row][column]);
+      gst_value_array_append_value (&matvals, &value);
     }
   }
 
   // Propagate the affine matrix for correction of the results in post-process.
   gst_structure_take_value (pmeta->info, "inverse-affine-matrix", &matvals);
 
-  g_value_unset (&val);
+  g_value_unset (&value);
   g_value_unset (&matvals);
 
   return TRUE;
@@ -818,7 +920,8 @@ gst_ml_video_converter_update_destination (GstMLVideoConverter * mlconverter,
   destination->h = maxheight;
 
   // If the image disposition is simply to stretch simply return, nothing to do.
-  if (mlconverter->disposition == GST_ML_VIDEO_DISPOSITION_STRETCH)
+  if ((mlconverter->disposition == GST_ML_VIDEO_DISPOSITION_STRETCH) ||
+      (mlconverter->disposition == GST_ML_VIDEO_DISPOSITION_CENTRE_CROP))
     goto exit;
 
   source = &(vblit->source);
