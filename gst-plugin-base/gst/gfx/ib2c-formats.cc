@@ -9,35 +9,37 @@
 #define fourcc_mod_code_qti(vendor, val) \
     ((((uint32_t)DRM_FORMAT_MOD_VENDOR_## vendor) << 28) | (val & 0x0fffffffULL))
 
-#if defined(DRM_FORMAT_ABGR16161616F) && !defined(DRM_FORMAT_BGR161616F)
-#undef DRM_FORMAT_ABGR16161616F
-#endif // DRM_FORMAT_ABGR16161616F && !(DRM_FORMAT_BGR161616F)
 
 #if !defined(DRM_FORMAT_ABGR16161616F)
-#define DRM_FORMAT_ABGR16161616F  fourcc_mod_code_qti(QCOM, 54)
+#define DRM_FORMAT_ABGR16161616F fourcc_code('A', 'B', '4', 'H')
 #endif // DRM_FORMAT_ABGR16161616F
 
 #if !defined(DRM_FORMAT_BGR161616F)
-#define DRM_FORMAT_BGR161616F     fourcc_mod_code_qti(QCOM, 55)
+#define DRM_FORMAT_BGR161616F    fourcc_code('B', 'G', 'R', 'H')
 #endif // DRM_FORMAT_BGR161616F
 
 #if !defined(DRM_FORMAT_ABGR32323232F)
-#define DRM_FORMAT_ABGR32323232F  fourcc_mod_code_qti(QCOM, 56)
+#define DRM_FORMAT_ABGR32323232F fourcc_code('A', 'B', '8', 'F')
 #endif // DRM_FORMAT_ABGR32323232F
 
 #if !defined(DRM_FORMAT_BGR323232F)
-#define DRM_FORMAT_BGR323232F     fourcc_mod_code_qti(QCOM, 57)
+#define DRM_FORMAT_BGR323232F    fourcc_code('B', 'G', 'R', 'F')
 #endif // DRM_FORMAT_BGR323232F
 
-// TODO: Workaround for missing 16 bpp RGB format. Just a placeholder.
 #if !defined(DRM_FORMAT_BGR161616)
-#define DRM_FORMAT_BGR161616      0
+#define DRM_FORMAT_BGR161616     fourcc_code('B', 'G', '4', '8')
 #endif // DRM_FORMAT_BGR161616
 
-// TODO: Workaround for missing 16 bpp RGBA format. Just a placeholder.
 #if !defined(DRM_FORMAT_ABGR16161616)
-#define DRM_FORMAT_ABGR16161616   0
+#define DRM_FORMAT_ABGR16161616  fourcc_code('A', 'B', '4', '8')
 #endif // DRM_FORMAT_ABGR16161616
+
+// TODO: Workaround adds GBM formats because DRM are not supported by Adreno
+#define GBM_FORMAT_ABGR16161616F  fourcc_mod_code_qti(QCOM, 54)
+#define GBM_FORMAT_BGR161616F     fourcc_mod_code_qti(QCOM, 55)
+#define GBM_FORMAT_ABGR32323232F  fourcc_mod_code_qti(QCOM, 56)
+#define GBM_FORMAT_BGR323232F     fourcc_mod_code_qti(QCOM, 57)
+
 
 #include "ib2c-formats.h"
 #include "ib2c-utils.h"
@@ -343,7 +345,7 @@ const std::map<uint32_t, Format::ColorCoeffcients> Format::kColorSpaceCoefficien
   { ColorMode::kBT709,          { 0.2126, 0.7152, 0.0722 } }
 };
 
-std::tuple<uint32_t, uint64_t> Format::ToInternal(uint32_t format) {
+std::tuple<uint32_t, uint64_t> Format::ToInternal(uint32_t format, bool adreno) {
 
   uint32_t external = format & kFormatMask;
   uint64_t modifier = 0;
@@ -362,6 +364,21 @@ std::tuple<uint32_t, uint64_t> Format::ToInternal(uint32_t format) {
     throw Exception("Unsuppoted format ", format);
 
   uint32_t internal = std::get<uint32_t>(kRgbFormatTable.at(external));
+
+  // TODO: Workaround due to Adreno not using the proper DRM formats.
+  if (adreno) {
+    if (internal == DRM_FORMAT_ABGR16161616F)
+      internal = GBM_FORMAT_ABGR16161616F;
+
+    if (internal == DRM_FORMAT_BGR161616F)
+      internal = GBM_FORMAT_BGR161616F;
+
+    if (internal == DRM_FORMAT_ABGR32323232F)
+      internal = GBM_FORMAT_ABGR32323232F;
+
+    if (internal == DRM_FORMAT_BGR323232F)
+      internal = GBM_FORMAT_BGR323232F;
+  }
 
   return {internal, modifier};
 }

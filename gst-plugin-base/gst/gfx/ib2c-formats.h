@@ -29,7 +29,9 @@ enum class PixelType : uint32_t {
 
 class Format {
  public:
-  static std::tuple<uint32_t, uint64_t> ToInternal(uint32_t format);
+  static std::tuple<uint32_t, uint64_t> ToInternal(
+      uint32_t format, bool adreno);
+
   static GLenum ToGL(uint32_t format);
 
   static bool IsRgb(uint32_t format);

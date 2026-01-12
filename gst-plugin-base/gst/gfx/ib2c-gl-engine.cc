@@ -981,9 +981,12 @@ std::vector<GraphicTuple> Engine::ImportSurface(const Surface& surface,
   std::vector<Surface> imgsurfaces = GetImageSurfaces(surface, flags);
   std::vector<GraphicTuple> graphics;
 
+  bool is_adreno = vendor_ != "freedreno";
+
   for (auto& subsurface : imgsurfaces) {
     // Retrieve the tuple of DRM format and its modifier.
-    std::tuple<uint32_t, uint64_t> internal = Format::ToInternal(subsurface.format);
+    std::tuple<uint32_t, uint64_t> internal =
+        Format::ToInternal(subsurface.format, is_adreno);
 
     EGLint attribs[64] = { EGL_NONE };
     uint32_t index = 0;
