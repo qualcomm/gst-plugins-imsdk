@@ -310,7 +310,7 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   GstMemory *memory = NULL;
   const gchar *mode = NULL;
   ::ib2c::Surface surface;
-  guint32 type = 0, idx = 0, bytedepth = 1;
+  guint type = 0, idx = 0, num = 0, n_planes = 0, n_views = 0, bytedepth = 1;
   gint format = 0;
   guint64 surface_id = 0;
 
@@ -380,22 +380,40 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
 
   surface.format = format;
 
-  GST_TRACE ("%s surface FD[%d] - Width[%u] Height[%u] Format[%s%s] Planes[%u]",
-      direction, surface.fd, surface.width, surface.height,
+  n_planes = GST_VIDEO_FRAME_N_PLANES (frame);
+  n_views = GST_VIDEO_INFO_VIEWS (&(frame->info));
+
+  GST_TRACE ("%s surface FD[%d] - Width[%u] Height[%u] Format[%s%s] Planes[%u]"
+      " Views[%u]", direction, surface.fd, surface.width, surface.height,
       gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame)), mode,
-      GST_VIDEO_FRAME_N_PLANES (frame));
+      n_planes, n_views);
 
-  surface.planes.resize (GST_VIDEO_FRAME_N_PLANES (frame));
+  // Reset number of views for the calculations below, when RGB is interleaved.
+  if ((GST_VIDEO_FRAME_FORMAT (frame) != GST_VIDEO_FORMAT_RGBP) &&
+      (GST_VIDEO_FRAME_FORMAT (frame) != GST_VIDEO_FORMAT_BGRP))
+    n_views = 1;
 
-  for (idx = 0; idx < GST_VIDEO_FRAME_N_PLANES (frame); idx++) {
-    surface.planes[idx].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, idx);
-    surface.planes[idx].offset = GST_VIDEO_FRAME_PLANE_OFFSET (frame, idx);
+  for (num = 0; num < n_planes; num++) {
+    ::ib2c::Plane plane;
+
+    plane.stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, num);
+    plane.offset = GST_VIDEO_FRAME_PLANE_OFFSET (frame, num);
 
     // Correction of the stride for some formats, NOP otherwise.
-    surface.planes[idx].stride /= bytedepth;
+    plane.stride /= bytedepth;
 
-    GST_TRACE ("%s surface FD[%d] - Plane[%u] Stride[%u] Offset[%u]", direction,
-        surface.fd, idx, surface.planes[idx].stride, surface.planes[idx].offset);
+    for (idx = (num * n_views); idx < (n_views * (num + 1)); idx++) {
+      // Correction of the offset as this is sub plane for the planar RGB.
+      if (idx != (num * n_views)) {
+        plane.offset += GST_VIDEO_FRAME_PLANE_STRIDE (frame, num) *
+            GST_VIDEO_FRAME_COMP_HEIGHT (frame, num) / n_views;
+      }
+
+      surface.planes.push_back(plane);
+
+      GST_TRACE ("%s surface FD[%d] - Plane[%u] Stride[%u] Offset[%u]",
+          direction, surface.fd, idx, plane.stride, plane.offset);
+    }
   }
 
   try {
