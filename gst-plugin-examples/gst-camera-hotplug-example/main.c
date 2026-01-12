@@ -139,6 +139,7 @@ struct _GstAppContext
 
 /// Command line option variables.
 static gboolean eos_on_shutdown = FALSE;
+static gint pov_camera_id = 0;
 
 /// To handle the bus events on two pipelines
 static gint bus1_watch_id = 0, bus2_watch_id = 0;
@@ -152,6 +153,8 @@ static gboolean pov_plugged_in = FALSE;
 static const GOptionEntry entries[] = {
   {"eos-on-shutdown", 'e', 0, G_OPTION_ARG_NONE, &eos_on_shutdown,
       "Send EOS event before transition from PLAYING to NULL state", NULL},
+  {"pov-camera-id", 'p', 0, G_OPTION_ARG_INT, &pov_camera_id,
+      "POV camera ID (default: 0)", "ID"},
   {NULL}
 };
 
@@ -206,6 +209,7 @@ on_device_status_change(GstElement *element, guint camera_id,
 {
   GstAppContext *appctx = GST_APP_CONTEXT_CAST(user_data);
 
+  if(camera_id != pov_camera_id) return ;
   if (is_present) {
     pov_plugged_in = TRUE;
     g_print("\nNOTICE: POV camera physically connected\n");
@@ -1535,6 +1539,7 @@ static void
 capture_image (GstElement * pipeline)
 {
   GValue item = G_VALUE_INIT;
+  gboolean success = FALSE;
   GstIterator *it = gst_bin_iterate_sources (GST_BIN (pipeline));
   while (GST_ITERATOR_OK == gst_iterator_next (it, &item)) {
     GstElement *element = g_value_get_object (&item);
@@ -1542,8 +1547,9 @@ capture_image (GstElement * pipeline)
       GstElementFactory *factory = gst_element_get_factory (element);
       g_print ("%s checking %s\n", __func__, GST_OBJECT_NAME (factory));
       if (g_str_equal (GST_OBJECT_NAME (factory), "qtiqmmfsrc")) {
-        g_signal_emit_by_name (element, "capture-image");
-        g_print ("Emitted signal 'capture-image' \n");
+        g_signal_emit_by_name (element, "capture-image", 0, 1, NULL, &success);
+        g_print ("Emitted signal 'capture-image' with result: %s\n",
+            success ? "SUCCESS" : "FAILED");
         break;
       }
     } else {
@@ -1742,7 +1748,7 @@ menu_thread (gpointer userdata)
           configure_pref_on_pov_attach (appctx);
           new_state = pov_plugged_in ? user_pref : APP_STATE_BWC_ONLY;
         } else if (g_str_equal (input, CAPTURE_IMAGE_POV)) {
-          capture_image (appctx->pipeline1);
+          capture_image (appctx->pipeline2);
         } else if (g_str_equal (input, QUIT_OPTION)) {
           active = FALSE;
         }

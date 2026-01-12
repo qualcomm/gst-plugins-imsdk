@@ -1589,8 +1589,8 @@ camera_event_callback (GstQmmfContext * context,
           static_cast<const CameraDeviceStatus*>(payload);
       g_assert (size == sizeof(CameraDeviceStatus));
 
-      gint camera_id = camera_status->camera_id;
-      gboolean is_present = camera_status->is_present;
+      guint32 camera_id = camera_status->camera_id;
+      guint8 is_present = camera_status->is_present;
 
       // Store device status information in context
       context->device_status_camera_id = camera_id;

@@ -47,8 +47,8 @@ typedef struct _GstQmmfLogicalCamInfo     GstQmmfLogicalCamInfo;
 typedef struct _GstQmmfCameraSwitchInfo   GstQmmfCameraSwitchInfo;
 
 typedef struct _CameraDeviceStatus {
-  gint camera_id;
-  gboolean is_present;
+  guint32 camera_id;
+  guint8 is_present;
 } CameraDeviceStatus;
 
 typedef void (*GstCameraEventCb) (guint event, gpointer userdata);
