@@ -717,19 +717,6 @@ gst_ml_pose_estimation_sort_and_push (std::any& output, std::any& predictions)
   std::any_cast<PosePrediction&>(output).push_back (poses);
 }
 
-void
-gst_ml_text_generation_sort_and_push (std::any& output, std::any& predictions)
-{
-  auto& texts = std::any_cast<TextGenerations&>(predictions);
-
-  std::sort (texts.begin (), texts.end (),
-      [](TextGeneration& l_entry, TextGeneration& r_entry) {
-        return (l_entry.confidence > r_entry.confidence);
-      });
-
-  std::any_cast<TextPrediction&>(output).push_back (texts);
-}
-
 gboolean
 gst_cairo_draw_setup (GstVideoFrame * frame, cairo_surface_t ** surface,
     cairo_t ** context)

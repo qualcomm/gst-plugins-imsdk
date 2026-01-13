@@ -218,37 +218,6 @@ typedef std::vector<Tensor> Tensors;
 // Map between a parameter and its value: <parameter name, value>
 typedef std::unordered_map<std::string, std::any> Dictionary;
 
-/** TextGeneration:
- * @contents: The generated text.
- * @confidence: Percentage certainty that the prediction is accurate.
- * @color: Optional color that is associated with this prediction.
- * @xtraparams: Optional additional parameters in #Dictionary which the user
- *              can export from the submodule and be passed downstream.
- *
- * Information describing prediction result from text generation models.
- * All fields are mandatory and need to be filled by the submodule.
- */
-struct TextGeneration {
-  std::string               contents;
-  float                     confidence;
-
-  std::optional<uint32_t>   color;
-  std::optional<Dictionary> xtraparams;
-
-  TextGeneration()
-      : contents(), confidence(0) {};
-
-  TextGeneration(std::string& contents, float confidence)
-      : contents(contents), confidence(confidence) {};
-};
-
-// Variable vector of text generation structures.
-typedef std::vector<TextGeneration> TextGenerations;
-
-// Variable vector of Detection Entries.
-// Information describing a group of prediction results from the same tensor batch.
-typedef std::vector<TextGenerations> TextPrediction;
-
 /** AudioClassification:
  * @name: Name of the class prediction.
  * @confidence: Percentage certainty that the prediction is accurate.
@@ -494,14 +463,6 @@ class IModule {
    *        - 'input-tensor-region': Region
    *          Position and dimensions of the rectangle in the input tensor
    *          that was filled with data.
-   *    Text Generation:
-   *        - 'input-context-index': uint32_t
-   *          Optional index from in the input tensor from which the text
-   *          context tokens begin. Used to offset the indices for extraction
-   *          based models.
-   *        - 'input-context-tokens': std::vector<std::string>
-   *          Optional list with tokenized words of the text context given
-   *          as input to the model and required for extraction based models.
    * @output: Module specific output:
    *    Image Classification: Variable vector of ClassPrediction.
    *    Audio Classification: Variable vector of AudioClassPrediction.
@@ -509,7 +470,6 @@ class IModule {
    *    Pose Estimation: Variable vector of PosePrediction.
    *    Image Segmentation: Image mask represented by VideoFrame.
    *    Super Resolution: Scaled image represented by VideoFrame.
-   *    Text Generation: Variable vector of TextPrediction.
    *    Tensor Generation: Tensor output represented by Tensors.
    *
    * Process incoming buffer containing result tensors and converts that

@@ -72,7 +72,6 @@ G_DEFINE_TYPE (GstMLPostProcess, gst_ml_post_process,
 #define GST_SEGMENTATION_TYPE         "image-segmentation"
 #define GST_SUPER_RESOLUTION_TYPE     "super-resolution"
 #define GST_AUDIO_CLASSIFICATION_TYPE "audio-classification"
-#define GST_TEXT_GENERATION_TYPE      "text-generation"
 #define GST_TENSOR_TYPE               "tensor"
 
 #define GST_IS_DETECTION_TYPE(type) \
@@ -87,8 +86,6 @@ G_DEFINE_TYPE (GstMLPostProcess, gst_ml_post_process,
     (type == g_quark_from_static_string (GST_SUPER_RESOLUTION_TYPE))
 #define GST_IS_AUDIO_CLASSIFICATION_TYPE(type) \
     (type == g_quark_from_static_string (GST_AUDIO_CLASSIFICATION_TYPE))
-#define GST_IS_TEXT_GENERATION_TYPE(type) \
-    (type == g_quark_from_static_string (GST_TEXT_GENERATION_TYPE))
 #define GST_IS_TENSOR_TYPE(type) \
     (type == g_quark_from_static_string (GST_TENSOR_TYPE))
 
@@ -402,8 +399,6 @@ gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
       predictions = AudioClassifications();
     } else if (GST_IS_POSE_TYPE (postprocess->type)) {
       predictions = PoseEstimations();
-    } else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
-      predictions = TextGenerations();
     } else if (GST_IS_TENSOR_TYPE (postprocess->type)) {
       tensors = std::any_cast<Tensors>(output);
 
@@ -448,8 +443,6 @@ gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
       gst_ml_post_process_poses_affine_correction (postprocess, info,
           std::any_cast<PoseEstimations&>(predictions));
       gst_ml_pose_estimation_sort_and_push (output, predictions);
-    } else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
-      gst_ml_text_generation_sort_and_push (output, predictions);
     }
   }
 
@@ -1568,184 +1561,6 @@ gst_ml_video_pose_fill_text_output (GstMLPostProcess * postprocess,
 }
 
 static gboolean
-gst_ml_text_generation_fill_video_output (GstMLPostProcess * postprocess,
-    std::any& output, GstVideoFrame * vframe)
-{
-  cairo_surface_t* surface = NULL;
-  cairo_t* context = NULL;
-  guint idx = 0, num = 0, n_entries = 0, color = 0;
-  gdouble width = 0.0, height = 0.0;
-  gboolean success = FALSE;
-
-  auto& predictions = std::any_cast<TextPrediction&>(output);
-
-  success = gst_cairo_draw_setup (vframe, &surface, &context);
-  g_return_val_if_fail (success, FALSE);
-
-  // Set the most appropriate font size based on number of results.
-  cairo_set_font_size (context, DEFAULT_FONT_SIZE);
-
-  height = DEFAULT_FONT_SIZE;
-
-  for (idx = 0; idx < predictions.size(); idx++) {
-    auto& entries = predictions[idx];
-
-    n_entries = (entries.size() < postprocess->n_results) ?
-        entries.size() : postprocess->n_results;
-
-    for (num = 0; num < n_entries; num++) {
-      TextGeneration& entry = entries[num];
-
-      // Check whether there is enough pixel space for this label entry.
-      if (((num + 1) * height) > GST_VIDEO_FRAME_HEIGHT (vframe))
-        break;
-
-      GST_TRACE_OBJECT (postprocess, "Batch: %u, contents: %s, "
-          "confidence: %.1f%%", idx, entry.contents.c_str(),
-          entry.confidence);
-
-      color = entry.color.value();
-
-      // Set text background color.
-      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
-          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
-          GST_FLOAT_COLOR_ALPHA (color));
-
-      width = ceil (entry.contents.size() * DEFAULT_FONT_SIZE * 3.0F / 5.0F);
-
-      cairo_rectangle (context, 0, (num * height), width, height);
-      cairo_fill (context);
-
-      // Choose the best contrasting color to the background.
-      color = GST_COLOR_ALPHA (color);
-      color += ((GST_COLOR_RED (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 8;
-      color += ((GST_COLOR_GREEN (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 16;
-      color += ((GST_COLOR_BLUE (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 24;
-
-      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
-          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
-          GST_FLOAT_COLOR_ALPHA (color));
-
-      // (0,0) is at top left corner of the buffer.
-      cairo_move_to (context, 0.0, (DEFAULT_FONT_SIZE * (num + 1) * 4.0F / 5.0F));
-
-      // Draw text string.
-      cairo_show_text (context, entry.contents.c_str());
-      g_return_val_if_fail (
-          CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
-
-      // Flush to ensure all writing to the surface has been done.
-      cairo_surface_flush (surface);
-    }
-  }
-
-  gst_cairo_draw_cleanup (vframe, surface, context);
-
-  return TRUE;
-}
-
-static gboolean
-gst_ml_text_generation_fill_text_output (GstMLPostProcess * postprocess,
-    std::any& output, GstBuffer *buffer)
-{
-  GstStructure *structure = NULL;
-  GstMemory *memory = NULL;
-  gchar *string = NULL;
-  GValue list = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
-  guint idx = 0, num = 0, n_entries = 0, id = 0;
-  gsize length = 0;
-
-  auto& predictions = std::any_cast<TextPrediction&>(output);
-  predictions.resize(GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0));
-
-  g_value_init (&list, GST_TYPE_LIST);
-  g_value_init (&labels, GST_TYPE_ARRAY);
-  g_value_init (&value, GST_TYPE_STRUCTURE);
-
-  for (idx = 0; idx < predictions.size(); idx++) {
-    TextGenerations& entries = predictions[idx];
-    GstStructure *info = NULL;
-    const GValue *val = NULL;
-
-    n_entries = (entries.size() < postprocess->n_results) ?
-        entries.size() : postprocess->n_results;
-
-    for (num = 0; num < n_entries; num++) {
-      TextGeneration& entry = entries[num];
-
-      id = GST_META_ID (postprocess->stage_id, idx, num);
-
-      GST_TRACE_OBJECT (postprocess, "Batch: %u, ID: %X, "
-          "Contents: %s,  Confidence: %.1f%%", idx, id,
-          entry.contents.c_str(), entry.confidence);
-
-      structure = gst_structure_new ("text", "id", G_TYPE_UINT, id,
-          "contents", G_TYPE_STRING, entry.contents.c_str(), "confidence",
-          G_TYPE_DOUBLE, entry.confidence, "color", G_TYPE_UINT,
-          entry.color.value(), NULL);
-
-      if (entry.xtraparams.has_value ()) {
-        GstStructure *xtraparams =
-            gst_structure_from_dictionary (entry.xtraparams.value ());
-
-        GValue value = G_VALUE_INIT;
-        g_value_init (&value, GST_TYPE_STRUCTURE);
-        g_value_take_boxed (&value, xtraparams);
-
-        gst_structure_set_value (structure, "xtraparams", &value);
-        g_value_unset (&value);
-      }
-
-      g_value_take_boxed (&value, structure);
-      gst_value_array_append_value (&labels, &value);
-      g_value_reset (&value);
-    }
-
-    structure = gst_structure_new_empty ("TextGeneration");
-
-    gst_structure_set_value (structure, "texts", &labels);
-    g_value_reset (&labels);
-
-    // Get saved info for the current batch
-    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
-
-    val = gst_structure_get_value (info, "timestamp");
-    gst_structure_set_value (structure, "timestamp", val);
-
-    val = gst_structure_get_value (info, "sequence-index");
-    gst_structure_set_value (structure, "sequence-index", val);
-
-    val = gst_structure_get_value (info, "sequence-num-entries");
-    gst_structure_set_value (structure, "sequence-num-entries", val);
-
-    g_value_take_boxed (&value, structure);
-    gst_value_list_append_value (&list, &value);
-    g_value_reset (&value);
-  }
-
-  g_value_unset (&labels);
-  g_value_unset (&value);
-
-  // Serialize the predictions list into string format.
-  string = gst_value_serialize (&list);
-  g_value_unset (&list);
-
-  if (string == NULL) {
-    GST_ERROR_OBJECT (postprocess, "Failed serialize predictions structure!");
-    return FALSE;
-  }
-
-  // Increase the length by 1 byte for the '\0' character.
-  length = strlen (string) + 1;
-
-  memory = gst_memory_new_wrapped ((GstMemoryFlags) 0, string, length, 0,
-      length, string, g_free);
-  gst_buffer_append_memory (buffer, memory);
-
-  return TRUE;
-}
-
-static gboolean
 gst_ml_post_process_decide_allocation (GstBaseTransform * base,
     GstQuery * query)
 {
@@ -2062,8 +1877,7 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
     GST_DEBUG_OBJECT (postprocess, "Output PAR fixed to: %d/%d", par_n, par_d);
 
     is_text_mask = GST_IS_CLASSIFICATION_TYPE (postprocess->type) ||
-        GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type) ||
-        GST_IS_TEXT_GENERATION_TYPE (postprocess->type);
+        GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type);
 
     // For super-resolution expect the tensor resolution as video resolution.
     if (GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
@@ -2320,8 +2134,6 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     output = AudioClassPrediction();
   } else if (GST_IS_POSE_TYPE (postprocess->type)) {
     output = PosePrediction();
-  } else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
-    output = TextPrediction();
   } else if (GST_IS_SEGMENTATION_TYPE (postprocess->type) ||
       GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
     VideoFrame frame;
@@ -2429,9 +2241,6 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     } else if (GST_IS_POSE_TYPE (postprocess->type)) {
       success = gst_ml_video_pose_fill_video_output (postprocess,
           output, &vframe);
-    } else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
-      success = gst_ml_text_generation_fill_video_output (postprocess,
-          output, &vframe);
     } else if ((GST_IS_SEGMENTATION_TYPE (postprocess->type)) ||
                (GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type))) {
       GstVideoRectangle region = { 0, };
@@ -2462,9 +2271,6 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
           output, outbuffer);
     } else if (GST_IS_POSE_TYPE (postprocess->type)) {
       success = gst_ml_video_pose_fill_text_output (postprocess,
-          output, outbuffer);
-    } else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
-      success = gst_ml_text_generation_fill_text_output (postprocess,
           output, outbuffer);
     }
   }

@@ -229,15 +229,6 @@ gst_ml_audio_classifications_sort_and_push (std::any& output, std::any& predicti
 void
 gst_ml_pose_estimation_sort_and_push (std::any& output, std::any& predictions);
 
-/* gst_ml_text_generation_sort_and_push
- *
- * Helper function to sort and push text generation.
- *
- * return: None.
- **/
-void
-gst_ml_text_generation_sort_and_push (std::any& output, std::any& predictions);
-
 /* gst_cairo_draw_setup
  *
  * Helper function to prepare cairo for draw.
