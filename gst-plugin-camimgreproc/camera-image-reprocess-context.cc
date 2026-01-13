@@ -256,11 +256,14 @@ gst_data_callback (GstCameraImageReprocContext *context, guint fd, guint size)
     return;
   }
 
+  g_mutex_unlock (&context->lock);
+
   // Callback will invoke gst_pad_push to push data downstream
   context->data_cb ((gpointer *)array, context->camimgreproc);
 
   g_ptr_array_unref(array);
 
+  g_mutex_lock (&context->lock);
   g_hash_table_remove (context->requests, GINT_TO_POINTER (fd));
   if (g_hash_table_size (context->requests) == 0)
     g_cond_signal (&context->requests_clear);

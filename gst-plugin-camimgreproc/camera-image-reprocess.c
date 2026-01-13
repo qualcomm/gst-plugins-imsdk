@@ -287,6 +287,22 @@ gst_camera_image_reproc_set_format (GstCameraImageReproc * reprocess)
         GST_CAMERA_REPROC_SINK_PAD (list->data);
 
     sinkcaps = gst_pad_get_current_caps (GST_PAD (sinkpad));
+
+    if (!sinkcaps) {
+      GstQuery *query = gst_query_new_caps (NULL);
+      if (gst_pad_peer_query (GST_PAD (sinkpad), query)) {
+        gst_query_parse_caps_result (query, &sinkcaps);
+        if (sinkcaps)
+          gst_caps_ref (sinkcaps);
+      }
+      gst_query_unref (query);
+    }
+
+    if (!sinkcaps) {
+      GST_ERROR_OBJECT (reprocess, "No caps available on pad");
+      return FALSE;
+    }
+
     input = gst_caps_get_structure (sinkcaps, 0);
     gst_structure_get_int (input, "width", &params[0].width);
     gst_structure_get_int (input, "height", &params[0].height);
@@ -573,6 +589,12 @@ gst_camera_reproc_sink_main_pad_event (GstPad * pad, GstObject * parent,
       gst_event_parse_caps (event, &caps);
       success = gst_camera_reproc_sink_pad_setcaps (reprocess,
           pad, caps);
+
+      success = gst_camera_image_reproc_set_format (reprocess);
+      if (!success) {
+        GST_ERROR_OBJECT (reprocess, "Failed to set format.");
+        return GST_STATE_CHANGE_FAILURE;
+      }
 
       gst_event_unref (event);
       return success;
@@ -923,13 +945,6 @@ gst_camera_image_reproc_change_state (GstElement * element,
       }
       break;
     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:
-      ret = gst_camera_image_reproc_set_format (reprocess);
-
-      if (!ret){
-        GST_ERROR_OBJECT (reprocess, "Failed to set format.");
-        return GST_STATE_CHANGE_FAILURE;
-      }
-
       gst_camera_image_reproc_start_worker_task (reprocess);
       break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
