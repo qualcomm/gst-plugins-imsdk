@@ -2053,7 +2053,7 @@ main (gint argc, gchar * argv[])
   gst_caps_unref (filtercaps);
 
   g_object_set (G_OBJECT (appsrc), "stream-type", 0,    // GST_APP_STREAM_TYPE_STREAM
-      "format", GST_FORMAT_TIME, "is-live", FALSE,
+      "format", GST_FORMAT_TIME, "is-live", TRUE,
       NULL);
 
   //setting caps on capsfilter

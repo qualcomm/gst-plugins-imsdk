@@ -1096,6 +1096,8 @@ gst_qmmf_context_store_metadata (GstQmmfContext * context, gpointer metadata)
 
   (*context->metadata_refcount_map)[timestamp] = ref_count_info;
 
+  g_mutex_unlock (&context->metadata_lock);
+
   // Check if there are pending buffers waiting for this metadata
   auto pending_it = (*context->pending_buffers).find (timestamp);
   if (pending_it != (*context->pending_buffers).end ()) {
@@ -1104,15 +1106,14 @@ gst_qmmf_context_store_metadata (GstQmmfContext * context, gpointer metadata)
 
     // Attach metadata to all pending buffers with this timestamp
     for (auto& pending : pending_it->second) {
-      gst_qmmf_context_attach_metadata_to_buffer (context, &pending, camerameta);
+      gst_qmmf_context_attach_metadata_to_buffer (context,
+          &pending, ref_count_info.metadata);
       gst_qmmf_context_push_buffer_downstream (context, &pending);
     }
 
     // Remove from pending queue
     (*context->pending_buffers).erase (pending_it);
   }
-
-  g_mutex_unlock (&context->metadata_lock);
 }
 
 static GstBuffer *
