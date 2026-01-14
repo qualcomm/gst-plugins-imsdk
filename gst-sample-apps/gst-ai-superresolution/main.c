@@ -51,7 +51,7 @@
 /**
  * Number of Queues used for buffer caching between elements
  */
-#define QUEUE_COUNT 4
+#define QUEUE_COUNT 7
 
 /**
  * Number of static sinks for qtivcomposer
@@ -457,7 +457,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   ret = gst_element_link_many (queue[0], h264parse_decode, v4l2h264dec,
-      v4l2h264dec_caps, tee, NULL);
+      v4l2h264dec_caps, queue[1], tee, NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements qtdemux -> v4l2h264dec cannot be linked."
         "Exiting.\n");
@@ -465,7 +465,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   if (options.sink_type == GST_WAYLANDSINK) {
-    ret = gst_element_link_many (tee, queue[1], qtivcomposer,
+    ret = gst_element_link_many (tee, queue[2], qtivcomposer, queue[6],
         fpsdisplaysink, NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements tee -> qtivcomposer -> fpsdisplaysink"
@@ -473,7 +473,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       goto error_clean_pipeline;
     }
   } else if (options.sink_type == GST_VIDEO_ENCODE) {
-    ret = gst_element_link_many (tee, queue[1], qtivcomposer,
+    ret = gst_element_link_many (tee, queue[2], qtivcomposer,
         sink_filter, v4l2h264enc, h264parse_encode, mp4mux, filesink,
         NULL);
     if (!ret) {
@@ -483,8 +483,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
   }
 
-  ret = gst_element_link_many (tee, qtimlvconverter, queue[2], qtimlelement,
-      qtimlvsuperresolution, filter, queue[3], qtivcomposer, NULL);
+  ret = gst_element_link_many (tee, qtimlvconverter, queue[3], qtimlelement, queue[4],
+      qtimlvsuperresolution, filter, queue[5], qtivcomposer, NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements tee -> qtimlvconverter -> qtimlelement"
         " -> qtimlvsuperresolution -> qtivcomposer cannot be linked."
@@ -545,7 +545,11 @@ error_clean_elements:
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     if (queue[i]) {
-       gst_object_unref (queue[i]);
+      // Only unref if not added to bin yet
+      // If added to bin, it will be cleaned up with the pipeline
+      if (!GST_OBJECT_PARENT (queue[i])) {
+        gst_object_unref (queue[i]);
+      }
     }
   }
 
