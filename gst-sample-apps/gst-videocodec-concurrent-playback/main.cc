@@ -207,10 +207,6 @@ main (gint argc, gchar * argv[])
   gint stream_cnt = STREAM_CNT;
   gboolean ret = FALSE;
 
-  // Setting Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   // Create the application context
   appctx = gst_app_context_new ();
   if (NULL == appctx){

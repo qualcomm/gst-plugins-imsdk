@@ -364,10 +364,6 @@ main (gint argc, gchar * argv[])
   // Initialize GST library.
   gst_init (&argc, &argv);
 
-  // Setting Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   GOptionEntry entries[] = {
       { "display", 'd', 0, G_OPTION_ARG_INT,
         &cameraswitchctx.use_display,
