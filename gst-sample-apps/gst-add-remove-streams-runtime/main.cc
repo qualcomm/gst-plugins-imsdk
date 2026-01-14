@@ -691,10 +691,6 @@ main (gint argc, gchar * argv[])
   appctx.stream_cnt = 0;
   appctx.use_display = TRUE;
 
-    // Setting Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   GOptionEntry entries[] = {
     { "output", 'o', 0, G_OPTION_ARG_STRING,
       &output,

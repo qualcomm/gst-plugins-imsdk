@@ -1640,10 +1640,6 @@ main (gint argc, gchar * argv[])
   options.output_ip_address = NULL;
   options.port_num = NULL;
 
-  // Set Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   gboolean camera_is_available = is_camera_available ();
 
   // Structure to define the user options selection

@@ -446,10 +446,6 @@ main (gint argc, gchar ** argv)
   GstStateChangeReturn change_ret = GST_STATE_CHANGE_FAILURE;
   gint ret = -1;
 
-  // Setting Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   // Create the application context
   app_ctx = gst_app_context_new ();
   if (app_ctx == NULL) {
