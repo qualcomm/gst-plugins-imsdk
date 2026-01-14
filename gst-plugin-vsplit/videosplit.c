@@ -357,6 +357,9 @@ gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
 
     if (structure != NULL) {
       structure = gst_structure_copy (structure);
+      gst_structure_set (structure,
+          "label", G_TYPE_STRING, g_quark_to_string (roimeta->roi_type), NULL);
+
       gst_video_region_of_interest_meta_add_param (rmeta, structure);
     }
   }

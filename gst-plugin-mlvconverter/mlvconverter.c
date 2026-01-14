@@ -684,6 +684,7 @@ gst_ml_video_converter_update_source (GstMLVideoConverter * mlconverter,
   gdouble matrix[3][3] = {0}, inverse[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE] = {0};
   gdouble intermediary[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE] = {0};
   guint idx = 0, num = 0, row = 0, column = 0;
+  const gchar *label = NULL;
 
   source = &(vblit->source);
   vblit->mask |= GST_VCE_MASK_SOURCE;
@@ -714,6 +715,11 @@ gst_ml_video_converter_update_source (GstMLVideoConverter * mlconverter,
   param = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
   if (param == NULL)
     return TRUE;
+
+  label = ((value = gst_structure_get_value (param, "label")) != NULL) ?
+      g_value_get_string (value) : g_quark_to_string (roimeta->roi_type);
+
+  gst_structure_set (pmeta->info, "parent-label", G_TYPE_STRING, label, NULL);
 
   if ((value = gst_structure_get_value (param, "xtraparams")) == NULL)
     return TRUE;
