@@ -309,11 +309,6 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
-  // Setting Display environment variables
-  g_print ("Setting Display environment \n");
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   // Create the application context
   appctx = gst_app_context_new ();
   if (NULL == appctx) {
