@@ -625,10 +625,6 @@ main (gint argc, gchar * argv[])
   options.output_file_path = NULL;
   options.display = FALSE;
 
-  // Set Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   // Structure to define the user options selection
   GOptionEntry entries[] = {
     { "config-file", 0, 0, G_OPTION_ARG_STRING,

@@ -25,8 +25,6 @@
 
 #include <glib-unix.h>
 #include <stdio.h>
-#include <stdlib.h>
-
 #include <gst/gst.h>
 #include <gst_sample_apps_utils.h>
 
@@ -192,10 +190,6 @@ main (gint argc, gchar *argv[])
   GstComposeAppContext *appctx = NULL;
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
-
-  // Setting Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // create the app context
   appctx = gst_app_context_new ();
