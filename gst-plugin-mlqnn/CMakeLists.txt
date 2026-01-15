@@ -23,7 +23,7 @@ pkg_check_modules(GST_QCOM_UTILS
 pkg_check_modules(GST_QCOM_ML
   REQUIRED gstreamer-qcom-oss-ml-1.0>=1.0.0)
 
-# Generate configuration header file.
+# Generate configuration header file with plugin describing definitions
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
