@@ -6,9 +6,7 @@ project(gstreamer-qcom-oss-camera-meta-1.0
 
 set(TARGET_NAME gstqticamerabase)
 
-include_directories(${SYSROOT_INCDIR})
-
-add_library(${TARGET_NAME} SHARED
+add_library(${TARGET_NAME} SHARED ${ENABLE_EXCLUDE_FROM_ALL}
   gstcamerameta.cc
 )
 
@@ -23,6 +21,11 @@ target_include_directories(${TARGET_NAME} PUBLIC
   ${SYSROOT_INCDIR}/camx-api/camx/service
 )
 
+target_include_directories(${TARGET_NAME} INTERFACE
+  $<BUILD_INTERFACE:${QTI_PLUGINS_BASE_DIR}>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
+)
+
 target_link_libraries(${TARGET_NAME} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
@@ -31,6 +34,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE
 
 install(
   TARGETS ${TARGET_NAME}
+  ${ENABLE_EXCLUDE_FROM_ALL}
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ
@@ -38,8 +42,11 @@ install(
   PUBLIC_HEADER DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_INCDIR}/gstreamer-1.0/gst/camera/
 )
 
+# Add destination of compiletime pkg-config file to PKG_CONFIG_PATH
+set(ENV{PKG_CONFIG_PATH} "${CMAKE_CURRENT_BINARY_DIR}:$ENV{PKG_CONFIG_PATH}")
+
 configure_file(
-  ${CMAKE_SOURCE_DIR}/gst/common.pc.in
+  ${BASE_COMMON_PC_IN}
   ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
   @ONLY
 )
