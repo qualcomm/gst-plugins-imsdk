@@ -64,6 +64,9 @@ option(ENABLE_GST_PLUGIN_EXAMPLES "Enable gst-plugin-examples" OFF)
 option(ENABLE_GST_PYTHON_EXAMPLES "Enable gst-python-examples" OFF)
 option(ENABLE_GST_UMD_DAEMON "Enable gst-umd-daemon" OFF)
 
+# === Enable exclude from all for internal dependncies ===
+set(ENABLE_EXCLUDE_FROM_ALL "EXCLUDE_FROM_ALL")
+
 # === Core Plugins ===
 add_subdirectory(gst-plugin-base)
 add_subdirectory(gst-plugin-tools)

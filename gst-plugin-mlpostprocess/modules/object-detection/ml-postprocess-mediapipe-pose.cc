@@ -6,6 +6,7 @@
 #include "ml-postprocess-mediapipe-pose.h"
 
 #include <cmath>
+#include <algorithm>
 
 static const float kDefaultThreshold = 0.75f;
 static const float kNMSIntersectionThreshold = 0.3f;
