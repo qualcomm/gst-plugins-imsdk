@@ -184,6 +184,10 @@ gst_qmmf_context_register_metadata_pad (GstQmmfContext * context, GstPad * pad);
 GST_API void
 gst_qmmf_context_unregister_metadata_pad (GstQmmfContext * context, GstPad * pad);
 
+GST_API gboolean gst_qmmf_context_dynamic_capture_image(
+    GstQmmfContext *context, GHashTable *srcpads, GList *imgindexes,
+    gchar *req_group_str, guint imgtype, guint n_burst, GPtrArray *metas);
+
 GST_API void
 gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
                                    const GValue * value);

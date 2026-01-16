@@ -238,6 +238,8 @@ struct _GstQmmfContext {
   /// Logical Camera Information
   GstQmmfLogicalCamInfo logical_cam_info;
 
+  std::vector<std::vector<guint32>> req_group;
+
   /// Super FrameRate Base
   gint32            superframerate;
 
@@ -2577,6 +2579,267 @@ gst_qmmf_context_stop_video_streams (GstQmmfContext * context, GArray * ids)
   return TRUE;
 }
 
+/**
+ * parse_request_group_string - request group parser
+ * @request_group: Vector to store parsed request groups
+ * @request_group_str: Input string to parse
+ *
+ * Support features:
+ * - Whitespace tolerance (spaces, tabs, newlines)
+ * - Repeat syntax: N*<group> where N is repeat count
+ * - Better error reporting with position information
+ * - Input validation and boundary checks
+ *
+ * Format examples:
+ * - Basic: "<2>,<3>,<4>"
+ * - With spaces: "< 2 >, < 3 >, < 4 >"
+ * - With repeat: "2*<3,4>,<5>"
+ * - With repeat (spaces around *): "2 * <3,4>,<5>"
+ * - Mixed: "<1,2>, 3*<4,5,6>"
+ *
+ * Returns: true on success, false on parse error
+ */
+static bool
+parse_request_group_string(std::vector<std::vector<guint>> &request_group,
+                               const std::string request_group_str) {
+  // Validate input
+  if (request_group_str.empty()) {
+    GST_WARNING("Request group string is empty");
+    return false;
+  }
+
+  guint size = request_group_str.size();
+  guint i = 0;
+  guint j = 0;
+
+  GST_DEBUG("Parsing request group string (v2): %s (size=%d)",
+            request_group_str.c_str(), size);
+
+  while (i < size) {
+    // Skip whitespace characters
+    while (i < size && (request_group_str[i] == ' ' ||
+                        request_group_str[i] == '\t' ||
+                        request_group_str[i] == '\n')) {
+      i++;
+    }
+
+    if (i >= size) break;
+
+    guint repeat = 1;
+    guint val = 0;
+
+    // Parse optional repeat count (N* prefix)
+    j = i;
+    while (j < size && request_group_str[j] >= '0' &&
+           request_group_str[j] <= '9') {
+      val = val * 10 + (request_group_str[j] - '0');
+      j++;
+    }
+
+    // Skip whitespace after the number
+    while (j < size && (request_group_str[j] == ' ' ||
+                        request_group_str[j] == '\t')) {
+      j++;
+    }
+
+    if (j < size && request_group_str[j] == '*') {
+      repeat = val;
+      i = j + 1;
+
+      // Skip whitespace after '*'
+      while (i < size && (request_group_str[i] == ' ' ||
+                          request_group_str[i] == '\t')) {
+        i++;
+      }
+    }
+
+    // Expect '<' to start a group
+    if (i >= size || request_group_str[i] != '<') {
+      GST_ERROR("Expected '<' at position %d, found '%c'",
+                i, i < size ? request_group_str[i] : '\0');
+      return false;
+    }
+    i++; // Skip '<'
+
+    std::vector<guint> group;
+    gint num = 0;
+    bool has_number = false;
+
+    // Parse numbers within the group
+    while (i < size && request_group_str[i] != '>') {
+      // Skip whitespace
+      while (i < size && request_group_str[i] == ' ') {
+        i++;
+      }
+
+      if (i >= size || request_group_str[i] == '>') break;
+
+      // Parse digit
+      if (request_group_str[i] >= '0' && request_group_str[i] <= '9') {
+        num = num * 10 + (request_group_str[i] - '0');
+        has_number = true;
+      } else if (request_group_str[i] == ',') {
+        if (has_number) {
+          group.push_back(num);
+          num = 0;
+          has_number = false;
+        }
+      } else {
+        GST_ERROR("Unexpected character '%c' at position %d",
+                  request_group_str[i], i);
+        return false;
+      }
+      i++;
+    }
+
+    // Add the last number
+    if (has_number) {
+      group.push_back(num);
+    }
+
+    // Expect '>' to close the group
+    if (i >= size || request_group_str[i] != '>') {
+      GST_ERROR("Expected '>' at position %d", i);
+      return false;
+    }
+    i++; // Skip '>'
+
+    // Check if group is empty
+    if (group.empty()) {
+      GST_WARNING("Empty group found, skipping");
+    } else {
+      // Add group according to repeat count
+      for (guint k = 0; k < repeat; k++) {
+        request_group.push_back(group);
+      }
+      GST_DEBUG("Added group with %zu elements, repeated %d times",
+                group.size(), repeat);
+    }
+
+    // Skip separators between groups (comma and whitespace)
+    while (i < size && (request_group_str[i] == ',' ||
+                        request_group_str[i] == ' ')) {
+      i++;
+    }
+
+    j = i;
+  }
+
+  // Validate that at least one group was parsed
+  if (request_group.empty()) {
+    GST_ERROR("No valid groups parsed from request string");
+    return false;
+  }
+
+  GST_INFO("Successfully parsed %zu request groups", request_group.size());
+  return true;
+}
+
+gboolean gst_qmmf_context_dynamic_capture_image(
+    GstQmmfContext *context, GHashTable *srcpads, GList *imgindexes,
+    gchar *req_group_str, guint imgtype, guint n_burst, GPtrArray *metas) {
+  ::qmmf::recorder::Recorder *recorder = context->recorder;
+  ::qmmf::recorder::ImageCaptureCb imagecb;
+  ::qmmf::recorder::SnapshotType type = ::qmmf::recorder::SnapshotType::kStill;
+  gint status = 0;
+  guint idx = 0;
+  guint reqs_size = 0;
+
+  GstQmmfSrcImagePad *ipad =
+      GST_QMMFSRC_IMAGE_PAD(g_hash_table_lookup(srcpads, imgindexes->data));
+
+  GST_QMMFSRC_IMAGE_PAD_LOCK(ipad);
+
+  imagecb = [&, context, srcpads, imgindexes](
+                uint32_t camera_id, uint32_t imgcount,
+                ::qmmf::BufferDescriptor buffer, ::qmmf::BufferMeta meta) {
+    gpointer key;
+    GList *list = NULL;
+    GstPad *pad = NULL;
+
+    for (list = imgindexes; list != NULL; list = list->next) {
+      key = list->data;
+      pad = GST_PAD(g_hash_table_lookup(srcpads, key));
+      if (GST_QMMFSRC_IMAGE_PAD(pad)->index == buffer.img_id) {
+        image_data_callback(context, pad, buffer, meta);
+        break;
+      }
+    }
+  };
+
+  GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
+
+  if (req_group_str[0] == '\0' && !context->req_group.empty()) {
+    GST_DEBUG("Using last request group setting");
+  } else {
+    context->req_group.clear();
+    parse_request_group_string(context->req_group, std::string(req_group_str));
+  }
+
+  if (context->req_group.size() == 0) {
+    GST_ERROR("Request group is empty");
+    return FALSE;
+  }
+
+  reqs_size = context->req_group.size() * n_burst;
+  std::vector<::camera::CameraMetadata> metadata;
+
+  if ((metas != NULL) && (metas->len < reqs_size)) {
+    GST_ERROR("metadata count does not match with snapshot request count");
+    return FALSE;
+  }
+  // Extract the capture metadata from the input argument if set.
+  while ((imgtype == STILL_CAPTURE_MODE) && (metas != NULL) &&
+         (idx < metas->len)) {
+    ::camera::CameraMetadata *meta =
+        reinterpret_cast<::camera::CameraMetadata *>(
+            g_ptr_array_index(metas, idx++));
+    metadata.push_back(*meta);
+  }
+
+  // Fill the capture metadata for each image if not set via the input
+  // arguments.
+  while ((imgtype == STILL_CAPTURE_MODE) &&
+         (metadata.size() < reqs_size)) {
+    ::camera::CameraMetadata meta;
+
+    status = recorder->GetDefaultCaptureParam(context->camera_id, meta);
+    QMMFSRC_RETURN_VAL_IF_FAIL(NULL, status == 0, FALSE,
+                               "QMMF Recorder GetDefaultCaptureParam Failed!");
+
+    metadata.push_back(std::move(meta));
+  }
+
+  if (!metadata.empty()) {
+    ::camera::CameraMetadata video_meta;
+    guint tag_id = get_vendor_tag_by_name("com.qti.chi.smartcapture", "halfclick");
+
+    if (tag_id != 0) {
+      gint32 halfclick_value = 0;
+      for (guint i = 0; i < reqs_size; i++)
+        metadata[i].update(tag_id, &halfclick_value, 1);
+      status = recorder->GetCameraParam(context->camera_id, video_meta);
+      if (status == 0) {
+        video_meta.update(tag_id, &halfclick_value, 1);
+        recorder->SetCameraParam(context->camera_id, video_meta);
+      }
+    } else {
+      GST_WARNING("halfclick vendor tag not found");
+    }
+  }
+
+  if (imgtype == VIDEO_CAPTURE_MODE)
+    type = ::qmmf::recorder::SnapshotType::kVideo;
+  else if (imgtype == STILL_CAPTURE_MODE)
+    type = ::qmmf::recorder::SnapshotType::kStill;
+
+  status = recorder->CaptureImage(context->camera_id, context->req_group,
+                                         type, n_burst, metadata, imagecb);
+  QMMFSRC_RETURN_VAL_IF_FAIL(NULL, status == 0, FALSE,
+                             "QMMF Recorder CaptureImage Failed!");
+
+  return TRUE;
+}
 
 gboolean
 gst_qmmf_context_capture_image (GstQmmfContext * context, GHashTable * srcpads,
