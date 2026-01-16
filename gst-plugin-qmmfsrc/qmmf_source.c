@@ -116,6 +116,7 @@ G_DEFINE_TYPE_WITH_CODE (GstQmmfSrc, qmmfsrc, GST_TYPE_ELEMENT,
 enum
 {
   SIGNAL_CAPTURE_IMAGE,
+  SIGNAL_DYNAMIC_CAPTURE_IMAGE,
   SIGNAL_CANCEL_CAPTURE,
   SIGNAL_RESULT_METADATA,
   SIGNAL_URGENT_METADATA,
@@ -977,6 +978,21 @@ qmmfsrc_stop_stream (GstQmmfSrc * qmmfsrc)
   QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE, "Stream stop failed!");
 
   GST_TRACE_OBJECT (qmmfsrc, "Stream stopped");
+
+  return TRUE;
+}
+
+static gboolean qmmfsrc_dynamic_capture_image(GstQmmfSrc *qmmfsrc,
+                                              guint imgtype, gchar *req_group,
+                                              guint n_burst, GPtrArray *metas) {
+  gboolean success = FALSE;
+
+  GST_TRACE_OBJECT(qmmfsrc, "Submit dynamic capture image/s");
+  success = gst_qmmf_context_dynamic_capture_image (
+      qmmfsrc->context, qmmfsrc->srcpads, qmmfsrc->imgindexes, req_group,
+      imgtype, n_burst, metas);
+  QMMFSRC_RETURN_VAL_IF_FAIL(qmmfsrc, success, FALSE, "Dynamic Capture image failed!");
+  GST_TRACE_OBJECT(qmmfsrc, "Dynamic Capture image/s submitted");
 
   return TRUE;
 }
@@ -2082,6 +2098,14 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (qmmfsrc_capture_image),
       NULL, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_QMMFSRC_CAPTURE_MODE,
       G_TYPE_UINT, G_TYPE_PTR_ARRAY);
+
+  signals[SIGNAL_DYNAMIC_CAPTURE_IMAGE] = g_signal_new_class_handler(
+      "dynamic-capture-image", G_TYPE_FROM_CLASS(klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION,
+      G_CALLBACK(qmmfsrc_dynamic_capture_image), NULL, NULL, NULL,
+      G_TYPE_BOOLEAN, 4, GST_TYPE_QMMFSRC_CAPTURE_MODE, G_TYPE_STRING,
+      G_TYPE_UINT, G_TYPE_PTR_ARRAY);
+
   signals[SIGNAL_CANCEL_CAPTURE] =
       g_signal_new_class_handler ("cancel-capture", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (qmmfsrc_cancel_capture),
