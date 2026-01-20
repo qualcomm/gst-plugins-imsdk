@@ -45,6 +45,7 @@ if (ENABLE_CAMERA)
   add_subdirectory(gst-depth-assist-autofocus-example)
   add_subdirectory(gst-appsink-raw-plus-yuv)
   add_subdirectory(gst-camera-standby-example)
+  add_subdirectory(gst-camera-hotplug-example)
 endif() # ENABLE_CAMERA
 
 if (ENABLE_CAMERA AND ENABLE_VIDEO_ENCODE)

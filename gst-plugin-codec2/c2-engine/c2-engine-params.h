@@ -90,6 +90,9 @@ enum {
   GST_C2_PARAM_FLIP,                 // GstC2VideoFlip
   GST_C2_PARAM_VBV_DELAY,            // gint32
   GST_C2_PARAM_VUI_TIMING_INFO,      // gboolean
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+  GST_C2_PARAM_HDR_MODE,             // GstC2HdrMode
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 };
 
 typedef enum {
@@ -287,6 +290,15 @@ typedef enum {
   GST_C2_FLIP_HORIZONTAL,
   GST_C2_FLIP_BOTH,
 } GstC2VideoFlip;
+
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
+typedef enum {
+  GST_C2_HDR_NONE,
+  GST_C2_HDR_HLG,
+  GST_C2_HDR_HDR10,
+  GST_C2_HDR_HDR10_PLUS,
+} GstC2HdrMode;
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
 
 struct _GstC2PixelInfo {
   GstVideoFormat format;

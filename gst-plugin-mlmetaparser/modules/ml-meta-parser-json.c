@@ -442,6 +442,19 @@ gst_parser_module_process_detection_structure (GstParserSubModule * submodule,
 
     GST_JSON_END_META_ARRAY (submodule->builder, metalist);
 
+    // Parse derived class structs and add section if there are any available.
+    metalist = gst_value_list_get_meta_structs (valist,
+        g_quark_from_static_string ("AudioClassification"), id);
+
+    GST_JSON_BEGIN_META_ARRAY (submodule->builder, metalist, "audio_classification");
+
+    for (list = g_list_last (metalist); list != NULL; list = list->prev) {
+      structure = GST_STRUCTURE (list->data);
+      gst_parser_module_process_classification_structure (submodule, structure);
+    }
+
+    GST_JSON_END_META_ARRAY (submodule->builder, metalist);
+
     json_builder_end_object (submodule->builder);
   }
 }
@@ -674,6 +687,7 @@ gst_parser_module_process_roi_meta (GstParserSubModule * submodule,
   }
 
   GST_JSON_END_META_ARRAY (submodule->builder, metalist);
+
   json_builder_end_object (submodule->builder);
 }
 
@@ -747,6 +761,19 @@ gst_parser_module_process_text_buffer (GstParserSubModule * submodule,
 
   GST_JSON_END_META_ARRAY (submodule->builder, metalist);
 
+  // Parse root class structs and add array section if there are any available.
+  metalist = gst_value_list_get_meta_structs (&valist,
+      g_quark_from_static_string ("AudioClassification"), -1);
+
+  GST_JSON_BEGIN_META_ARRAY (submodule->builder, metalist, "audio_classification");
+
+  for (list = g_list_last (metalist); list != NULL; list = list->prev) {
+    structure = GST_STRUCTURE (list->data);
+    gst_parser_module_process_classification_structure (submodule, structure);
+  }
+
+  GST_JSON_END_META_ARRAY (submodule->builder, metalist);
+
 cleanup:
   g_value_unset (&valist);
   return success;
@@ -790,6 +817,19 @@ gst_parser_module_process_video_buffer (GstParserSubModule * submodule,
   // Parse root class metas and add array section if there are any available.
   metalist = gst_buffer_get_video_classification_metas_parent_id (buffer, -1);
   GST_JSON_BEGIN_META_ARRAY (submodule->builder, metalist, "image_classification");
+
+  for (list = g_list_last (metalist); list != NULL; list = list->prev) {
+    GstVideoClassificationMeta *classmeta =
+        GST_VIDEO_CLASSIFICATION_META_CAST (list->data);
+
+    gst_parser_module_process_classification_meta (submodule, classmeta);
+  }
+
+  GST_JSON_END_META_ARRAY (submodule->builder, metalist);
+
+  // Parse root class metas and add array section if there are any available.
+  metalist = gst_buffer_get_video_classification_metas_parent_id (buffer, -1);
+  GST_JSON_BEGIN_META_ARRAY (submodule->builder, metalist, "audio_classification");
 
   for (list = g_list_last (metalist); list != NULL; list = list->prev) {
     GstVideoClassificationMeta *classmeta =

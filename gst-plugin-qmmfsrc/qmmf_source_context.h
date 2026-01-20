@@ -46,6 +46,11 @@ typedef struct _GstQmmfContext            GstQmmfContext;
 typedef struct _GstQmmfLogicalCamInfo     GstQmmfLogicalCamInfo;
 typedef struct _GstQmmfCameraSwitchInfo   GstQmmfCameraSwitchInfo;
 
+typedef struct _CameraDeviceStatus {
+  guint32 camera_id;
+  guint8 is_present;
+} CameraDeviceStatus;
+
 typedef void (*GstCameraEventCb) (guint event, gpointer userdata);
 typedef void (*GstCameraMetaCb) (gint camera_id, gconstpointer metadata,
     gboolean isurgent, gpointer userdata);
@@ -64,6 +69,7 @@ enum {
   EVENT_FATAL,
   EVENT_RECOVERYSUCCESS,
   EVENT_INTERNAL_RECOVERY,
+  EVENT_DEVICE_STATUS_CHANGE,
 };
 
 enum
@@ -166,6 +172,18 @@ gst_qmmf_context_capture_image (GstQmmfContext * context,
                                 guint n_images,
                                 GPtrArray * metas);
 
+GST_API gboolean
+gst_qmmf_context_is_metadata_enabled (GstQmmfContext * context);
+
+GST_API void
+gst_qmmf_context_store_metadata (GstQmmfContext * context, gpointer metadata);
+
+GST_API void
+gst_qmmf_context_register_metadata_pad (GstQmmfContext * context, GstPad * pad);
+
+GST_API void
+gst_qmmf_context_unregister_metadata_pad (GstQmmfContext * context, GstPad * pad);
+
 GST_API void
 gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
                                    const GValue * value);
@@ -177,6 +195,12 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
 GST_API void
 gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
                                      GstQmmfContext * context);
+
+GST_API guint32
+gst_qmmf_context_get_device_status_camera_id (GstQmmfContext * context);
+
+GST_API gboolean
+gst_qmmf_context_get_device_status_is_present (GstQmmfContext * context);
 
 G_END_DECLS
 

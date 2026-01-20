@@ -23,15 +23,17 @@ class Module : public IModule {
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
  private:
-  std::vector<uint32_t> ParseMonoblockTensor(
-      const Tensors& tensors,
-      std::vector<ObjectDetection>& bboxes,
-      std::vector<uint32_t>& mask_matrix_indices);
-
-  void ParseTripleblockTensors(const Tensors& tensors,
-                                std::vector<ObjectDetection>& bboxes,
-                                std::vector<uint32_t>& mask_matrix_indices);
-
+  uint64_t ScaleUint64Safe(const uint64_t val,
+                           const int32_t num, const int32_t denom);
+  void ParseSegmentationFrame(const Tensors& tensors, Dictionary& mlparams,
+                              std::any& output, uint32_t proto_tensor_idx);
+  std::vector<uint32_t> GenerateMaskFromProtos(const Tensors& tensors,
+                                               std::vector<ObjectDetection>& bboxes,
+                                               std::vector<uint32_t>& mask_matrix_indices,
+                                               uint32_t proto_tensor_idx);
+  void ParseBoundingBoxes(const Tensors& tensors,
+                          std::vector<ObjectDetection>& bboxes,
+                          std::vector<uint32_t>& mask_matrix_indices);
   int32_t NonMaxSuppression(const ObjectDetection &l_box,
                             ObjectDetections &boxes);
 

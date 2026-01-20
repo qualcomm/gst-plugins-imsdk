@@ -1980,9 +1980,9 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstCaps *othercaps = NULL;
-  GstVideoInfo ininfo, outinfo;
-  GstMLInfo mlinfo;
-  guint idx = 0, bpp = 0, padding = 0, n_bytes = 0, n_planes = 0, size = 0;
+  GstVideoInfo ininfo = { 0, }, outinfo = { 0, };
+  GstMLInfo mlinfo = { 0, };
+  guint idx = 0, bpp = 0, padding = 0, n_bytes = 0, size = 0;
   gboolean passthrough = FALSE;
 
   if (!gst_video_info_from_caps (&ininfo, incaps)) {
@@ -2021,9 +2021,14 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   // Get the number of bytes that represent a give ML type.
   n_bytes = gst_ml_type_get_size (mlinfo.type);
 
-  n_planes = GST_VIDEO_FORMAT_INFO_N_PLANES (outinfo.finfo);
+  // Adjust height with the depth number of the tensor.
+  GST_VIDEO_INFO_HEIGHT (&outinfo) *= GST_ML_INFO_TENSOR_DIM_D (
+      mlconverter->tensorlayout, &mlinfo);
+  // Adjust height with the batch number of the tensor (1st dimension).
+  GST_VIDEO_INFO_HEIGHT (&outinfo) *= GST_ML_INFO_TENSOR_DIM_N (
+      mlconverter->tensorlayout, &mlinfo);
 
-  for (idx = 0; idx < n_planes; idx++) {
+  for (idx = 0; idx < GST_VIDEO_INFO_N_PLANES (&outinfo); idx++) {
     // Retrieve the Bytes Per Pixel in order to calculate the line padding.
     bpp = GST_VIDEO_INFO_COMP_PSTRIDE (&outinfo, idx);
 
@@ -2041,7 +2046,7 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
         GST_VIDEO_INFO_COMP_HEIGHT (&outinfo, idx);
 
     // Update the offset to the next plane with adjusted size of current plane.
-    if ((idx + 1) < n_planes) {
+    if ((idx + 1) < GST_VIDEO_INFO_N_PLANES (&outinfo)) {
       size = GST_VIDEO_INFO_PLANE_STRIDE (&outinfo, idx) *
           GST_VIDEO_INFO_COMP_HEIGHT (&outinfo, idx);
 
@@ -2056,16 +2061,20 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   // Additionally adjust the total size depending on the depth size.
   GST_VIDEO_INFO_SIZE (&outinfo) *= GST_ML_INFO_TENSOR_DIM_D (
       mlconverter->tensorlayout, &mlinfo);
-  // Adjust height with the depth number of the tensor.
-  GST_VIDEO_INFO_HEIGHT (&outinfo) *= GST_ML_INFO_TENSOR_DIM_D (
-      mlconverter->tensorlayout, &mlinfo);
-
   // Additionally adjust the total size depending on the batch size.
   GST_VIDEO_INFO_SIZE (&outinfo) *= GST_ML_INFO_TENSOR_DIM_N (
       mlconverter->tensorlayout, &mlinfo);
-  // Adjust height with the batch number of the tensor (1st dimension).
-  GST_VIDEO_INFO_HEIGHT (&outinfo) *= GST_ML_INFO_TENSOR_DIM_N (
+
+  // Adjust number of views with the depth number of the tensor.
+  GST_VIDEO_INFO_VIEWS (&outinfo) *= GST_ML_INFO_TENSOR_DIM_D (
       mlconverter->tensorlayout, &mlinfo);
+  // Adjust number of views with the batch number of the tensor (1st dimension).
+  GST_VIDEO_INFO_VIEWS (&outinfo) *= GST_ML_INFO_TENSOR_DIM_N (
+      mlconverter->tensorlayout, &mlinfo);
+
+  if ((GST_ML_INFO_TENSOR_DIM_N (mlconverter->tensorlayout, &mlinfo) > 1) ||
+      (GST_ML_INFO_TENSOR_DIM_D (mlconverter->tensorlayout, &mlinfo) > 1))
+    GST_VIDEO_INFO_MULTIVIEW_MODE (&outinfo) |= GST_VIDEO_MULTIVIEW_MODE_MONO;
 
   passthrough =
       GST_VIDEO_INFO_SIZE (&ininfo) == GST_VIDEO_INFO_SIZE (&outinfo) &&
