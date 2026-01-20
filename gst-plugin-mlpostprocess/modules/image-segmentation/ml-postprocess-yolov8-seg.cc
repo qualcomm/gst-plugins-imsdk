@@ -299,10 +299,9 @@ void Module::ParseSegmentationFrame(const Tensors& tensors, Dictionary& mlparams
     uint32_t outidx = row * frame.planes[0].stride;
 
     for (uint32_t column = 0; column < width; column++, outidx += bpp) {
-      uint32_t num = mlwidth *
-          (region.y + ScaleUint64Safe (row, region.height, height));
+      uint32_t num = mlwidth * (region.y + (row * region.height) / height);
 
-      num += region.x + column * (region.width / static_cast<double>(width));
+      num += region.x + (column * region.width) / width;
 
       outdata[outidx] = EXTRACT_RED_COLOR(colormask[num]);
       outdata[outidx + 1] = EXTRACT_GREEN_COLOR(colormask[num]);
@@ -312,20 +311,6 @@ void Module::ParseSegmentationFrame(const Tensors& tensors, Dictionary& mlparams
         outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(colormask[num]);
     }
   }
-}
-
-uint64_t Module::ScaleUint64Safe(const uint64_t val,
-                                 const int32_t num, const int32_t denom) {
-
-  if (denom == 0)
-    return UINT64_MAX;
-
-  // If multiplication won't overflow, perform it directly
-  if (val < (std::numeric_limits<uint32_t>::max() / num))
-    return (val * num) / denom;
-  else
-    // Use division first to avoid overflow
-    return (val / denom) * num + ((val % denom) * num) / denom;
 }
 
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,

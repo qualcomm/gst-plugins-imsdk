@@ -135,10 +135,10 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     for (uint32_t column = 0; column < frame.width; column++, outidx += bpp) {
       // Calculate the source index. First calculate the row offset.
       uint32_t inidx = tensors[0].dimensions[2] *
-         (region.y + row * (region.height / static_cast<double>(frame.height)));
+          (region.y + (row * region.height) / frame.height);
 
       // Calculate the source index. Second calculate the column offset.
-      inidx += region.x + column * (region.width / static_cast<double>(frame.width));
+      inidx += region.x + (column * region.width) / frame.width;
 
       // Calculate the source index. Lastly multiply by the number of class scores.
       inidx *= n_scores;
