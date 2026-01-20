@@ -33,7 +33,7 @@
  */
 
 #define PACKAGE         "gst-plugins-qcom"
-#define PACKAGE_VERSION "1.0"
+#define PACKAGE_VERSION "@PROJECT_VERSION@"
 #define PACKAGE_LICENSE "BSD"
-#define PACKAGE_SUMMARY "Qualcomm open-source multimedia GStreamer plugin"
+#define PACKAGE_SUMMARY "QTI open-source GStreamer Plug-in for decryption"
 #define PACKAGE_ORIGIN  "Unknown package origin"

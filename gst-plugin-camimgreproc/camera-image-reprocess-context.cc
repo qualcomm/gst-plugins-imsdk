@@ -10,6 +10,7 @@
 #include "camera-image-reprocess-context.h"
 
 #include <gst/allocators/allocators.h>
+#include <gst/camera/gstcamerameta.h>
 
 #include <qmmf-sdk/qmmf_camera_metadata.h>
 #include <qmmf-sdk/qmmf_offline_camera_params.h>
@@ -255,11 +256,14 @@ gst_data_callback (GstCameraImageReprocContext *context, guint fd, guint size)
     return;
   }
 
+  g_mutex_unlock (&context->lock);
+
   // Callback will invoke gst_pad_push to push data downstream
   context->data_cb ((gpointer *)array, context->camimgreproc);
 
   g_ptr_array_unref(array);
 
+  g_mutex_lock (&context->lock);
   g_hash_table_remove (context->requests, GINT_TO_POINTER (fd));
   if (g_hash_table_size (context->requests) == 0)
     g_cond_signal (&context->requests_clear);
@@ -530,10 +534,13 @@ gst_camera_image_reproc_context_process (GstCameraImageReprocContext *context,
   GstMemory *inmem = NULL;
   GstMemory *outmem = NULL;
   GPtrArray *ptr_array = NULL;
+  camera_metadata_t *camerameta;
+  GstCameraMeta *meta;
   qmmf::OfflineCameraProcessParams params;
   guint idx = 0;
   gint in_buf_fd[OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM];
   gint out_buf_fd = -1;
+  gboolean metadata_found = FALSE;
 
   g_return_val_if_fail (context != NULL, FALSE);
   g_return_val_if_fail (inbuf[0] != NULL, FALSE);
@@ -552,6 +559,14 @@ gst_camera_image_reproc_context_process (GstCameraImageReprocContext *context,
 
     in_buf_fd[idx] = gst_fd_memory_get_fd (inmem);
     g_return_val_if_fail (in_buf_fd[idx] >= 0, GST_FLOW_ERROR);
+
+    if (!metadata_found) {
+      meta = gst_buffer_get_camera_meta (inbuf[idx]);
+      if (meta && meta->metadata) {
+        params.meta.acquire(meta->metadata);
+        metadata_found = TRUE;
+      }
+    }
   }
 
   outmem = gst_buffer_peek_memory (outbuf, 0);
@@ -567,8 +582,9 @@ gst_camera_image_reproc_context_process (GstCameraImageReprocContext *context,
   params.in_buf_fd[1] = in_buf_fd[1];
   params.out_buf_fd = out_buf_fd;
 
-  GST_LOG ("inbuf fd0(%u), inbuf fd1(%u), outbuf fd(%u).", params.in_buf_fd[0],
-      params.in_buf_fd[1], params.out_buf_fd);
+  GST_LOG ("inbuf fd0(%d), inbuf fd1(%d), outbuf fd(%d), metadata: %s",
+      params.in_buf_fd[0], params.in_buf_fd[1], params.out_buf_fd,
+      metadata_found ? "present" : "absent");
 
   ptr_array = g_ptr_array_sized_new (OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM + 1);
   if (ptr_array == NULL) {

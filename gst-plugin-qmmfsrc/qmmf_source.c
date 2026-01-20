@@ -123,6 +123,7 @@ enum
   SIGNAL_RESULT_METADATA,
   SIGNAL_URGENT_METADATA,
   SIGNAL_VIDEO_PADS_ACTIVATION,
+  SIGNAL_DEVICE_STATUS_CHANGE,
   LAST_SIGNAL
 };
 
@@ -893,6 +894,12 @@ qmmfsrc_event_callback (guint event, gpointer userdata)
     case EVENT_INTERNAL_RECOVERY:
       GST_LOG_OBJECT (qmmfsrc, "Internal Recovery occured");
       break;
+    case EVENT_DEVICE_STATUS_CHANGE:
+      GST_LOG_OBJECT (qmmfsrc, "Camera device status change event received");
+      g_signal_emit_by_name (qmmfsrc, "device-status-change",
+          gst_qmmf_context_get_device_status_camera_id (qmmfsrc->context),
+          gst_qmmf_context_get_device_status_is_present (qmmfsrc->context));
+      break;
     default:
       GST_WARNING_OBJECT (qmmfsrc, "Unknown camera device event");
       break;
@@ -926,10 +933,12 @@ qmmfsrc_metadata_callback (gint camera_id, gconstpointer metadata,
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (userdata);
 
-  if (isurgent)
+  if (isurgent) {
     g_signal_emit_by_name (qmmfsrc, "urgent-metadata", metadata);
-  else
+  } else {
     g_signal_emit_by_name (qmmfsrc, "result-metadata", metadata);
+    gst_qmmf_context_store_metadata (qmmfsrc->context, metadata);
+  }
 }
 
 static gboolean
@@ -1047,6 +1056,13 @@ qmmfsrc_start_stream (GstQmmfSrc * qmmfsrc)
     if (gst_pad_get_task_state (pad) != GST_TASK_STARTED) {
       GST_INFO_OBJECT (qmmfsrc, "Pad %s is not activated", GST_PAD_NAME (pad));
       continue;
+    }
+
+    // Register pad for metadata if attach_metadata is enabled
+    if (GST_QMMFSRC_VIDEO_PAD (pad)->attach_metadata) {
+      GST_INFO_OBJECT (qmmfsrc, "Registering pad %s for metadata attachment",
+          GST_PAD_NAME (pad));
+      gst_qmmf_context_register_metadata_pad (qmmfsrc->context, pad);
     }
 
     ids = g_array_append_val (ids, GST_QMMFSRC_VIDEO_PAD (pad)->id);
@@ -2243,6 +2259,10 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   signals[SIGNAL_URGENT_METADATA] =
       g_signal_new ("urgent-metadata", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_POINTER);
+
+  signals[SIGNAL_DEVICE_STATUS_CHANGE] =
+      g_signal_new ("device-status-change", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_UINT, G_TYPE_BOOLEAN);
 
   gstelement->request_new_pad = GST_DEBUG_FUNCPTR (qmmfsrc_request_pad);
   gstelement->release_pad = GST_DEBUG_FUNCPTR (qmmfsrc_release_pad);

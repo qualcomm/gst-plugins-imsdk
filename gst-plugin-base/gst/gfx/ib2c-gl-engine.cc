@@ -774,21 +774,27 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
   std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
   shader->Use();
 
-  uint32_t width = surface.width;
-  uint32_t height = surface.height;
+  uint32_t n_pixels = surface.width * surface.height;
+  uint32_t n_components = Format::NumComponents(surface.format);
+
+  shader->SetInt("numPixels", n_pixels);
+  shader->SetInt("numChannels", n_components);
 
   auto& gltuple = graphics.at(0);
   GLuint& otexture = std::get<GLuint>(gltuple);
   ImageParam& imgparam = std::get<ImageParam>(gltuple);
 
-  shader->SetInt("targetWidth", width);
-  shader->SetInt("targetHeight", height);
+  shader->SetInt("targetWidth", surface.width);
   shader->SetInt("imageWidth", std::get<0>(imgparam));
-  shader->SetInt("numPixels", (width * height));
-  shader->SetInt("numChannels", Format::NumComponents(surface.format));
-  shader->SetInt("inTex", 1);
 
-  env_->Gles()->ActiveTexture(GL_TEXTURE1);
+  // Adjust the number of plane pixels for planar RGBs witn number of views/images.
+  uint32_t n_views = Format::IsPlanar(surface.format) ?
+      (surface.planes.size() / n_components) : 1;
+
+  shader->SetInt("numPlanePixels", n_pixels / n_views);
+  shader->SetInt("inTex", 0);
+
+  env_->Gles()->ActiveTexture(GL_TEXTURE0);
   RETURN_IF_GL_ERROR(env_, "Failed to set active texture unit 1");
 
   env_->Gles()->BindTexture(GL_TEXTURE_2D, stgtex);
@@ -796,12 +802,12 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
 
   GLenum format = Format::ToGL(std::get<2>(imgparam));
 
-  env_->Gles()->BindImageTexture(1, otexture, 0, GL_FALSE, 0, GL_WRITE_ONLY,
+  env_->Gles()->BindImageTexture(0, otexture, 0, GL_FALSE, 0, GL_WRITE_ONLY,
                                  format);
   RETURN_IF_GL_ERROR(env_, "Failed to bind output image texture ", otexture);
 
   // Align to the divisor for the number of X groups explained below.
-  uint32_t n_pixels = (((width * height) + ((32 * 4) - 1)) & ~((32 * 4) - 1));
+  n_pixels = ((n_pixels + ((32 * 4) - 1)) & ~((32 * 4) - 1));
 
   // 32 because of the local size and 4 pixels are processed at a time.
   GLuint xgroups = n_pixels / (32 * 4);
@@ -887,9 +893,9 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
   if (Format::IsSigned(surface.format))
     return false;
 
-  // Float planar RGB formats are not rederable as there is no DRM format.
-  // TODO Remove when float planar RGB formats are supported.
-  if (Format::IsFloat(surface.format) && Format::IsPlanar(surface.format))
+  // Prefer compute shader for planar RGB formats as only few of configurations
+  // are currently directly rederable and performance seems to be equivalent.
+  if (Format::IsPlanar(surface.format))
     return false;
 
   uint32_t n_components = Format::NumComponents(surface.format);
@@ -981,9 +987,12 @@ std::vector<GraphicTuple> Engine::ImportSurface(const Surface& surface,
   std::vector<Surface> imgsurfaces = GetImageSurfaces(surface, flags);
   std::vector<GraphicTuple> graphics;
 
+  bool is_adreno = vendor_ != "freedreno";
+
   for (auto& subsurface : imgsurfaces) {
     // Retrieve the tuple of DRM format and its modifier.
-    std::tuple<uint32_t, uint64_t> internal = Format::ToInternal(subsurface.format);
+    std::tuple<uint32_t, uint64_t> internal =
+        Format::ToInternal(subsurface.format, is_adreno);
 
     EGLint attribs[64] = { EGL_NONE };
     uint32_t index = 0;
@@ -1103,7 +1112,8 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
       // Depending on the surface format the chroma plane has different size.
       if (surface.format == ColorFormat::kNV12 ||
-          surface.format == ColorFormat::kNV21) {
+          surface.format == ColorFormat::kNV21 ||
+          surface.format == ColorFormat::kP010) {
         subsurface.width /= 2;
         subsurface.height /= 2;
       } else if (surface.format == ColorFormat::kNV16 ||

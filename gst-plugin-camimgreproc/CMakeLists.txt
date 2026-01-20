@@ -25,7 +25,7 @@ pkg_check_modules(GST_QCOM_VIDEO
 pkg_check_modules(GST_QCOM_ALLOC
   REQUIRED gstreamer-qcom-oss-allocators-1.0>=1.0.0)
 
-# Generate configuration header file.
+# Generate configuration header file with plugin describing definitions
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
@@ -61,6 +61,7 @@ target_link_libraries(${CAMERA_IMAGE_REPROCESS} PRIVATE
   ${GST_QCOM_UTILS_LIBRARIES}
   ${GST_QCOM_VIDEO_LIBRARIES}
   ${GST_QCOM_ALLOC_LIBRARIES}
+  gstqticamerabase
 )
 
 install(
