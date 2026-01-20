@@ -15,6 +15,8 @@ static const float kDefaultThreshold = 0.70;
 // Non-maximum Suppression (NMS) threshold (50%), corresponding to 2/3 overlap.
 static const float kNMSIntersectionTreshold = 0.5;
 
+// Minimum size of bounding boxes (20 x 20 pixels) to be considered valid.
+static const uint32_t kBboxSizeTreshold = 400;
 // Bounding box weights for each of the 3 tensors used for normalization.
 static const uint32_t weights[3] = { 8, 16, 32 };
 // Bounding box anchor values for each of the 3 tensors used for normalization.
@@ -336,12 +338,23 @@ void Module::ParseTripleblockFrame(const Tensors& tensors,
             class_idx, confidence, entry.top, entry.left, entry.bottom, entry.right);
 
         // Keep dimensions within the region.
-        entry.top = std::max(entry.top, static_cast<float>(region.y));
-        entry.left = std::max(entry.left, static_cast<float>(region.x));
-        entry.bottom = std::min(entry.bottom,
+        entry.top = std::clamp(entry.top, static_cast<float>(region.y),
             static_cast<float>((region.y + region.height)));
-        entry.right = std::min(entry.right,
+        entry.left = std::clamp(entry.left, static_cast<float>(region.x),
             static_cast<float>((region.x + region.width)));
+        entry.bottom = std::clamp(entry.bottom, static_cast<float>(region.y),
+            static_cast<float>((region.y + region.height)));
+        entry.right = std::clamp(entry.right, static_cast<float>(region.x),
+            static_cast<float>((region.x + region.width)));
+
+        if (entry.left == entry.right || entry.top == entry.bottom) {
+          LOG (logger_, kTrace, "Discard invalid box");
+          continue;
+        }
+
+        uint32_t size = (entry.right - entry.left) * (entry.bottom - entry.top);
+        if (size < kBboxSizeTreshold)
+          continue;
 
         TransformDimensions(entry, region);
 
