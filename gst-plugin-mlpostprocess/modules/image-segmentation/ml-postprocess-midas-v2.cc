@@ -130,10 +130,9 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     for (uint32_t column = 0; column < width; column++, outidx += bpp) {
       uint32_t id = std::numeric_limits<uint8_t>::max();
 
-      uint32_t inidx = mlwidth * (region.y +
-          row * (region.height / static_cast<double>(height)));
+      uint32_t inidx = mlwidth * (region.y + (row * region.height) / height);
 
-      inidx += region.x + column * (region.width / static_cast<double>(width));
+      inidx += region.x + (column * region.width) / width;
 
       float value = indata[inidx];
 
