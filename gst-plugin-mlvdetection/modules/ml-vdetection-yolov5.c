@@ -193,7 +193,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
         // Normalize the end confidence with the object score value.
         confidence *= 1 / (1 + expf (- score));
 
-        // Aquire the bounding box parameters.
+        // Acquire the bounding box parameters.
         bbox[0] = data[num];
         bbox[1] = data[num + 1];
         bbox[2] = data[num + 2];
@@ -230,6 +230,11 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
 
         // Adjust bounding box dimensions with extracted source tensor region.
         gst_ml_box_transform_dimensions (&entry, &region);
+
+        if (entry.left >= entry.right || entry.top >= entry.bottom) {
+          GST_TRACE ("Discard invalid box");
+          continue;
+        }
 
         label = g_hash_table_lookup (submodule->labels,
             GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
