@@ -6,6 +6,7 @@
 #include "ml-postprocess-yolov5.h"
 
 #include <cmath>
+#include <algorithm>
 
 // Layer index at which the object score resides.
 static const uint32_t kScoreIdx = 4;
