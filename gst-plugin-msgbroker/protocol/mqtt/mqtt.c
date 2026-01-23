@@ -257,7 +257,7 @@ void gst_mosquitto_handler_init ()
 
   assert (NULL != mosquitto_handler);
 
-  mosquitto_handler->lib_handle = dlopen ("libmosquitto.so.1", RTLD_NOW | RTLD_LOCAL);
+  mosquitto_handler->lib_handle = dlopen ("libmosquitto.so", RTLD_NOW | RTLD_LOCAL);
 
   if (NULL == mosquitto_handler->lib_handle) {
     GST_ERROR ("Failed to open mosquitto library, error: %s!", dlerror ());
