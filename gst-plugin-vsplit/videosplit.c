@@ -63,9 +63,9 @@ struct _GstVSplitRequest {
   gpointer      fence;
 
   // Input frame submitted with provided ID.
-  GstVideoFrame *inframe;
+  GstBuffer     *inbuffer;
   // List with video frame arrays for each output.
-  GPtrArray     *outframes;
+  GPtrArray     *outbuffers;
 
   // Time it took for this request to be processed.
   GstClockTime  time;
@@ -136,34 +136,19 @@ gst_video_split_src_template (void)
 static void
 gst_vsplit_request_free (GstVSplitRequest * request)
 {
-  GstBuffer *buffer = NULL;
-  guint idx = 0, num = 0;
+  guint idx = 0;
 
-  for (idx = 0; idx < request->outframes->len; idx++) {
-    GArray *vframes = g_ptr_array_index (request->outframes, idx);
+  for (idx = 0; idx < request->outbuffers->len; idx++) {
+    GPtrArray *buffers = g_ptr_array_index (request->outbuffers, idx);
 
-    if (vframes == NULL)
-      continue;
-
-    for (num = 0; num < vframes->len; num++) {
-      GstVideoFrame *vframe = &(g_array_index (vframes, GstVideoFrame, num));
-
-      if ((buffer = vframe->buffer) != NULL) {
-        gst_video_frame_unmap (vframe);
-        gst_buffer_unref (buffer);
-      }
-    }
-
-    g_array_free (vframes, TRUE);
+    if (buffers != NULL)
+      g_ptr_array_free (buffers, TRUE);
   }
 
-  if ((buffer = request->inframe->buffer) != NULL) {
-    gst_video_frame_unmap (request->inframe);
-    gst_buffer_unref (buffer);
-  }
+  if (request->inbuffer != NULL)
+    gst_buffer_unref (request->inbuffer);
 
-  g_slice_free (GstVideoFrame, request->inframe);
-  g_ptr_array_free (request->outframes, TRUE);
+  g_ptr_array_free (request->outbuffers, TRUE);
   g_slice_free (GstVSplitRequest, request);
 }
 
@@ -177,13 +162,11 @@ gst_vsplit_request_new (guint n_outputs)
       GST_TYPE_VSPLIT_REQUEST, NULL, NULL,
       (GstMiniObjectFreeFunction) gst_vsplit_request_free);
 
-  request->inframe = g_slice_new0 (GstVideoFrame);
-
-  request->outframes = g_ptr_array_sized_new (n_outputs);
-  g_ptr_array_set_size (request->outframes, n_outputs);
+  request->outbuffers = g_ptr_array_sized_new (n_outputs);
+  g_ptr_array_set_size (request->outbuffers, n_outputs);
 
   for (idx = 0; idx < n_outputs; idx++)
-    g_ptr_array_index (request->outframes, idx) = NULL;
+    g_ptr_array_index (request->outbuffers, idx) = NULL;
 
   request->time = GST_CLOCK_TIME_NONE;
 
@@ -257,8 +240,8 @@ gst_video_split_composition_populate_metas (GstVideoSplitSrcPad * srcpad,
   GstMeta *meta = NULL;
   gpointer state = NULL;
 
-  inbuffer = composition->blits[0].frame->buffer;
-  outbuffer = composition->frame->buffer;
+  inbuffer = composition->blits[0].buffer;
+  outbuffer = composition->buffer;
 
   gst_video_quadrilateral_to_rectangle (&(composition->blits[0].source), &source);
   destination = &(composition->blits[0].destination);
@@ -323,7 +306,7 @@ gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
   GstVideoRegionOfInterestMeta *rmeta = NULL;
   gint maxwidth = 0, maxheight = 0;
 
-  outbuffer = composition->frame->buffer;
+  outbuffer = composition->buffer;
   vblit = &(composition->blits[0]);
 
   if (roimeta != NULL) {
@@ -333,8 +316,8 @@ gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
     source.h = roimeta->h;
   } else {
     source.x = source.y = 0;
-    source.w = GST_VIDEO_FRAME_WIDTH (vblit->frame);
-    source.h = GST_VIDEO_FRAME_HEIGHT (vblit->frame);
+    source.w = GST_VIDEO_INFO_WIDTH (vblit->info);
+    source.h = GST_VIDEO_INFO_HEIGHT (vblit->info);
   }
 
   gst_video_rectangle_to_quadrilateral (&source, &(vblit->source));
@@ -344,8 +327,8 @@ gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
   vblit->mask |= GST_VCE_MASK_DESTINATION;
 
   destination->x = destination->y = 0;
-  destination->w = maxwidth = GST_VIDEO_FRAME_WIDTH (composition->frame);
-  destination->h = maxheight = GST_VIDEO_FRAME_HEIGHT (composition->frame);
+  destination->w = maxwidth =  GST_VIDEO_INFO_WIDTH (composition->info);
+  destination->h = maxheight = GST_VIDEO_INFO_HEIGHT (composition->info);
 
   // Recalculate the destination width or height depending on the ratios.
   if ((source.w * destination->h) > (source.h * destination->w))
@@ -383,13 +366,11 @@ gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
 }
 
 static gboolean
-gst_video_split_acquire_video_frame (GstVideoSplitSrcPad * srcpad,
-    const GstVideoFrame * inframe, GstVideoFrame * outframe)
+gst_video_split_acquire_output_buffer (GstVideoSplitSrcPad * srcpad,
+    GstBuffer * inbuffer, GstBuffer ** outbuffer)
 {
   GstBufferPool *pool = NULL;
-  GstBuffer *inbuffer = NULL, *outbuffer = NULL;
 
-  inbuffer = inframe->buffer;
   pool = srcpad->pool;
 
   if (!gst_buffer_pool_is_active (pool) &&
@@ -399,32 +380,14 @@ gst_video_split_acquire_video_frame (GstVideoSplitSrcPad * srcpad,
   }
 
   // Retrieve new output buffer from the pool.
-  if (gst_buffer_pool_acquire_buffer (pool, &outbuffer, NULL) != GST_FLOW_OK) {
+  if (gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
     GST_ERROR_OBJECT (srcpad, "Failed to acquire buffer!");
     return FALSE;
   }
 
   // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (outbuffer, inbuffer,
+  gst_buffer_copy_into (*outbuffer, inbuffer,
       GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
-
-  if (!gst_video_frame_map (outframe, srcpad->info, outbuffer,
-          GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
-    GST_ERROR_OBJECT (srcpad, "Failed to map buffer!");
-    return FALSE;
-  }
-
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (srcpad, "DMA IOCTL SYNC START failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
 
   return TRUE;
 }
@@ -451,7 +414,7 @@ gst_video_split_srcpad_push_buffer (GstElement * element, GstPad * pad,
   GstVideoSplit *vsplit = GST_VIDEO_SPLIT (element);
   GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (pad);
   GstVSplitRequest *request = GST_VSPLIT_REQUEST (userdata);
-  GArray *vframes = NULL;
+  GArray *buffers = NULL;
   GstBuffer *inbuffer = NULL, *outbuffer = NULL;
   guint idx = 0;
 
@@ -459,16 +422,16 @@ gst_video_split_srcpad_push_buffer (GstElement * element, GstPad * pad,
   idx = g_list_index (element->srcpads, pad);
   GST_OBJECT_UNLOCK (vsplit);
 
-  inbuffer = request->inframe->buffer;
-  vframes = g_ptr_array_index (request->outframes, idx);
+  inbuffer = request->inbuffer;
+  buffers = g_ptr_array_index (request->outbuffers, idx);
 
-  if (srcpad->passthrough && (vframes == NULL)) {
+  if (srcpad->passthrough && (buffers == NULL)) {
     // When in passthrough and there are no output frames submit same buffer.
     outbuffer = gst_buffer_ref (inbuffer);
 
     gst_data_queue_push_object (srcpad->buffers, GST_MINI_OBJECT (outbuffer));
     return TRUE;
-  } else if (!srcpad->passthrough && (vframes == NULL)) {
+  } else if (!srcpad->passthrough && (buffers == NULL)) {
     // When not in passthrough and there are no output frames submit GAP buffer.
     outbuffer = gst_buffer_new ();
 
@@ -483,25 +446,8 @@ gst_video_split_srcpad_push_buffer (GstElement * element, GstPad * pad,
   }
 
   // Unmap and submit the processed output buffers.
-  for (idx = 0; idx < vframes->len; idx++) {
-    GstVideoFrame *vframe = &(g_array_index (vframes, GstVideoFrame, idx));
-
-    outbuffer = vframe->buffer;
-
-  #ifdef HAVE_LINUX_DMA_BUF_H
-    if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-      struct dma_buf_sync bufsync;
-      gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-      bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
-
-      if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-        GST_WARNING_OBJECT (pad, "DMA IOCTL SYNC END failed!");
-    }
-  #endif // HAVE_LINUX_DMA_BUF_H
-
-    gst_video_frame_unmap (vframe);
-    vframe->buffer = NULL;
+  for (idx = 0; idx < buffers->len; idx++) {
+    outbuffer = g_array_index (buffers, GstBuffer*, idx);
 
     // Mark the first buffer in the bundle of frames that belong together.
     if ((srcpad->mode == GST_VSPLIT_MODE_ROI_BATCH) && (idx == 0))
@@ -649,26 +595,38 @@ gst_video_split_stop_worker_task (GstVideoSplit * vsplit)
 
 static gboolean
 gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
-    GstVideoFrame * inframe, GPtrArray * vframes, GArray * compositions)
+    GstBuffer * inbuffer, GPtrArray * buffers, GArray * compositions)
 {
   GList *list = NULL;
-  GArray *outframes = NULL;
-  GstVideoFrame *outframe = NULL;
+  GPtrArray *outbuffers = NULL;
+  GstBuffer *outbuffer = NULL;
   GstVideoComposition *composition = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   gpointer state = NULL;
   guint idx = 0, num = 0, id = 0, n_metas = 0, n_entries = 0, i = 0;
   gboolean success = TRUE;
+  GstVideoMeta *meta = NULL;
+  GstVideoInfo *ininfo = NULL;
+
+  ininfo = GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->info;
 
   // Calculate the number of non-derived ROI meta entries from the input buffer.
-  while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (inframe->buffer, state)) != NULL)
+  while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state)) != NULL)
     n_metas += (roimeta->parent_id == -1) ? 1 : 0;
 
   GST_VIDEO_SPLIT_LOCK (vsplit);
 
+  meta = gst_buffer_get_video_meta (inbuffer);
+
+  success = gst_video_info_modify_with_meta (ininfo, meta);
+
+  if (!success)
+    GST_ERROR_OBJECT (vsplit, "Failed to derive info from meta");
+
   // Fetch and prepare compositions for each of the source pads.
   for (list = vsplit->srcpads; list != NULL; list = g_list_next (list)) {
     GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (list->data);
+    GstVideoInfo *outinfo = srcpad->info;
 
     // Skip this pad as there there is no actual work to be done.
     if (srcpad->passthrough)
@@ -683,22 +641,21 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
       continue;
 
     n_entries = (srcpad->mode == GST_VSPLIT_MODE_ROI_BATCH) ? n_metas : 1;
-    outframes = g_array_sized_new (FALSE, TRUE, sizeof (GstVideoFrame), n_entries);
-    g_array_set_size (outframes, n_entries);
+    outbuffers = g_ptr_array_sized_new (n_entries);
+    g_ptr_array_set_size (outbuffers, n_entries);
 
     idx = g_list_index (vsplit->srcpads, srcpad);
-    g_ptr_array_index (vframes, idx) = outframes;
+    g_ptr_array_index (buffers, idx) = outbuffers;
 
     // Resize the number of compositions.
     g_array_set_size (compositions, compositions->len + n_entries);
 
     // Aquire buffer for each frame and update the converter parameters.
-    for (idx = 0; idx < outframes->len; idx++, id++) {
+    for (idx = 0; idx < outbuffers->len; idx++, id++) {
       GstVideoBlit *vblit = NULL;
       GstVideoRectangle source = {0}, *destination = NULL;
 
-      outframe = &(g_array_index (outframes, GstVideoFrame, idx));
-      success = gst_video_split_acquire_video_frame (srcpad, inframe, outframe);
+      success = gst_video_split_acquire_output_buffer (srcpad, inbuffer, &outbuffer);
 
       if (!success) {
         GST_ERROR_OBJECT (srcpad, "Failed to acquire video frame!");
@@ -706,9 +663,18 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
       }
 
       composition = &(g_array_index (compositions, GstVideoComposition, id));
+      g_ptr_array_index (outbuffers, idx) = outbuffer;
 
-      composition->frame = outframe;
-      composition->datatype = 0;
+      meta = gst_buffer_get_video_meta (outbuffer);
+
+      success = gst_video_info_modify_with_meta (outinfo, meta);
+
+      if (!success)
+        GST_ERROR_OBJECT (vsplit, "Failed to derive info from meta");
+
+      composition->buffer = outbuffer;
+      composition->info = outinfo;
+      composition->datatype = GST_VCE_DATA_TYPE_U8;
 
       composition->bgcolor = 0x00000000;
       composition->bgfill = TRUE;
@@ -723,7 +689,8 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
 
       vblit = &(composition->blits[0]);
 
-      vblit->frame = inframe;
+      vblit->buffer = inbuffer;
+      vblit->info = ininfo;
       vblit->mask = 0;
 
       vblit->alpha = G_MAXUINT8;
@@ -731,9 +698,9 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
 
       // Depending on the mode a different ROI meta is used or none at all.
       if (srcpad->mode == GST_VSPLIT_MODE_ROI_SINGLE)
-        roimeta = gst_buffer_find_region_of_interest_meta (inframe->buffer, num);
+        roimeta = gst_buffer_find_region_of_interest_meta (inbuffer, num);
       else if (srcpad->mode == GST_VSPLIT_MODE_ROI_BATCH)
-        roimeta = gst_buffer_find_region_of_interest_meta (inframe->buffer, idx);
+        roimeta = gst_buffer_find_region_of_interest_meta (inbuffer, idx);
 
       num += (srcpad->mode == GST_VSPLIT_MODE_ROI_SINGLE) ? 1 : 0;
 
@@ -780,13 +747,7 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
     goto cleanup;
   }
 
-  success = gst_video_frame_map (request->inframe, sinkpad->info, inbuffer,
-      GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF);
-
-  if (!success) {
-    GST_ERROR_OBJECT (pad, "Failed to map input buffer!");
-    goto cleanup;
-  }
+  request->inbuffer = inbuffer;
 
   compositions = g_array_new (FALSE, FALSE, sizeof (GstVideoComposition));
 
@@ -799,7 +760,7 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
 
   // Populate total number of compositions and their output frames.
   success = gst_video_split_populate_frames_and_compositions (vsplit,
-      request->inframe, request->outframes, compositions);
+      request->inbuffer, request->outbuffers, compositions);
 
   if (!success) {
     GST_ERROR_OBJECT (pad, "Failed to populate compositions!");
@@ -826,7 +787,7 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
   return GST_FLOW_OK;
 
 cleanup:
-  if ((request == NULL) || (request->inframe->buffer == NULL))
+  if ((request == NULL) || (request->inbuffer == NULL))
     gst_buffer_unref (inbuffer);
 
   g_array_free (compositions, TRUE);

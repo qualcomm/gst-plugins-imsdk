@@ -312,3 +312,22 @@ gst_video_point_affine_correction (GstVideoPoint * point, gdouble matrix[3][3])
   point->x = x / z;
   point->y = y / z;
 }
+
+gboolean
+gst_video_info_modify_with_meta (GstVideoInfo * info, const GstVideoMeta * meta)
+{
+  if (meta == NULL)
+    return TRUE;
+
+  g_return_val_if_fail (info->finfo->format == meta->format, FALSE);
+  g_return_val_if_fail (info->width == (gint) meta->width, FALSE);
+  g_return_val_if_fail (info->height == (gint) meta->height, FALSE);
+  g_return_val_if_fail (info->finfo->n_planes == meta->n_planes, FALSE);
+
+  for (size_t idx = 0; idx < GST_VIDEO_INFO_N_PLANES (info); idx++) {
+    info->offset[idx] = meta->offset[idx];
+    info->stride[idx] = meta->stride[idx];
+  }
+
+  return TRUE;
+}

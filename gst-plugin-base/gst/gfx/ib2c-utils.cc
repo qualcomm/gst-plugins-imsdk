@@ -19,7 +19,9 @@ namespace ib2c {
 typedef unsigned int (*get_gpu_pixel_alignment)(void);
 
 static const std::unordered_map<std::string, uint32_t> kGpuAlignment = {
-  { "qcom,adreno-635.0", 64 }, { "qcom,adreno-gpu-a643", 64 },
+  { "qcom,adreno-635.0", 64 },
+  { "qcom,adreno-gpu-a643", 64 },
+  { "qcom,adreno-663.0", 64 },
 };
 
 // Adreno GPU alignment requirements.
@@ -34,46 +36,55 @@ int32_t QueryAlignment() {
     return kAlignment;
 
   try {
-    std::string rootpath = "/sys/devices/platform/soc@0/";
-    auto iter = std::filesystem::directory_iterator(rootpath);
+    std::filesystem::path rootpath = "/sys/devices/platform/soc@0/";
+    std::string gpumodel;
 
-    auto found = std::find_if(iter, std::filesystem::end(iter),
-        [&](const auto& entry) {
-            std::string dirname = entry.path().filename().string();
-            return (dirname.find(".qcom,kgsl-3d0") != std::string::npos) ||
-                (dirname.find(".gpu") != std::string::npos);
-        });
+    for (const auto& entry : std::filesystem::directory_iterator(rootpath)) {
+      std::string dirname = entry.path().filename().string();
+      if ((dirname.find(".qcom,kgsl-3d0") != std::string::npos) ||
+          (dirname.find(".gpu") != std::string::npos)) {
+        std::filesystem::path filepath = entry.path() / "of_node" / "compatible";
+        std::ifstream file(filepath);
+        if (!file.is_open())
+            continue;
 
-    if (found == std::filesystem::end(iter))
+        std::stringstream sstream;
+        sstream << file.rdbuf();
+        std::string contents = sstream.str();
+
+        const std::regex pattern(R"(qcom,adreno([-a-z]+)([0-9|.]+))");
+        std::smatch match;
+
+        if (std::regex_search(contents, match, pattern)) {
+          gpumodel = match[0].str();
+          break;
+        }
+      }
+    }
+
+    if (gpumodel.empty())
       throw Exception("Failed to find GPU in filesystem !");
 
-    std::string filepath = (*found).path().string() + "/of_node/compatible";
-    std::ifstream file(filepath);
+    if (kGpuAlignment.count(gpumodel) == 0)
+      throw Exception("Unknown GPU model ", gpumodel, " !");
 
-    std::stringstream sstream;
-    sstream << file.rdbuf();
-    std::string contents = sstream.str();
+    kAlignment = kGpuAlignment.at(gpumodel);
 
-    const std::regex pattern("qcom,adreno([-a-z]+)([0-9|.]+)");
-    std::smatch match;
-
-    if (!std::regex_search(contents, match, pattern))
-      throw Exception("Failed to find GPU model in file !");
-
-    std::string model = match[0].str();
-
-    if (kGpuAlignment.count(model) == 0)
-      throw Exception("Unknown GPU model ", model, " !");
-
-    kAlignment = kGpuAlignment.at(model);
+    Log("INFO: GPU alignment: ", kAlignment);
   } catch (std::exception& e) {
     try {
+      // TEMP: This is a temporary solution until the GPU team provides a more
+      // generic way to retrieve the GPU pixel alignment.
+      // Relying on kernel device-tree nodes is not a robust long-term approach,
+      // as they are not guaranteed to reflect the actual userspace driver in use.
+      if (false == std::filesystem::exists("/dev/kgsl-3d0"))
+        throw Exception(e.what(), "Adreno Utils is not supported on this platform!");
+
       void *handle = dlopen("libadreno_utils.so.1", RTLD_NOW);
 
-      if (nullptr == handle) {
+      if (nullptr == handle)
         throw Exception(e.what(), "Fallback to Adreno utils. Failed to load "
                         "library, error: ", dlerror());
-      }
 
       get_gpu_pixel_alignment GetGpuPixelAlignment =
             (get_gpu_pixel_alignment) dlsym(handle, "get_gpu_pixel_alignment");
@@ -86,6 +97,8 @@ int32_t QueryAlignment() {
 
       // Fetch the GPU Pixel Alignment.
       kAlignment = GetGpuPixelAlignment();
+
+      Log("INFO: Adreno GPU alignment: ", kAlignment);
 
       // Close the library as it is no longer needed.
       dlclose(handle);

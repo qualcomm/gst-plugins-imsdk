@@ -146,6 +146,18 @@ gst_buffer_has_valid_parent_meta (GstBuffer * buffer, gint parent_id);
 GST_VIDEO_API void
 gst_video_point_affine_correction (GstVideoPoint * point, gdouble matrix[3][3]);
 
+/**
+ * gst_video_info_modify_with_meta:
+ * @info: #GstVideoInfo to write the correct values in
+ * @meta: #GstVideoMeta from which to take the correct values
+ *
+ * Helper function to derive some information from GstVideoMeta
+ *
+ * return: TRUE if meta isn't null and the basic info matches in both structs
+ */
+GST_VIDEO_API gboolean
+gst_video_info_modify_with_meta (GstVideoInfo * info, const GstVideoMeta * meta);
+
 G_END_DECLS
 
 #endif // __GST_QTI_VIDEO_UTILS_H__

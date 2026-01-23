@@ -47,7 +47,7 @@ struct _GstQtiAllocatorPrivate
 #define parent_class gst_qti_allocator_parent_class
 
 G_DEFINE_TYPE_WITH_PRIVATE (GstQtiAllocator, gst_qti_allocator,
-    GST_TYPE_FD_ALLOCATOR);
+    GST_TYPE_DMABUF_ALLOCATOR);
 
 static gboolean
 gst_data_queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,

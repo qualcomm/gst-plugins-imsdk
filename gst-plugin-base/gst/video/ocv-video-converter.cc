@@ -1071,10 +1071,24 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
     GST_WARNING ("Asynchronous composition operations are not supported!");
 
   for (idx = 0; idx < n_compositions; idx++) {
-    GstVideoComposition *composition = &compositions[idx];
-    GstVideoFrame *outframe = composition->frame;
-    GstVideoBlit *blits = compositions[idx].blits;
+    GstVideoFrame outframe;
+    GArray *inframes = NULL;
+    GstVideoComposition *composition = &(compositions[idx]);
+    GstVideoBlit *blits = composition->blits;
     guint n_blits = composition->n_blits;
+
+    inframes = g_array_sized_new (FALSE, FALSE, sizeof(GstVideoFrame),
+        composition->n_blits);
+    g_array_set_size (inframes, composition->n_blits);
+
+    success = gst_video_frame_map (&outframe, composition->info,
+        composition->buffer,
+        (GstMapFlags)(GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF));
+
+    if (!success) {
+      GST_ERROR ("Failed to map input buffer!");
+      return FALSE;
+    }
 
     // Iterate over the input blit entries and update each OCV object.
     for (num = 0; num < n_blits; num++) {
@@ -1083,6 +1097,15 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
       GstVideoRectangle rectangle = {0, 0, 0, 0};
       GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
       GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
+      GstVideoFrame *inframe = &g_array_index (inframes, GstVideoFrame, num);
+
+      success = gst_video_frame_map (inframe, blit->info, blit->buffer,
+          (GstMapFlags)(GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF));
+
+      if (!success) {
+        GST_ERROR ("Failed to map input buffer!");
+        return FALSE;
+      }
 
       if (n_objects >= GST_OCV_MAX_DRAW_OBJECTS) {
         GST_ERROR ("Number of objects exceeds %d!", GST_OCV_MAX_DRAW_OBJECTS);
@@ -1119,11 +1142,11 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
         rectangle.h = blit->source.d.y - blit->source.a.y;
       } else {
         rectangle.x = rectangle.y = 0;
-        rectangle.w = GST_VIDEO_FRAME_WIDTH (blit->frame);
-        rectangle.h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+        rectangle.w = GST_VIDEO_FRAME_WIDTH (inframe);
+        rectangle.h = GST_VIDEO_FRAME_HEIGHT (inframe);
       }
 
-      gst_ocv_update_object (object, "Source", blit->frame, &rectangle,
+      gst_ocv_update_object (object, "Source", inframe, &rectangle,
           flip, rotate, 0);
 
       // Intialization of the destination OCV object.
@@ -1134,11 +1157,11 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
         rectangle = blit->destination;
       } else {
         rectangle.x = rectangle.y = 0;
-        rectangle.w = GST_VIDEO_FRAME_WIDTH (outframe);
-        rectangle.h = GST_VIDEO_FRAME_HEIGHT (outframe);
+        rectangle.w = GST_VIDEO_FRAME_WIDTH (&outframe);
+        rectangle.h = GST_VIDEO_FRAME_HEIGHT (&outframe);
       }
 
-      gst_ocv_update_object (object, "Destination", outframe, &rectangle,
+      gst_ocv_update_object (object, "Destination", &outframe, &rectangle,
           GST_OCV_FLIP_NONE, GST_VCE_ROTATE_0, composition->datatype);
 
       // Increment the objects counter by 2 for for Source/Destination pair.
@@ -1146,7 +1169,7 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
     }
 
     // Sanity checks, output frame and blit entries must not be NULL.
-    g_return_val_if_fail (outframe != NULL && blits != NULL, false);
+    g_return_val_if_fail (blits != NULL, false);
 
     for (num = 0; num < n_blits; num++) {
       if (!gst_ocv_video_converter_process (convert, objects, n_objects)) {
@@ -1155,8 +1178,18 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
       }
     }
 
-    success = gst_video_frame_normalize_ip (composition->frame,
+    success = gst_video_frame_normalize_ip (&outframe,
         composition->datatype, composition->offsets, composition->scales);
+
+    for (num = 0; num < inframes->len; num++) {
+      GstVideoFrame *inframe = &g_array_index(inframes, GstVideoFrame, num);
+
+      gst_video_frame_unmap(inframe);
+    }
+
+    g_array_free (inframes, TRUE);
+
+    gst_video_frame_unmap (&outframe);
 
     if (!success) {
       GST_ERROR ("Failed to normalize output frame for composition %u!", idx);

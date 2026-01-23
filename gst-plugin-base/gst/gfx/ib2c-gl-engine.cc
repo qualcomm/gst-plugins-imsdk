@@ -211,9 +211,10 @@ Engine::Engine() {
   shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kComputePlanar32F, shader);
 
-  vendor_ = GetVendor();
+  vendor_ = reinterpret_cast<const char*>(env_->Gles()->GetString(GL_VENDOR));
+  renderer_ = reinterpret_cast<const char*>(env_->Gles()->GetString(GL_RENDERER));
 
-  error = env_->UnbindContext(ContextType::kPrimary) ;
+  error = env_->UnbindContext(ContextType::kPrimary);
   if (!error.empty()) throw std::runtime_error(error);
 }
 
@@ -453,16 +454,6 @@ void Engine::Finish(std::uintptr_t fence) {
 
   error = env_->UnbindContext(ContextType::kAuxilary);
   if (!error.empty()) throw std::runtime_error(error);
-}
-
-const char* Engine::GetVendor() {
-
-  return reinterpret_cast<const char*>(env_->Gles()->GetString(GL_VENDOR));
-}
-
-const char* Engine::GetRenderer() {
-
-  return reinterpret_cast<const char*>(env_->Gles()->GetString(GL_RENDERER));
 }
 
 std::string Engine::RenderYuvTexture(std::vector<GraphicTuple>& graphics,

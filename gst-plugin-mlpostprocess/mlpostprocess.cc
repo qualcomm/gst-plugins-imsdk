@@ -2084,7 +2084,7 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
       } else if (GST_IS_SEGMENTATION_TYPE (postprocess->type) ||
           GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
         // 2nd dimension correspond to height, 3rd dimension correspond to width.
-        width = GST_ROUND_DOWN_16 (mlinfo.tensors[0][2]);
+        width = GST_ROUND_DOWN_2 (mlinfo.tensors[0][2]);
       }
 
       gst_structure_set (output, "width", G_TYPE_INT, width, NULL);
@@ -2105,7 +2105,7 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
       } else if (GST_IS_SEGMENTATION_TYPE (postprocess->type) ||
           GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
         // 2nd dimension correspond to height, 3rd dimension correspond to width.
-        height = mlinfo.tensors[0][1];
+        height = GST_ROUND_DOWN_2 (mlinfo.tensors[0][1]);
       }
 
       gst_structure_set (output, "height", G_TYPE_INT, height, NULL);
