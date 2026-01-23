@@ -76,6 +76,9 @@ struct _GstC2dRequest
   // Video frame which will be normalized.
   GstVideoFrame *frame;
 
+  // Mapped blit frames
+  GArray        *inframes;
+
   // Offset and scale factors for each component of the pixel.
   gdouble       offsets[GST_VCE_MAX_CHANNELS];
   gdouble       scales[GST_VCE_MAX_CHANNELS];
@@ -140,6 +143,27 @@ load_symbol (gpointer* method, gpointer handle, const gchar* name)
     return FALSE;
   }
   return TRUE;
+}
+
+void
+gst_c2d_request_clear (GstC2dRequest * request)
+{
+  if (!request) return;
+
+  gst_video_frame_unmap(request->frame);
+  g_slice_free(GstVideoFrame, request->frame);
+
+  if (request->inframes) {
+    GArray *inframes = request->inframes;
+
+    for (guint i = 0; i < inframes->len; i++) {
+      GstVideoFrame *inframe = &g_array_index (inframes, GstVideoFrame, i);
+      gst_video_frame_unmap (inframe);
+    }
+
+    g_array_free(inframes, TRUE);
+    request->inframes = NULL;
+  }
 }
 
 static gint
@@ -285,10 +309,10 @@ gst_c2d_compare_compositions (const void * a, const void * b)
   const GstVideoComposition *r_composition = (const GstVideoComposition*) b;
   gint l_dims = 0, r_dims = 0;
 
-  l_dims = GST_VIDEO_FRAME_WIDTH (l_composition->frame) *
-      GST_VIDEO_FRAME_HEIGHT (l_composition->frame);
-  r_dims = GST_VIDEO_FRAME_WIDTH (r_composition->frame) *
-      GST_VIDEO_FRAME_HEIGHT (r_composition->frame);
+  l_dims = GST_VIDEO_INFO_WIDTH (l_composition->info) *
+      GST_VIDEO_INFO_HEIGHT (l_composition->info);
+  r_dims = GST_VIDEO_INFO_WIDTH (r_composition->info) *
+      GST_VIDEO_INFO_HEIGHT (r_composition->info);
 
   return (l_dims < r_dims) - (l_dims > r_dims);
 }
@@ -313,9 +337,9 @@ gst_c2d_blits_compatible (const GstVideoComposition * l_composition,
       return FALSE;
 
     l_fd = gst_fd_memory_get_fd (
-        gst_buffer_peek_memory (l_blit->frame->buffer, 0));
+        gst_buffer_peek_memory (l_blit->buffer, 0));
     r_fd = gst_fd_memory_get_fd (
-        gst_buffer_peek_memory (r_blit->frame->buffer, 0));
+        gst_buffer_peek_memory (r_blit->buffer, 0));
 
     // The FDs of both entries must match.
     if (l_fd != r_fd)
@@ -334,20 +358,20 @@ gst_c2d_blits_compatible (const GstVideoComposition * l_composition,
 
     // Adjust the dimensions of the target rectangles to be in the same scale.
     r_rect.x = gst_util_uint64_scale_int (r_rect.x,
-        GST_VIDEO_FRAME_WIDTH (l_composition->frame),
-        GST_VIDEO_FRAME_WIDTH (r_composition->frame));
+        GST_VIDEO_INFO_WIDTH (l_composition->info),
+        GST_VIDEO_INFO_WIDTH (r_composition->info));
 
     r_rect.y = gst_util_uint64_scale_int (r_rect.y,
-        GST_VIDEO_FRAME_HEIGHT (l_composition->frame),
-        GST_VIDEO_FRAME_HEIGHT (r_composition->frame));
+        GST_VIDEO_INFO_HEIGHT (l_composition->info),
+        GST_VIDEO_INFO_HEIGHT (r_composition->info));
 
     r_rect.w = gst_util_uint64_scale_int (r_rect.w,
-        GST_VIDEO_FRAME_WIDTH (l_composition->frame),
-        GST_VIDEO_FRAME_WIDTH (r_composition->frame));
+        GST_VIDEO_INFO_WIDTH (l_composition->info),
+        GST_VIDEO_INFO_WIDTH (r_composition->info));
 
     r_rect.h = gst_util_uint64_scale_int (r_rect.h,
-        GST_VIDEO_FRAME_HEIGHT (l_composition->frame),
-        GST_VIDEO_FRAME_HEIGHT (r_composition->frame));
+        GST_VIDEO_INFO_HEIGHT (l_composition->info),
+        GST_VIDEO_INFO_HEIGHT (r_composition->info));
 
     // Target rectangles may not match but must have maximum of 1 pixel delta.
     if ((ABS (l_rect.x - r_rect.x) > 1) || (ABS (l_rect.y - r_rect.y) > 1) ||
@@ -371,11 +395,11 @@ gst_c2d_optimize_composition (GstVideoBlit * blit,
   guint num = 0, l_resolution = 0, resolution = 0;
   gboolean optimized = FALSE;
 
-  gst_util_fraction_to_double (GST_VIDEO_FRAME_WIDTH (composition->frame),
-      GST_VIDEO_FRAME_HEIGHT (composition->frame), &ratio);
+  gst_util_fraction_to_double (GST_VIDEO_INFO_WIDTH (composition->info),
+      GST_VIDEO_INFO_HEIGHT (composition->info), &ratio);
 
-  resolution = GST_VIDEO_FRAME_WIDTH (composition->frame) *
-      GST_VIDEO_FRAME_HEIGHT (composition->frame);
+  resolution = GST_VIDEO_INFO_WIDTH (composition->info) *
+      GST_VIDEO_INFO_HEIGHT (composition->info);
 
   // Find the best compatible blit composition to current one.
   for (num = 0; num < index; num++) {
@@ -389,15 +413,15 @@ gst_c2d_optimize_composition (GstVideoBlit * blit,
     if (l_composition->bgcolor != composition->bgcolor)
       continue;
 
-    gst_util_fraction_to_double (GST_VIDEO_FRAME_WIDTH (l_composition->frame),
-        GST_VIDEO_FRAME_HEIGHT (l_composition->frame), &l_ratio);
+    gst_util_fraction_to_double (GST_VIDEO_INFO_WIDTH (l_composition->info),
+        GST_VIDEO_INFO_HEIGHT (l_composition->info), &l_ratio);
 
     // Both target surfaces must have the same aspect ratio within tolerance.
     if (FABS (l_ratio - ratio) > 0.005)
       continue;
 
-    l_resolution = GST_VIDEO_FRAME_WIDTH (l_composition->frame) *
-        GST_VIDEO_FRAME_HEIGHT (l_composition->frame);
+    l_resolution = GST_VIDEO_INFO_WIDTH (l_composition->info) *
+        GST_VIDEO_INFO_HEIGHT (l_composition->info);
 
     // The blit surface must have the same or lower resolution.
     if (resolution > l_resolution)
@@ -410,11 +434,11 @@ gst_c2d_optimize_composition (GstVideoBlit * blit,
     // Increase the score if both target blit surfaces have the same dimensions.
     l_score = (l_resolution == resolution) ? 1 : 0;
     // Increase the score if both target blit surfaces have the same format flags.
-    l_score += (l_composition->frame->info.finfo->flags ==
-        composition->frame->info.finfo->flags) ? 1 : 0;
+    l_score += (l_composition->info->finfo->flags ==
+        composition->info->finfo->flags) ? 1 : 0;
     // Increase the score if both target blit surfaces have the same format.
-    l_score += (GST_VIDEO_FRAME_FORMAT (l_composition->frame) ==
-        GST_VIDEO_FRAME_FORMAT (composition->frame)) ? 1 : 0;
+    l_score += (GST_VIDEO_INFO_FORMAT (l_composition->info) ==
+        GST_VIDEO_INFO_FORMAT (composition->info)) ? 1 : 0;
 
     if (l_score <= score)
       continue;
@@ -422,7 +446,7 @@ gst_c2d_optimize_composition (GstVideoBlit * blit,
     // Update the current high score tracker.
     score = l_score;
 
-    blit->frame = l_composition->frame;
+    blit->buffer = l_composition->buffer;
 
     optimized = TRUE;
   }
@@ -797,10 +821,10 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
     height = vblit->source.d.y - vblit->source.a.y;
   }
 
-  width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (vblit->frame) :
-      MIN (width, GST_VIDEO_FRAME_WIDTH (vblit->frame) - x);
-  height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (vblit->frame) :
-      MIN (height, GST_VIDEO_FRAME_HEIGHT (vblit->frame) - y);
+  width = (width == 0) ? GST_VIDEO_INFO_WIDTH (vblit->info) :
+      MIN (width, GST_VIDEO_INFO_WIDTH (vblit->info) - x);
+  height = (height == 0) ? GST_VIDEO_INFO_HEIGHT (vblit->info) :
+      MIN (height, GST_VIDEO_INFO_HEIGHT (vblit->info) - y);
 
   object->source_rect.x = x << 16;
   object->source_rect.y = y << 16;
@@ -838,10 +862,10 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
       gint dar_n = 0, dar_d = 0;
 
       gst_util_fraction_multiply (
-          GST_VIDEO_FRAME_WIDTH (vblit->frame),
-          GST_VIDEO_FRAME_HEIGHT (vblit->frame),
-          GST_VIDEO_INFO_PAR_N (&(vblit->frame)->info),
-          GST_VIDEO_INFO_PAR_D (&(vblit->frame)->info),
+          GST_VIDEO_INFO_WIDTH (vblit->info),
+          GST_VIDEO_INFO_HEIGHT (vblit->info),
+          GST_VIDEO_INFO_PAR_N (vblit->info),
+          GST_VIDEO_INFO_PAR_D (vblit->info),
           &dar_n, &dar_d
       );
 
@@ -889,10 +913,10 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
       gint dar_n = 0, dar_d = 0;
 
       gst_util_fraction_multiply (
-          GST_VIDEO_FRAME_WIDTH (vblit->frame),
-          GST_VIDEO_FRAME_HEIGHT (vblit->frame),
-          GST_VIDEO_INFO_PAR_N (&(vblit->frame)->info),
-          GST_VIDEO_INFO_PAR_D (&(vblit->frame)->info),
+          GST_VIDEO_INFO_WIDTH (vblit->info),
+          GST_VIDEO_INFO_HEIGHT (vblit->info),
+          GST_VIDEO_INFO_PAR_N (vblit->info),
+          GST_VIDEO_INFO_PAR_D (vblit->info),
           &dar_n, &dar_d
       );
 
@@ -1020,9 +1044,11 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
   C2D_OBJECT objects[GST_C2D_MAX_DRAW_OBJECTS] = { 0, };
   guint idx = 0, num = 0, surface_id = 0, area = 0;
   C2D_STATUS status = C2D_STATUS_OK;
+  gboolean success = FALSE;
 
-  requests = g_array_sized_new (FALSE, FALSE, sizeof (GstC2dRequest),
+  requests = g_array_sized_new (FALSE, TRUE, sizeof (GstC2dRequest),
       n_compositions);
+  g_array_set_clear_func(requests, (GDestroyNotify) gst_c2d_request_clear);
   g_array_set_size (requests, n_compositions);
 
   // Sort compositions by output frame dimensions.
@@ -1030,18 +1056,31 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
       gst_c2d_compare_compositions);
 
   for (idx = 0; idx < n_compositions; idx++) {
-    GstVideoComposition *composition = &(compositions[idx]);
-    GstVideoFrame *outframe = NULL;
+    GstVideoComposition *composition = NULL;
+    GstVideoFrame *outframe = g_slice_new0 (GstVideoFrame);
     GstVideoBlit *blits = NULL, l_blit = GST_VCE_BLIT_INIT;
     guint n_blits = 0, n_objects = 0;
     gboolean optimized = FALSE;
+    request = &g_array_index (requests, GstC2dRequest, idx);
+
+    composition = &(compositions[idx]);
+
+    request->inframes = g_array_sized_new(FALSE, FALSE, sizeof(GstVideoFrame),
+        composition->n_blits);
+    g_array_set_size (request->inframes, composition->n_blits);
 
     // Sanity checks, output frame and blit entries must not be NULL.
-    g_return_val_if_fail (composition->frame != NULL, FALSE);
+    g_return_val_if_fail (composition->buffer != NULL, FALSE);
     g_return_val_if_fail (composition->blits != NULL, FALSE);
     g_return_val_if_fail (composition->n_blits != 0, FALSE);
 
-    outframe = composition->frame;
+    success = gst_video_frame_map (outframe, composition->info,
+        composition->buffer, GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF);
+
+    if (!success) {
+      GST_ERROR ("Failed to map input buffer!");
+      goto cleanup;
+    }
 
     // Optimize current composition to use an existing output as blit entry.
     // If a suitable composition is found then the local blit enry is filled.
@@ -1057,17 +1096,22 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
     // Iterate over the input blit entries and update each C2D_OBJECT for draw.
     for (num = 0; num < n_blits; num++) {
       GstVideoBlit *blit = &(blits[num]);
+      GstVideoFrame* inframe =
+          &g_array_index(request->inframes, GstVideoFrame, num);
 
       GST_C2D_LOCK (convert);
 
+      success = gst_video_frame_map (inframe, blit->info,
+          blit->buffer, GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF);
+
       surface_id = gst_c2d_retrieve_surface_id (convert, convert->insurfaces,
-          C2D_SOURCE, blit->frame);
+          C2D_SOURCE, inframe);
 
       GST_C2D_UNLOCK (convert);
 
       if (surface_id == 0) {
         GST_ERROR ("Failed to get surface ID for input buffer %p at index %u "
-            "in composition %u!", blit->frame->buffer, num, idx);
+            "in composition %u!", blit->buffer, num, idx);
         goto cleanup;
       }
 
@@ -1131,10 +1175,9 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
       goto cleanup;
     }
 
-    request = &g_array_index (requests, GstC2dRequest, idx);
     request->id = surface_id;
 
-    request->frame = composition->frame;
+    request->frame = outframe;
     request->flags = composition->datatype;
 
     memcpy (request->offsets, composition->offsets, sizeof (request->offsets));
