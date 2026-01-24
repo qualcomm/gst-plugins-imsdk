@@ -36,6 +36,22 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-variable")
 
+# Check whether ANDROID_SENSOR_OPAQUE_RAW_SIZE_MAXIMUM_RESOLUTION is supported
+include(CheckCXXSourceCompiles)
+
+set(SRC
+"
+#include \"system/camera_metadata.h\"
+int main()
+{
+    if (0 == ANDROID_SENSOR_OPAQUE_RAW_SIZE_MAXIMUM_RESOLUTION)
+        return -1;
+    return 0;
+}")
+
+check_cxx_source_compiles("${SRC}"
+  HAS_ANDROID_SENSOR_OPAQUE_RAW_SIZE_MAXIMUM_RESOLUTION)
+
 # GStreamer plugin.
 set(GST_QMMFSRC_PLUGIN gstqtiqmmfsrc)
 
@@ -67,6 +83,7 @@ target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE
   $<$<BOOL:${FEATURE_LOGICAL_CAMERA_SENSOR_SWITCH}>:FEATURE_LOGICAL_CAMERA_SENSOR_SWITCH>
   $<$<BOOL:${FEATURE_OFFLINE_IFE_SUPPORT}>:FEATURE_OFFLINE_IFE_SUPPORT>
   $<$<BOOL:${FEATURE_SW_TNR}>:FEATURE_SW_TNR> # TODO: Remove the target specific flag.
+  $<$<BOOL:${HAS_ANDROID_SENSOR_OPAQUE_RAW_SIZE_MAXIMUM_RESOLUTION}>:HAS_ANDROID_SENSOR_OPAQUE_RAW_SIZE_MAXIMUM_RESOLUTION>
 )
 
 target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
@@ -98,4 +115,3 @@ install(
               GROUP_EXECUTE GROUP_READ
               WORLD_EXECUTE WORLD_READ
 )
-
