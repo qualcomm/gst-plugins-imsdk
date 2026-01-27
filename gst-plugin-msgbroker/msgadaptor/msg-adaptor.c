@@ -114,7 +114,8 @@ gst_msg_protocol_new (gchar *protocol, const gchar *role)
   adaptor->role = g_strdup (role);
   adaptor->protocol = g_strdup (protocol);
 
-  snprintf (filename, 50, "libgstqti%sadaptor.so", protocol);
+  snprintf (filename, 50, "libgstqti%sadaptor.so.%d",
+      protocol, GST_QTI_ADAPTOR_SOVERSION);
   GST_DEBUG ("Trying to dlopen, filename: %s.", filename);
   adaptor->libhandle = dlopen (filename, RTLD_NOW);
   if (adaptor->libhandle == NULL) {

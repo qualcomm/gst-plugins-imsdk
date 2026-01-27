@@ -6,6 +6,11 @@ add_library(${MQTT} SHARED
   mqtt.c
 )
 
+set_target_properties(${MQTT} PROPERTIES
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}
+)
+
 target_include_directories(${MQTT} PRIVATE
   ${GST_INCLUDE_DIRS}
 )
