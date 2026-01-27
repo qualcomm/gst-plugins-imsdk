@@ -6,12 +6,21 @@ add_library(${MSG_ADAPTOR} SHARED
   msg-adaptor.c
 )
 
+set_target_properties(${MSG_ADAPTOR} PROPERTIES
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}
+)
+
 target_include_directories(${MSG_ADAPTOR} PRIVATE
   ${GST_INCLUDE_DIRS}
 )
 
 target_link_libraries(${MSG_ADAPTOR} PRIVATE
   ${GST_LIBRARIES}
+)
+
+target_compile_definitions(${MSG_ADAPTOR} PRIVATE
+  GST_QTI_ADAPTOR_SOVERSION=${PROJECT_VERSION_MAJOR}
 )
 
 install(
