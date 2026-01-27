@@ -1276,7 +1276,7 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
     blit = &(composition->blits[(*index) + 1]);
 
     success = gst_overlay_video_blit_initialize(overlay,
-        GST_OVERLAY_TYPE_STRING, blit);
+        GST_OVERLAY_TYPE_CLASSIFICATION, blit);
 
     success = gst_cairo_draw_setup (blit, &frame, &surface, &context);
     g_return_val_if_fail (success, FALSE);
