@@ -53,7 +53,6 @@ struct _GstVOverlay {
   GstVideoConvEngine   *converter;
 
   /// Properties.
-  GstVideoConvBackend  backend;
   GArray               *bboxes;
   GArray               *timestamps;
   GArray               *strings;

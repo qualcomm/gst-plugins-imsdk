@@ -32,8 +32,6 @@ G_DEFINE_TYPE (GstVOverlay, gst_overlay, GST_TYPE_BASE_TRANSFORM);
 #define GST_OVERLAY_VIDEO_FORMATS \
   "{ NV12, NV21, YUY2, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, NV12_Q08C }"
 
-#define DEFAULT_PROP_ENGINE_BACKEND (gst_video_converter_default_backend())
-
 #define DEFAULT_MIN_BUFFERS         1
 #define DEFAULT_MAX_BUFFERS         30
 
@@ -43,7 +41,6 @@ G_DEFINE_TYPE (GstVOverlay, gst_overlay, GST_TYPE_BASE_TRANSFORM);
 enum
 {
   PROP_0,
-  PROP_ENGINE_BACKEND,
   PROP_BBOXES,
   PROP_TIMESTAMPS,
   PROP_STRINGS,
@@ -1963,7 +1960,8 @@ gst_overlay_set_caps (GstBaseTransform * base, GstCaps * incaps,
   if (overlay->converter != NULL)
     gst_video_converter_engine_free (overlay->converter);
 
-  overlay->converter = gst_video_converter_engine_new (overlay->backend, NULL);
+  overlay->converter =
+      gst_video_converter_engine_new (gst_video_converter_default_backend(), NULL);
 
   GST_DEBUG_OBJECT (overlay, "Input caps: %" GST_PTR_FORMAT, incaps);
   GST_DEBUG_OBJECT (overlay, "Output caps: %" GST_PTR_FORMAT, outcaps);
@@ -2058,9 +2056,6 @@ gst_overlay_set_property (GObject * object, guint prop_id,
   GST_OVERLAY_LOCK (overlay);
 
   switch (prop_id) {
-    case PROP_ENGINE_BACKEND:
-      overlay->backend = g_value_get_enum (value);
-      break;
     case PROP_BBOXES:
       g_value_init (&list, GST_TYPE_LIST);
 
@@ -2144,9 +2139,6 @@ gst_overlay_get_property (GObject * object, guint prop_id,
   GST_OVERLAY_LOCK (overlay);
 
   switch (prop_id) {
-    case PROP_ENGINE_BACKEND:
-      g_value_set_enum (value, overlay->backend);
-      break;
     case PROP_BBOXES:
       string = gst_serialize_bboxes (overlay->bboxes);
       g_value_take_string (value, string);
@@ -2228,11 +2220,6 @@ gst_overlay_class_init (GstVOverlayClass * klass)
   gobject->get_property = GST_DEBUG_FUNCPTR (gst_overlay_get_property);
   gobject->finalize = GST_DEBUG_FUNCPTR (gst_overlay_finalize);
 
-  g_object_class_install_property (gobject, PROP_ENGINE_BACKEND,
-      g_param_spec_enum ("engine", "Engine",
-          "Engine backend used for the blitting operations",
-          GST_TYPE_VCE_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_BBOXES,
       g_param_spec_string ("bboxes", "BBoxes",
           "Manually set multiple custom bounding boxes in list of GstStructures "
@@ -2313,7 +2300,6 @@ gst_overlay_init (GstVOverlay * overlay)
 
   overlay->converter = NULL;
 
-  overlay->backend = DEFAULT_PROP_ENGINE_BACKEND;
   overlay->bboxes = g_array_new (FALSE, TRUE, sizeof (GstOverlayBBox));
   overlay->timestamps = g_array_new (FALSE, TRUE, sizeof (GstOverlayTimestamp));
   overlay->strings = g_array_new (FALSE, TRUE, sizeof (GstOverlayString));
