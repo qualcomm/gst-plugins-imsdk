@@ -622,27 +622,11 @@ gst_ml_video_detection_fill_video_output (GstMLPostProcess * postprocess,
     // Extract the source tensor region with actual data.
     gst_ml_structure_get_source_region (info, &region);
 
-    // Recalculate the region dimensions depending on the ratios.
-    if ((region.w * GST_VIDEO_FRAME_HEIGHT (vframe)) >
-        (region.h * GST_VIDEO_FRAME_WIDTH (vframe))) {
+    gst_ml_post_process_update_region (vframe, region);
 
-      region.h = gst_util_uint64_scale_int (
-          GST_VIDEO_FRAME_WIDTH (vframe), region.h, region.w);
-      region.w = GST_VIDEO_FRAME_WIDTH (vframe);
-    } else if ((region.w * GST_VIDEO_FRAME_HEIGHT (vframe)) <
-        (region.h * GST_VIDEO_FRAME_WIDTH (vframe))) {
-
-      region.w = gst_util_uint64_scale_int (
-          GST_VIDEO_FRAME_HEIGHT (vframe), region.w, region.h);
-      region.h = GST_VIDEO_FRAME_HEIGHT (vframe);
-    } else {
-      region.w = GST_VIDEO_FRAME_WIDTH (vframe);
-      region.h = GST_VIDEO_FRAME_HEIGHT (vframe);
-    }
-
-    // Additional overwrite of X and Y axis for centred image disposition.
-    region.x = (GST_VIDEO_FRAME_WIDTH (vframe) - region.w) / 2;
-    region.y = (GST_VIDEO_FRAME_HEIGHT (vframe) - region.h) / 2;
+    // Add ROI meta with the actual part of the buffer filled with image data.
+    gst_buffer_add_video_region_of_interest_meta (vframe->buffer, "ImageRegion",
+        region.x, region.y, region.w, region.h);
 
     for (num = 0; num < n_entries; num++) {
       ObjectDetection& entry = detections[num];
@@ -1340,27 +1324,11 @@ gst_ml_video_pose_fill_video_output (GstMLPostProcess * postprocess,
     // Extract the source tensor region with actual data.
     gst_ml_structure_get_source_region (info, &region);
 
-    // Recalculate the region dimensions depending on the ratios.
-    if ((region.w * GST_VIDEO_FRAME_HEIGHT (vframe)) >
-        (region.h * GST_VIDEO_FRAME_WIDTH (vframe))) {
+    gst_ml_post_process_update_region (vframe, region);
 
-      region.h = gst_util_uint64_scale_int (
-          GST_VIDEO_FRAME_WIDTH (vframe), region.h, region.w);
-      region.w = GST_VIDEO_FRAME_WIDTH (vframe);
-    } else if ((region.w * GST_VIDEO_FRAME_HEIGHT (vframe)) <
-        (region.h * GST_VIDEO_FRAME_WIDTH (vframe))) {
-
-      region.w = gst_util_uint64_scale_int (
-          GST_VIDEO_FRAME_HEIGHT (vframe), region.w, region.h);
-      region.h = GST_VIDEO_FRAME_HEIGHT (vframe);
-    } else {
-      region.w = GST_VIDEO_FRAME_WIDTH (vframe);
-      region.h = GST_VIDEO_FRAME_HEIGHT (vframe);
-    }
-
-    // Additional overwrite of X and Y axis for centred image disposition.
-    region.x = (GST_VIDEO_FRAME_WIDTH (vframe) - region.w) / 2;
-    region.y = (GST_VIDEO_FRAME_HEIGHT (vframe) - region.h) / 2;
+    // Add ROI meta with the actual part of the buffer filled with image data.
+    gst_buffer_add_video_region_of_interest_meta (vframe->buffer, "ImageRegion",
+        region.x, region.y, region.w, region.h);
 
     for (num = 0; num < n_entries; num++) {
       PoseEstimation& entry = estimations[num];
@@ -2441,6 +2409,21 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     } else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
       success = gst_ml_text_generation_fill_video_output (postprocess,
           output, &vframe);
+    } else if ((GST_IS_SEGMENTATION_TYPE (postprocess->type)) ||
+               (GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type))) {
+      GstVideoRectangle region = { 0, };
+      GstStructure *info = NULL;
+
+      info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, 0));
+
+      // Extract the source tensor region with actual data.
+      gst_ml_structure_get_source_region (info, &region);
+
+      gst_ml_post_process_update_region (&vframe, region);
+
+      // Add ROI meta with the actual part of the buffer filled with image data.
+      gst_buffer_add_video_region_of_interest_meta (outbuffer, "ImageRegion",
+          region.x, region.y, region.w, region.h);
     }
 
     gst_video_frame_unmap (&vframe);

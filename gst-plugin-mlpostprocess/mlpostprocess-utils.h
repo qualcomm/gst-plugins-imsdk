@@ -122,7 +122,7 @@ gst_ml_module_get_dimensions (GstStructure * structure, GString * result);
  * return: char string.
  **/
 gchar *
-gst_ml_module_parse_caps (const GstCaps *caps);
+gst_ml_module_parse_caps (const GstCaps * caps);
 
 /* gst_ml_enumarate_modules
  *
@@ -157,6 +157,18 @@ gst_ml_module_caps_get_type (const std::string& json);
  *
  * return: Score.
  **/
+
+/* gst_ml_post_process_update_region
+ *
+ * Helper function to recalculate the region dimensions depending on
+ * the source ratio.
+ *
+ * return: None.
+ **/
+void
+gst_ml_post_process_update_region (GstVideoFrame * vframe,
+                                   GstVideoRectangle &region);
+
 gfloat
 gst_ml_post_process_boxes_intersection_score (ObjectDetection& l_box,
                                               ObjectDetection& r_box);

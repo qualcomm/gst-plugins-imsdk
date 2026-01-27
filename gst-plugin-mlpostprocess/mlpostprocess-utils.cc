@@ -411,7 +411,7 @@ gst_ml_module_get_dimensions (GstStructure * structure, GString * result)
 }
 
 gchar *
-gst_ml_module_parse_caps (const GstCaps *caps)
+gst_ml_module_parse_caps (const GstCaps * caps)
 {
   GstStructure *structure = NULL;
   GString *result = g_string_new ("");
@@ -551,6 +551,30 @@ gst_ml_module_caps_get_type (const std::string& json)
   } catch (...) {
     return g_quark_from_string ("unknown");
   }
+}
+
+void
+gst_ml_post_process_update_region (GstVideoFrame * vframe,
+                                   GstVideoRectangle &region)
+{
+  if ((region.w * GST_VIDEO_FRAME_HEIGHT (vframe)) >
+      (region.h * GST_VIDEO_FRAME_WIDTH (vframe))) {
+    region.h = gst_util_uint64_scale_int (
+        GST_VIDEO_FRAME_WIDTH (vframe), region.h, region.w);
+    region.w = GST_VIDEO_FRAME_WIDTH (vframe);
+  } else if ((region.w * GST_VIDEO_FRAME_HEIGHT (vframe)) <
+      (region.h * GST_VIDEO_FRAME_WIDTH (vframe))) {
+    region.w = gst_util_uint64_scale_int (
+        GST_VIDEO_FRAME_HEIGHT (vframe), region.w, region.h);
+    region.h = GST_VIDEO_FRAME_HEIGHT (vframe);
+  } else {
+    region.w = GST_VIDEO_FRAME_WIDTH (vframe);
+    region.h = GST_VIDEO_FRAME_HEIGHT (vframe);
+  }
+
+  // Additional overwrite of X and Y axis for centred image disposition.
+  region.x = (GST_VIDEO_FRAME_WIDTH (vframe) - region.w) / 2;
+  region.y = (GST_VIDEO_FRAME_HEIGHT (vframe) - region.h) / 2;
 }
 
 gfloat
