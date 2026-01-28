@@ -8,8 +8,6 @@
 #include "qti-ml-post-process.h"
 #include "qti-labels-parser.h"
 
-#include <string>
-
 class Module : public IModule {
  public:
   Module(LogCallback cb);
@@ -22,11 +20,10 @@ class Module : public IModule {
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
+
  private:
   // Logging callback.
-  LogCallback                  logger_;
-  // Confidence threshold value.
-  double                       threshold_;
+  LogCallback  logger_;
   // Labels parser.
-  LabelsParser                 labels_parser_;
+  LabelsParser labels_parser_;
 };

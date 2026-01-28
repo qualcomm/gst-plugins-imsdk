@@ -8,8 +8,6 @@
 #include "qti-ml-post-process.h"
 #include "qti-labels-parser.h"
 
-#include <string>
-
 class Module : public IModule {
  public:
   Module(LogCallback cb);
@@ -22,30 +20,18 @@ class Module : public IModule {
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
+
  private:
-  void ParseSegmentationFrame(const Tensors& tensors, Dictionary& mlparams,
-                              std::any& output, uint32_t proto_tensor_idx);
-  std::vector<uint32_t> GenerateMaskFromProtos(const Tensors& tensors,
-                                               std::vector<ObjectDetection>& bboxes,
-                                               std::vector<uint32_t>& mask_matrix_indices,
-                                               uint32_t proto_tensor_idx);
-  void ParseBoundingBoxes(const Tensors& tensors,
-                          std::vector<ObjectDetection>& bboxes,
-                          std::vector<uint32_t>& mask_matrix_indices);
-  int32_t NonMaxSuppression(const ObjectDetection &l_box,
-                            ObjectDetections &boxes);
+  int32_t NonMaxSuppression(ObjectDetections &objects,
+                            const ObjectDetection &l_object);
 
   float IntersectionScore(const ObjectDetection &l_box,
                           const ObjectDetection &r_box);
-
-  void  MlBoxRelativeTranslation(ObjectDetection * box,
-                                  const int width, const int height);
 
   // Logging callback.
   LogCallback  logger_;
   // Labels parser.
   LabelsParser labels_parser_;
-  double       threshold_;
-  uint32_t     source_width_;
-  uint32_t     source_height_;
+  // Confidence threshold value.
+  float        threshold_;
 };

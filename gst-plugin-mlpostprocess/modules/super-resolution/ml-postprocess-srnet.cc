@@ -35,6 +35,8 @@
 #include "ml-postprocess-srnet.h"
 
 #include <climits>
+#include <cmath>
+#include <algorithm>
 
 /* kModuleCaps
 *
@@ -53,7 +55,7 @@ static const std::string kModuleCaps = R"(
     {
       "format": ["FLOAT32"],
       "dimensions": [
-        [1, [32, 4096], [32, 4096], [1, 3]]
+        [1, [32, 4096], [32, 4096], 3]
       ]
     }
   ]
@@ -79,42 +81,45 @@ bool Module::Configure(const std::string& labels_file,
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
-  if (output.type() != typeid(VideoFrame)) {
-    LOG(logger_, kError, "Unexpected output type!");
+  auto& frame = std::any_cast<VideoFrame&>(output);
+  auto& region = std::any_cast<Region&>(mlparams["input-tensor-region"]);
+  auto& resolution = std::any_cast<Resolution&>(mlparams["input-tensor-dimensions"]);
+
+  uint32_t mlwidth = tensors.front().dimensions[2];
+  uint32_t mlheight = tensors.front().dimensions[1];
+
+  if ((frame.width != mlwidth) && (frame.height != mlheight)) {
+    LOG(logger_, kError,
+        "Mismatch between video frame resolution and tensor resolution!");
+    return false;
+  } else if ((frame.format != VideoFormat::kRGBA8888) &&
+             (frame.format != VideoFormat::kRGBX8888)) {
+    LOG(logger_, kError, "Unsupported video format!");
     return false;
   }
 
-  VideoFrame& frame =
-      std::any_cast<VideoFrame&>(output);
-
-  // Retrive the video frame Bytes Per Pixel for later calculations.
-  uint32_t bpp = frame.bits *
-      frame.n_components / CHAR_BIT;
-
-  const float *indata = static_cast<const float*>(tensors[0].data);
+  auto indata = static_cast<const float*>(tensors.front().data);
   uint8_t *outdata = frame.planes[0].data;
 
-  // TODO: Right now this won't work with any output resolution.
-  // TODO: Expolore the possible use of OpenGL or OpenCL
-  for (uint32_t row = 0; row < frame.height; row++) {
-    uint32_t inidx = row * frame.width * bpp;
-    uint32_t outidx = row * frame.planes[0].stride;
+  // Scale factors for avoiding using division and instead use multiplication.
+  float wscale = static_cast<float>(mlwidth) / resolution.width;
+  float hscale = static_cast<float>(mlheight) / resolution.height;
 
-    for (uint32_t column = 0; column < frame.width; column++) {
+  // Recalculate region dimensions to the tensor resolution being processed.
+  uint32_t left = std::lround(region.x * wscale);
+  uint32_t top = std::lround(region.y * hscale);
+  uint32_t right = std::lround((region.x + region.width) * wscale);
+  uint32_t bottom = std::lround((region.y + region.height) * hscale);
 
-      outdata[outidx] =
-          (uint8_t)(std::clamp(indata[inidx], 0.0f, 1.0f) * 255.0f);
-      outdata[outidx + 1] =
-          (uint8_t)(std::clamp(indata[inidx + 1], 0.0f, 1.0f) * 255.0f);
-      outdata[outidx + 2] =
-          (uint8_t)(std::clamp(indata[inidx + 2], 0.0f, 1.0f) * 255.0f);
+  for (uint32_t row = top; row < bottom; row++) {
+    uint32_t inidx = (row * mlwidth * 3) + (left * 3);
+    uint32_t outidx = (row * frame.planes[0].stride) + (left * 4);
 
-      // If output has an alpha channel set it to opaque.
-      if (bpp == 4)
-        outdata[outidx + 3] = 0xFF;
-
-      inidx += bpp;
-      outidx += bpp;
+    for (uint32_t col = left; col < right; col++, inidx += 3, outidx += 4) {
+      outdata[outidx] = std::clamp(indata[inidx], 0.0f, 1.0f) * 255.0f;
+      outdata[outidx + 1] = std::clamp(indata[inidx + 1], 0.0f, 1.0f) * 255.0f;
+      outdata[outidx + 2] = std::clamp(indata[inidx + 2], 0.0f, 1.0f) * 255.0f;
+      outdata[outidx + 3] = 0xFF;
     }
   }
 

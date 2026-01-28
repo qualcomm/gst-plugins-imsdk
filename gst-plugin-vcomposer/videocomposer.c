@@ -146,6 +146,24 @@ gst_video_composer_src_template (void)
       gst_video_composer_src_caps (), GST_TYPE_AGGREGATOR_PAD);
 }
 
+static GstVideoRegionOfInterestMeta*
+gst_buffer_get_image_region_meta (GstBuffer * buffer)
+{
+  GstMeta *meta = NULL;
+  GstVideoRegionOfInterestMeta *roimeta = NULL;
+  gpointer state = NULL;
+
+  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
+              GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE)) != NULL) {
+    roimeta = GST_VIDEO_ROI_META_CAST (meta);
+
+    if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
+      break;
+  }
+
+  return roimeta;
+}
+
 static void
 gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
     GstVideoComposition * composition)
@@ -808,6 +826,7 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 
   for (list = GST_ELEMENT (vcomposer)->sinkpads; list != NULL; list = list->next) {
     GstVideoComposerSinkPad *sinkpad = GST_VIDEO_COMPOSER_SINKPAD (list->data);
+    GstVideoRegionOfInterestMeta *roimeta = NULL;
     GstBuffer *inbuffer = NULL;
     GstVideoBlit *vblit = NULL;
 
@@ -844,6 +863,14 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 
     if ((sinkpad->crop.w != 0) && (sinkpad->crop.h != 0)) {
       gst_video_quadrilateral_from_rectangle (&(vblit->source), &(sinkpad->crop));
+      vblit->mask |= GST_VCE_MASK_SOURCE;
+    } else if ((roimeta = gst_buffer_get_image_region_meta (inbuffer)) != NULL) {
+      vblit->source.a = (GstVideoPoint){roimeta->x, roimeta->y};
+      vblit->source.b = (GstVideoPoint){roimeta->x, roimeta->y + roimeta->h};
+      vblit->source.c = (GstVideoPoint){roimeta->x + roimeta->w, roimeta->y};
+      vblit->source.d =
+          (GstVideoPoint){roimeta->x + roimeta->w, roimeta->y + roimeta->h};
+
       vblit->mask |= GST_VCE_MASK_SOURCE;
     }
 

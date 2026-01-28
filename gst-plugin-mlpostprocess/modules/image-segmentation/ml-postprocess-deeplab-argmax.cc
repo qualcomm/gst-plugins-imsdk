@@ -35,6 +35,8 @@
 #include "ml-postprocess-deeplab-argmax.h"
 
 #include <climits>
+#include <cmath>
+#include <algorithm>
 
 #define EXTRACT_RED_COLOR(color)   ((color >> 24) & 0xFF)
 #define EXTRACT_GREEN_COLOR(color) ((color >> 16) & 0xFF)
@@ -86,85 +88,65 @@ bool Module::Configure(const std::string& labels_file,
   return true;
 }
 
-int32_t Module::CompareValues(const float *data,
-                              const uint32_t& l_idx, const uint32_t& r_idx) {
-
-  return ((float*)data)[l_idx] > ((float*)data)[r_idx] ? 1 :
-     ((float*)data)[l_idx] < ((float*)data)[r_idx] ? -1 : 0;
-}
-
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
-  if (output.type() != typeid(VideoFrame)) {
-    LOG(logger_, kError, "Unexpected output type!");
+  auto& frame = std::any_cast<VideoFrame&>(output);
+  auto& region = std::any_cast<Region&>(mlparams["input-tensor-region"]);
+  auto& resolution = std::any_cast<Resolution&>(mlparams["input-tensor-dimensions"]);
+
+  if ((frame.width != resolution.width) && (frame.height != resolution.height)) {
+    LOG(logger_, kError,
+        "Mismatch between the model input tensor and video frame resolution!");
+    return false;
+  } else if ((frame.format != VideoFormat::kRGBA8888) &&
+             (frame.format != VideoFormat::kRGBX8888)) {
+    LOG(logger_, kError, "Unsupported video format!");
     return false;
   }
 
-  VideoFrame& frame =
-      std::any_cast<VideoFrame&>(output);
-
-  // Get region
-  Region& region =
-      std::any_cast<Region&>(mlparams["input-tensor-region"]);
-
-  // Get video resolution
-  Resolution& resolution =
-      std::any_cast<Resolution&>(mlparams["input-tensor-dimensions"]);
-
-  // Retrive the video frame Bytes Per Pixel for later calculations.
-  uint32_t bpp = frame.bits *
-      frame.n_components / CHAR_BIT;
-
-  const float *indata = static_cast<const float*>(tensors[0].data);
+  auto indata = reinterpret_cast<const float *>(tensors.front().data);
   uint8_t *outdata = frame.planes[0].data;
 
-  // The 4th tensor dimension represents multiple the class scores per pixel.
-  uint32_t n_scores = (tensors[0].dimensions.size() != 4) ? 1 :
-      tensors[0].dimensions[3];
+  uint32_t mlwidth = tensors.front().dimensions[2];
+  uint32_t mlheight = tensors.front().dimensions[1];
+  // The 4th tensor dimension represents multiple the class scores per paxel.
+  uint32_t n_scores =
+      (tensors.front().dimensions.size() != 4) ? 1 : tensors.front().dimensions[3];
 
-  // Transform source tensor region dimensions to dimensions in the color mask.
-  region.x *= (tensors[0].dimensions[2] / static_cast<float>(resolution.width));
-  region.y *= (tensors[0].dimensions[1] / static_cast<float>(resolution.height));
-  region.width *= (tensors[0].dimensions[2] / static_cast<float>(resolution.width));
-  region.height *= (tensors[0].dimensions[1] / static_cast<float>(resolution.height));
+  uint32_t left = region.x;
+  uint32_t top = region.y;
+  uint32_t right = region.x + region.width;
+  uint32_t bottom = region.y + region.height;
 
-  for (uint32_t row = 0; row < frame.height; row++) {
-    uint32_t outidx = row * frame.planes[0].stride;
+  // Scale factors for avoiding using division and instead use multiplication.
+  float wscale = static_cast<float>(mlwidth) / resolution.width;
+  float hscale = static_cast<float>(mlheight) / resolution.height;
 
-    for (uint32_t column = 0; column < frame.width; column++, outidx += bpp) {
-      // Calculate the source index. First calculate the row offset.
-      uint32_t inidx = tensors[0].dimensions[2] *
-          (region.y + (row * region.height) / frame.height);
+  for (uint32_t row = top; row < bottom; row++) {
+    uint32_t outidx = (row * frame.planes[0].stride) + (left * 4);
 
-      // Calculate the source index. Second calculate the column offset.
-      inidx += region.x + (column * region.width) / frame.width;
-
-      // Calculate the source index. Lastly multiply by the number of class scores.
-      inidx *= n_scores;
+    for (uint32_t column = left; column < right; column++, outidx += 4) {
+      // Calculate the source index.
+      uint32_t inidx = n_scores *
+          (std::lround(row * hscale) * mlwidth) + std::lround(column * wscale);
 
       // Initialize the class ID value.
       uint32_t id = inidx;
 
       // Find the class index with best score if tensor has multiple class scores.
       for (uint32_t num = (inidx + 1); num < (inidx + n_scores); num++)
-        id = (CompareValues(indata, num, id) > 0) ? num : id;
+        id = (indata[num] > indata[id]) ? num : id;
 
-      // If there is no 4th dimension the tensor pixel contains the class ID.
-      if (n_scores == 1)
-        id = indata[id];
-      else
-        id = (id - inidx);
+      // If there is no 4th dimension the tensor paxel contains the class ID.
+      id = (n_scores == 1) ? indata[id] : (id - inidx);
 
-      uint32_t color = labels_parser_.GetLabel(id) == "unknown" ?
-          0x00000000 : labels_parser_.GetColor(id);
+      uint32_t color = labels_parser_.GetColor(id);
 
       outdata[outidx] = EXTRACT_RED_COLOR(color);
       outdata[outidx + 1] = EXTRACT_GREEN_COLOR(color);
       outdata[outidx + 2] = EXTRACT_BLUE_COLOR(color);
-
-      if (bpp == 4)
-        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(color);
+      outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(color);
     }
   }
 

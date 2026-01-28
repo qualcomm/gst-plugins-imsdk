@@ -427,8 +427,11 @@ struct ObjectDetection {
   ObjectDetection()
       : name(), confidence(0), left(0), top(0), right(0), bottom(0) {};
 
-  ObjectDetection(std::string name, float confidence, float left, float top,
-                      float right, float bottom)
+  ObjectDetection(float left, float top, float right, float bottom)
+      : left(left), top(top), right(right), bottom(bottom) {};
+
+  ObjectDetection(std::string& name, float confidence, float left, float top,
+                  float right, float bottom)
       : name(name),
         confidence(confidence),
         left(left),

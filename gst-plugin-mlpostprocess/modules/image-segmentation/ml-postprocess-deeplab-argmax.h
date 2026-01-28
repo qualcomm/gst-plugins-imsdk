@@ -37,12 +37,6 @@
 #include "qti-ml-post-process.h"
 #include "qti-labels-parser.h"
 
-#include <cstdio>
-#include <cstdlib>
-#include <string>
-#include <cmath>
-#include <algorithm>
-
 class Module : public IModule {
  public:
   Module(LogCallback cb);
@@ -55,10 +49,8 @@ class Module : public IModule {
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                std::any& output) override;
- private:
-  int32_t CompareValues(const float *data,
-                        const uint32_t& l_idx, const uint32_t& r_idx);
 
+ private:
   // Logging callback.
   LogCallback  logger_;
   // Labels parser.

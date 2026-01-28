@@ -5,11 +5,9 @@
 
 #include "ml-postprocess-midas-v2.h"
 
-#include <cfloat>
 #include <climits>
 #include <cmath>
-
-static const float kDefaultThreshold = 0.70;
+#include <algorithm>
 
 #define EXTRACT_RED_COLOR(color)   ((color >> 24) & 0xFF)
 #define EXTRACT_GREEN_COLOR(color) ((color >> 16) & 0xFF)
@@ -23,13 +21,13 @@ static const std::string kModuleCaps = R"(
     {
       "format": ["FLOAT32"],
       "dimensions": [
-        [ 1, [256,518], [256,518], 1 ]
+        [1, [128, 2048], [128, 2048], 1]
       ]
     },
     {
       "format": ["FLOAT32"],
       "dimensions": [
-        [ 1, [256,518], [256,518] ]
+        [1, [128, 2048], [128, 2048]]
       ]
     }
   ]
@@ -37,8 +35,7 @@ static const std::string kModuleCaps = R"(
 )";
 
 Module::Module(LogCallback cb)
-    : logger_(cb),
-      threshold_(kDefaultThreshold) {
+    : logger_(cb) {
 
 }
 
@@ -59,94 +56,78 @@ bool Module::Configure(const std::string& labels_file,
     return false;
   }
 
-  if (!json_settings.empty()) {
-    auto root = JsonValue::Parse(json_settings);
-
-    if (!root || root->GetType() != JsonType::Object) return false;
-
-    threshold_ = root->GetNumber("confidence") / 100.0;
-    LOG(logger_, kLog, "Threshold: %f", threshold_);
-  }
-
   return true;
 }
 
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
-  double mindepth = std::numeric_limits<double>::max();
-  double maxdepth = std::numeric_limits<double>::min();
+  auto& frame = std::any_cast<VideoFrame&>(output);
+  auto& region = std::any_cast<Region&>(mlparams["input-tensor-region"]);
+  auto& resolution = std::any_cast<Resolution&>(mlparams["input-tensor-dimensions"]);
 
-  if (output.type() != typeid(VideoFrame)) {
-    LOG(logger_, kError, "Unexpected output type!");
+  if ((frame.width != resolution.width) && (frame.height != resolution.height)) {
+    LOG(logger_, kError,
+        "Mismatch between the model input tensor and video frame resolution!");
+    return false;
+  } else if ((frame.format != VideoFormat::kRGBA8888) &&
+             (frame.format != VideoFormat::kRGBX8888)) {
+    LOG(logger_, kError, "Unsupported video format!");
     return false;
   }
 
-  VideoFrame& frame =
-      std::any_cast<VideoFrame&>(output);
+  auto indata = reinterpret_cast<const float *>(tensors.front().data);
+  uint8_t *outdata = frame.planes[0].data;
 
-  // Get region
-  Region& region =
-      std::any_cast<Region&>(mlparams["input-tensor-region"]);
+  uint32_t mlwidth = tensors.front().dimensions[2];
+  uint32_t mlheight = tensors.front().dimensions[1];
 
-  // Get video resolution
-  Resolution& resolution =
-      std::any_cast<Resolution&>(mlparams["input-tensor-dimensions"]);
+  // Scale factors for avoiding using division and instead use multiplication.
+  float wscale = static_cast<float>(mlwidth) / resolution.width;
+  float hscale = static_cast<float>(mlheight) / resolution.height;
 
-  uint32_t width = frame.width;
-  uint32_t height = frame.height;
+  double mindepth = std::numeric_limits<double>::max();
+  double maxdepth = std::numeric_limits<double>::min();
 
-  uint32_t bpp = frame.bits *
-      frame.n_components / CHAR_BIT;
+  // Recalculate region dimensions to the tensor resolution being processed.
+  uint32_t left = std::lround(region.x * wscale);
+  uint32_t top = std::lround(region.y * hscale);
+  uint32_t right = std::lround((region.x + region.width) * wscale);
+  uint32_t bottom = std::lround((region.y + region.height) * hscale);
 
-  const float *indata = reinterpret_cast<const float *>(tensors[0].data);
-  uint8_t* outdata = frame.planes[0].data;
-
-  uint32_t mlwidth = tensors[0].dimensions[2];
-  uint32_t mlheight = tensors[0].dimensions[1];
-
-  region.x *= mlwidth / resolution.width;
-  region.y *= mlheight / resolution.height;
-  region.width *= mlwidth / resolution.width;
-  region.height *= mlheight / resolution.height;
-
-  for (uint32_t row = 0; row < region.height; row++) {
-    for (uint32_t column = 0; column < region.width; column++) {
+  // Find the minimum and maximum depth values in the region mask.
+  for (uint32_t row = top; row < bottom; row++) {
+    for (uint32_t column = left; column < right; column++) {
       uint32_t inidx = row * mlwidth + column;
 
-      double value = indata[inidx];
+      if (indata[inidx] > maxdepth)
+        maxdepth = indata[inidx];
 
-      if (value > maxdepth)
-        maxdepth = value;
-
-      if (value < mindepth)
-        mindepth = value;
+      if (indata[inidx] < mindepth)
+        mindepth = indata[inidx];
     }
   }
 
-  for (uint32_t row = 0; row < height; row++) {
-    uint32_t outidx = row * frame.planes[0].stride;
+  left = region.x;
+  top = region.y;
+  right = region.x + region.width;
+  bottom = region.y + region.height;
 
-    for (uint32_t column = 0; column < width; column++, outidx += bpp) {
-      uint32_t id = std::numeric_limits<uint8_t>::max();
+  for (uint32_t row = top; row < bottom; row++) {
+    uint32_t outidx = (row * frame.planes[0].stride) + (left * 4);
 
-      uint32_t inidx = mlwidth * (region.y + (row * region.height) / height);
+    for (uint32_t column = left; column < right; column++, outidx += 4) {
+      // Calculate the source index.
+      uint32_t inidx = (std::lround(row * hscale) * mlwidth) + (column * wscale);
 
-      inidx += region.x + (column * region.width) / width;
-
-      float value = indata[inidx];
-
-      id *= (value - mindepth) / (maxdepth - mindepth);
-
-      uint32_t color = labels_parser_.GetLabel(id) == "unknown" ?
-          0x00000000 : labels_parser_.GetColor(id);
+      uint32_t id = std::numeric_limits<uint8_t>::max() *
+          (indata[inidx] - mindepth) / (maxdepth - mindepth);
+      uint32_t color = labels_parser_.GetColor(id);
 
       outdata[outidx] = EXTRACT_RED_COLOR(color);
       outdata[outidx + 1] = EXTRACT_GREEN_COLOR(color);
       outdata[outidx + 2] = EXTRACT_BLUE_COLOR(color);
-
-      if (bpp == 4)
-        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(color);
+      outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(color);
     }
   }
 

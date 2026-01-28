@@ -93,7 +93,7 @@ G_DEFINE_TYPE (GstMLPostProcess, gst_ml_post_process,
     (type == g_quark_from_static_string (GST_TENSOR_TYPE))
 
 #define GST_ML_POST_PROCESS_VIDEO_FORMATS \
-    "{ BGRA, RGBA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, BGR16 }"
+    "{ RGBA, RGBx }"
 
 #define GST_ML_POST_PROCESS_TEXT_FORMATS \
     "{ utf8 }"
@@ -1984,7 +1984,6 @@ gst_ml_post_process_transform_caps (GstBaseTransform * base,
   }
 
   GST_DEBUG_OBJECT (postprocess, "Returning caps: %" GST_PTR_FORMAT, result);
-
   return result;
 }
 
@@ -1994,8 +1993,9 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (base);
   GstStructure *output = NULL;
+  GstQuery *query = NULL;
   const GValue *value = NULL;
-  GstMLInfo mlinfo;
+  guint width = 0, height = 0;
 
   // Truncate and make the output caps writable.
   outcaps = gst_caps_truncate (outcaps);
@@ -2005,6 +2005,30 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
 
   GST_DEBUG_OBJECT (postprocess, "Trying to fixate output caps %" GST_PTR_FORMAT
       " based on caps %" GST_PTR_FORMAT, outcaps, incaps);
+
+  // Query upstream pre-process plugin about the inference parameters.
+  query = gst_query_new_custom (GST_QUERY_CUSTOM,
+      gst_structure_new_empty ("ml-preprocess-information"));
+
+  if (gst_pad_peer_query (base->sinkpad, query)) {
+    const GstStructure *stucture = gst_query_get_structure (query);
+
+    gst_structure_get_uint (stucture, "stage-id", &(postprocess->stage_id));
+    GST_DEBUG_OBJECT (postprocess, "Queried stage ID: %u", postprocess->stage_id);
+
+    // Get the width and height for output video caps in case of segmentation.
+    if (GST_IS_SEGMENTATION_TYPE (postprocess->type) &&
+        gst_ml_structure_has_source_dimensions (stucture))
+      gst_ml_structure_get_source_dimensions (stucture, &width, &height);
+  } else {
+    // TODO: Temporary workaround. Need to be addressed proerly.
+    // In case of daisycahin it is possible to negotiate wrong stage-id without
+    // thrwing an error.
+    GST_WARNING_OBJECT (postprocess, "Failed to receive preprocess information!");
+  }
+
+  // Free the query instance as it is no longer needed and we are the owners.
+  gst_query_unref (query);
 
   if (gst_structure_has_field (output, "format")) {
     // Fixate the output format.
@@ -2020,7 +2044,8 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
   }
 
   if (gst_structure_has_name (output, "video/x-raw")) {
-    gint width = 0, height = 0, par_n = 0, par_d = 0;
+    gint par_n = 0, par_d = 0;
+    gboolean is_text_mask = FALSE;
 
     // Fixate output PAR if not already fixated..
     value = gst_structure_get_value (output, "pixel-aspect-ratio");
@@ -2036,24 +2061,44 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
 
     GST_DEBUG_OBJECT (postprocess, "Output PAR fixed to: %d/%d", par_n, par_d);
 
-    gst_ml_info_from_caps (&mlinfo, incaps);
+    is_text_mask = GST_IS_CLASSIFICATION_TYPE (postprocess->type) ||
+        GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type) ||
+        GST_IS_TEXT_GENERATION_TYPE (postprocess->type);
+
+    // For super-resolution expect the tensor resolution as video resolution.
+    if (GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
+      value = gst_structure_get_value (
+          gst_caps_get_structure (incaps, 0), "dimensions");
+
+      // Expected single tensor in dimensions with 3 of 4 elements.
+      if ((value == NULL) || (gst_value_array_get_size (value) != 1)) {
+        GST_ERROR_OBJECT (postprocess, "Unexpected number of input tensors!");
+        return NULL;
+      }
+
+      value = gst_value_array_get_value (value, 0);
+
+      if ((value == NULL) || (gst_value_array_get_size (value) < 3)) {
+        GST_ERROR_OBJECT (postprocess, "Unexpected input tensor dimensions!");
+        return NULL;
+      }
+
+      width = g_value_get_int (gst_value_array_get_value (value, 2));
+      height = g_value_get_int (gst_value_array_get_value (value, 1));
+    }
 
     // Retrieve the output width and height.
     value = gst_structure_get_value (output, "width");
 
-    if ((NULL == value) || !gst_value_is_fixed (value)) {
-      if (GST_IS_DETECTION_TYPE (postprocess->type) ||
-          GST_IS_POSE_TYPE (postprocess->type)) {
-        width = DEFAULT_VIDEO_WIDTH;
-      } else if (GST_IS_CLASSIFICATION_TYPE (postprocess->type) ||
-          GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type) ||
-          GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
+    if ((width != 0) && (value != NULL) && gst_value_is_fixed (value)) {
+      GST_ERROR_OBJECT (postprocess, "Fixated width in filter caps is not "
+          "supported with current post-process type!");
+      return NULL;
+    } else if ((NULL == value) || !gst_value_is_fixed (value)) {
+      if ((width == 0) && is_text_mask)
         width = GST_ROUND_UP_4 (DEFAULT_FONT_SIZE * MAX_TEXT_LENGTH * 3 / 5);
-      } else if (GST_IS_SEGMENTATION_TYPE (postprocess->type) ||
-          GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
-        // 2nd dimension correspond to height, 3rd dimension correspond to width.
-        width = GST_ROUND_DOWN_2 (mlinfo.tensors[0][2]);
-      }
+      else if (width == 0)
+        width = DEFAULT_VIDEO_WIDTH;
 
       gst_structure_set (output, "width", G_TYPE_INT, width, NULL);
       value = gst_structure_get_value (output, "width");
@@ -2062,19 +2107,15 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
     width = g_value_get_int (value);
     value = gst_structure_get_value (output, "height");
 
-    if ((NULL == value) || !gst_value_is_fixed (value)) {
-      if (GST_IS_DETECTION_TYPE (postprocess->type) ||
-          GST_IS_POSE_TYPE (postprocess->type)) {
-        height = DEFAULT_VIDEO_HEIGHT;
-      } else if (GST_IS_CLASSIFICATION_TYPE (postprocess->type) ||
-          GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type) ||
-          GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
+    if ((height != 0) && (value != NULL) && gst_value_is_fixed (value)) {
+      GST_ERROR_OBJECT (postprocess, "Fixated height in filter caps is not "
+          "supported with current post-process type!");
+      return NULL;
+    } else if ((NULL == value) || !gst_value_is_fixed (value)) {
+      if ((height == 0) && is_text_mask)
         height = GST_ROUND_UP_4 (DEFAULT_FONT_SIZE * postprocess->n_results);
-      } else if (GST_IS_SEGMENTATION_TYPE (postprocess->type) ||
-          GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
-        // 2nd dimension correspond to height, 3rd dimension correspond to width.
-        height = GST_ROUND_DOWN_2 (mlinfo.tensors[0][1]);
-      }
+      else if (height == 0)
+        height = DEFAULT_VIDEO_HEIGHT;
 
       gst_structure_set (output, "height", G_TYPE_INT, height, NULL);
       value = gst_structure_get_value (output, "height");
@@ -2099,7 +2140,6 @@ gst_ml_post_process_set_caps (GstBaseTransform * base, GstCaps * incaps,
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (base);
   GstCaps *modulecaps = NULL;
-  GstQuery *query = NULL;
   GstStructure *structure = NULL;
   GstMLInfo inmlinfo = {}, outmlinfo = {};
   GstVideoInfo vinfo = {};
@@ -2113,25 +2153,6 @@ gst_ml_post_process_set_caps (GstBaseTransform * base, GstCaps * incaps,
          "negotiated caps %" GST_PTR_FORMAT "!", modulecaps, incaps));
     return FALSE;
   }
-
-  // Query upstream pre-process plugin about the inference parameters.
-  query = gst_query_new_custom (GST_QUERY_CUSTOM,
-      gst_structure_new_empty ("ml-preprocess-information"));
-
-  if (gst_pad_peer_query (base->sinkpad, query)) {
-    const GstStructure *s = gst_query_get_structure (query);
-
-    gst_structure_get_uint (s, "stage-id", &(postprocess->stage_id));
-    GST_DEBUG_OBJECT (postprocess, "Queried stage ID: %u", postprocess->stage_id);
-  } else {
-    // TODO: Temporary workaround. Need to be addressed proerly.
-    // In case of daisycahin it is possible to negotiate wrong stage-id without
-    // thrwing an error.
-    GST_WARNING_OBJECT (postprocess, "Failed to receive preprocess information!");
-  }
-
-  // Free the query instance as it is no longer needed and we are the owners.
-  gst_query_unref (query);
 
   if (!gst_ml_post_process_module_set_opts (postprocess)) {
     GST_ELEMENT_ERROR (postprocess, RESOURCE, FAILED, (NULL),
@@ -2310,6 +2331,8 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
       GST_ERROR_OBJECT (postprocess, "Failed to map output buffer!");
       return GST_FLOW_ERROR;
     }
+
+    memset (vframe.map[0].data, 0, vframe.map[0].size);
 
 #ifdef HAVE_LINUX_DMA_BUF_H
     if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {

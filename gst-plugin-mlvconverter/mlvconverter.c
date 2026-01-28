@@ -1923,8 +1923,20 @@ gst_ml_video_converter_query (GstBaseTransform * base,
           !gst_structure_has_name (structure, "ml-preprocess-information"))
         break;
 
+      // Add Stage ID and tensor resolution for result decryption downstream.
       gst_structure_set (structure, "stage-id", G_TYPE_UINT,
           mlconverter->stage_id, NULL);
+
+      if (mlconverter->mlinfo != NULL) {
+        guint width = 0, height = 0;
+
+        width = GST_ML_INFO_TENSOR_DIM_W (mlconverter->tensorlayout,
+            mlconverter->mlinfo);
+        height = GST_ML_INFO_TENSOR_DIM_H (mlconverter->tensorlayout,
+            mlconverter->mlinfo);
+
+        gst_ml_structure_set_source_dimensions (structure, width, height);
+      }
 
       GST_DEBUG_OBJECT (mlconverter, "Stage ID %u", mlconverter->stage_id);
       return TRUE;

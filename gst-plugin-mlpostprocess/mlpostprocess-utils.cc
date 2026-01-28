@@ -571,10 +571,6 @@ gst_ml_post_process_update_region (GstVideoFrame * vframe,
     region.w = GST_VIDEO_FRAME_WIDTH (vframe);
     region.h = GST_VIDEO_FRAME_HEIGHT (vframe);
   }
-
-  // Additional overwrite of X and Y axis for centred image disposition.
-  region.x = (GST_VIDEO_FRAME_WIDTH (vframe) - region.w) / 2;
-  region.y = (GST_VIDEO_FRAME_HEIGHT (vframe) - region.h) / 2;
 }
 
 gfloat
@@ -755,12 +751,15 @@ gst_cairo_draw_setup (GstVideoFrame * frame, cairo_surface_t ** surface,
 
   switch (GST_VIDEO_FRAME_FORMAT (frame)) {
     case GST_VIDEO_FORMAT_BGRA:
+    case GST_VIDEO_FORMAT_RGBA:
       format = CAIRO_FORMAT_ARGB32;
       break;
     case GST_VIDEO_FORMAT_BGRx:
+    case GST_VIDEO_FORMAT_RGBx:
       format = CAIRO_FORMAT_RGB24;
       break;
     case GST_VIDEO_FORMAT_BGR16:
+    case GST_VIDEO_FORMAT_RGB16:
       format = CAIRO_FORMAT_RGB16_565;
       break;
     default:
