@@ -273,15 +273,6 @@ gst_video_split_fixate_format (GstPad * pad, GstStructure * input,
     else
       gst_structure_set (output, "chroma-site", G_TYPE_STRING, string, NULL);
   }
-
-  if (gst_structure_has_field (input, "compression") && sametype) {
-    const gchar *string = gst_structure_get_string (input, "compression");
-
-    if (gst_structure_has_field (output, "compression"))
-      gst_structure_fixate_field_string (output, "compression", string);
-    else
-      gst_structure_set (output, "compression", G_TYPE_STRING, string, NULL);
-  }
 }
 
 static gboolean
@@ -827,10 +818,6 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
 
   // Get underlying structure to the only remaining caps.
   output = gst_caps_get_structure (outcaps, 0);
-
-  // Remove compression field if caps do not contain memory:GBM feature.
-  if (!gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
-    gst_structure_remove_field (output, "compression");
 
   // Take a copy of the input caps structure so we can freely modify it.
   input = gst_caps_get_structure (incaps, 0);

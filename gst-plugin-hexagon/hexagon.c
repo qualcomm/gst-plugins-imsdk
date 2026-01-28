@@ -413,9 +413,9 @@ gst_hexagon_transform_caps (GstBaseTransform * base,
       gst_structure_set (structure, "pixel-aspect-ratio",
           GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
 
-    // Remove the format/color/compression related fields.
+    // Remove the format/color related fields.
     gst_structure_remove_fields (structure, "format", "colorimetry",
-        "chroma-site", "compression", NULL);
+        "chroma-site", NULL);
 
     gst_caps_append_structure_full (result, structure,
         gst_caps_features_copy (features));
@@ -439,9 +439,9 @@ gst_hexagon_transform_caps (GstBaseTransform * base,
           GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
     }
 
-    // Remove the format/color/compression related fields.
+    // Remove the format/color related fields.
     gst_structure_remove_fields (structure, "format", "colorimetry",
-        "chroma-site", "compression", NULL);
+        "chroma-site", NULL);
 
     gst_caps_append_structure (result, structure);
   }

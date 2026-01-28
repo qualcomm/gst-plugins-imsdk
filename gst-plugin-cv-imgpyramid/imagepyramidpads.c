@@ -93,8 +93,7 @@ gst_cv_imgpyramid_srcpad_push_event (GstElement * element, GstPad * pad,
 }
 
 gboolean
-gst_cv_imgpyramid_srcpad_setcaps (GstCvImgPyramidSrcPad * srcpad,
-    gboolean is_ubwc)
+gst_cv_imgpyramid_srcpad_setcaps (GstCvImgPyramidSrcPad * srcpad)
 {
   GstCaps *outcaps = NULL;
   GstStructure *structure;
@@ -147,9 +146,6 @@ gst_cv_imgpyramid_srcpad_setcaps (GstCvImgPyramidSrcPad * srcpad,
           DEFAULT_VIDEO_RAW_FORMAT);
     }
   }
-
-  if (is_ubwc)
-    gst_structure_fixate_field_string (structure, "compression", "ubwc");
 
   outcaps = gst_caps_fixate (outcaps);
   gst_pad_set_caps (GST_PAD (srcpad), outcaps);

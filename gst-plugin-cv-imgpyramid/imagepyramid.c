@@ -468,7 +468,6 @@ gst_cv_imgpyramid_sinkpad_setcaps (GstCvImgPyramid * imgpyramid, GstPad * pad,
   GHashTableIter iter;
   gpointer key = NULL, value = NULL;
   guint size = 0, stride = 0, scanline = 0;
-  gboolean is_ubwc = FALSE;
 
   GST_DEBUG_OBJECT (imgpyramid, "Setting caps %" GST_PTR_FORMAT, caps);
 
@@ -480,12 +479,11 @@ gst_cv_imgpyramid_sinkpad_setcaps (GstCvImgPyramid * imgpyramid, GstPad * pad,
   GST_CV_IMGPYRAMID_LOCK (imgpyramid);
 
   g_hash_table_iter_init (&iter, imgpyramid->srcpads);
-  is_ubwc = gst_caps_has_compression (caps, "ubwc");
 
   while (g_hash_table_iter_next (&iter, &key, &value)) {
     GstCvImgPyramidSrcPad *srcpad = GST_CV_IMGPYRAMID_SRCPAD (value);
 
-    if (srcpad && !gst_cv_imgpyramid_srcpad_setcaps (srcpad, is_ubwc)) {
+    if (srcpad && !gst_cv_imgpyramid_srcpad_setcaps (srcpad)) {
       GST_ELEMENT_ERROR (GST_ELEMENT (imgpyramid), CORE, NEGOTIATION, (NULL),
           ("Failed to set caps to %s!", GST_PAD_NAME (srcpad)));
 

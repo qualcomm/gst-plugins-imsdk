@@ -104,18 +104,6 @@ GST_API gboolean
 gst_caps_has_feature (const GstCaps * caps, const gchar * feature);
 
 /**
- * gst_caps_has_compression:
- * @caps: The #GstCaps for verification.
- * @compression: The compression value for which to check.
- *
- * Check if given caps have a "compression" field with the given value.
- *
- * return: TRUE on success or FALSE on failure
- */
-GST_API gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression);
-
-/**
  * gst_parse_string_property_value:
  * @value: GValue of type G_TYPE_STRING which will be parsed.
  * @output: The output value which will contain the result. Usually of type

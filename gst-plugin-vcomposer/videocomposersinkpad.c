@@ -103,9 +103,9 @@ gst_video_composer_sinkpad_transform_caps (GstAggregatorPad * pad,
           GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
     }
 
-    // Remove the format/color/compression related fields.
+    // Remove the format/color related fields.
     gst_structure_remove_fields (structure, "format", "colorimetry",
-        "chroma-site", "compression", NULL);
+        "chroma-site", NULL);
 
     gst_caps_append_structure_full (result, structure, features);
   } else if (!gst_caps_is_empty (caps) && !gst_caps_has_feature (caps, NULL)) {
@@ -124,9 +124,9 @@ gst_video_composer_sinkpad_transform_caps (GstAggregatorPad * pad,
           GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
     }
 
-    // Remove the format/color/compression related fields.
+    // Remove the format/color related fields.
     gst_structure_remove_fields (structure, "format", "colorimetry",
-        "chroma-site", "compression", NULL);
+        "chroma-site", NULL);
 
     gst_caps_append_structure (result, structure);
   }
