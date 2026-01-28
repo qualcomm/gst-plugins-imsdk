@@ -143,8 +143,7 @@ gst_cv_imgpyramid_srcpad_activate_mode (GstPad * pad, GstObject * parent,
                                        GstPadMode mode, gboolean active);
 
 gboolean
-gst_cv_imgpyramid_srcpad_setcaps (GstCvImgPyramidSrcPad * srcpad,
-                                  gboolean is_ubwc);
+gst_cv_imgpyramid_srcpad_setcaps (GstCvImgPyramidSrcPad * srcpad);
 
 gboolean
 gst_cv_imgpyramid_srcpad_push_event (GstElement * element, GstPad * pad,

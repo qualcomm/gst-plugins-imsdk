@@ -193,19 +193,6 @@ gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
 }
 
 gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
-}
-
-gboolean
 gst_parse_string_property_value (const GValue * value, GValue * output)
 {
   const gchar *input = g_value_get_string (value);

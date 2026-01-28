@@ -496,7 +496,7 @@ static guint
 gst_c2d_create_surface (GstC2dVideoConverter * convert,
     const GstVideoFrame * frame, guint bits)
 {
-  const gchar *format = NULL, *compression = NULL;
+  const gchar *format = NULL;
   guint surface_id = 0;
   C2D_STATUS status = C2D_STATUS_NOT_SUPPORTED;
 
@@ -514,30 +514,25 @@ gst_c2d_create_surface (GstC2dVideoConverter * convert,
         gst_video_format_to_c2d_format (GST_VIDEO_FRAME_FORMAT (frame));
     g_return_val_if_fail (surface.format != 0, 0);
 
-    if (surface.format & C2D_FORMAT_UBWC_COMPRESSED)
-      compression = " UBWC";
-    else
-      compression = "";
-
     // Set surface dimensions.
     surface.width = GST_VIDEO_FRAME_WIDTH (frame);
     surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
 
-    GST_DEBUG ("%s %s%s surface - width(%u) height(%u)", !(bits & C2D_TARGET) ?
-        "Input" : "Output", format, compression, surface.width, surface.height);
+    GST_DEBUG ("%s %s surface - width(%u) height(%u)", !(bits & C2D_TARGET) ?
+        "Input" : "Output", format, surface.width, surface.height);
 
     // Plane stride.
     surface.stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
 
-    GST_DEBUG ("%s %s%s surface - stride(%d)", !(bits & C2D_TARGET) ?
-        "Input" : "Output", format, compression, surface.stride);
+    GST_DEBUG ("%s %s surface - stride(%d)", !(bits & C2D_TARGET) ?
+        "Input" : "Output", format, surface.stride);
 
     // Set plane virtual and GPU address.
     surface.buffer = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
     surface.phys = gpuaddress;
 
-    GST_DEBUG ("%s %s%s surface - plane(%p) phys(%p)", !(bits & C2D_TARGET) ?
-        "Input" : "Output", format, compression, surface.buffer, surface.phys);
+    GST_DEBUG ("%s %s surface - plane(%p) phys(%p)", !(bits & C2D_TARGET) ?
+        "Input" : "Output", format, surface.buffer, surface.phys);
 
     type = (C2D_SURFACE_TYPE)(C2D_SURFACE_RGB_HOST | C2D_SURFACE_WITH_PHYS);
 
@@ -551,17 +546,12 @@ gst_c2d_create_surface (GstC2dVideoConverter * convert,
         gst_video_format_to_c2d_format (GST_VIDEO_FRAME_FORMAT (frame));
     g_return_val_if_fail (surface.format != 0, 0);
 
-    if (surface.format & C2D_FORMAT_UBWC_COMPRESSED)
-      compression = " UBWC";
-    else
-      compression = "";
-
     // Set surface dimensions.
     surface.width = GST_VIDEO_FRAME_WIDTH (frame);
     surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
 
-    GST_DEBUG ("%s %s%s surface - width(%u) height(%u)", !(bits & C2D_TARGET) ?
-        "Input" : "Output", format, compression, surface.width, surface.height);
+    GST_DEBUG ("%s %s surface - width(%u) height(%u)", !(bits & C2D_TARGET) ?
+        "Input" : "Output", format, surface.width, surface.height);
 
     // Y plane stride.
     surface.stride0 = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
@@ -572,9 +562,9 @@ gst_c2d_create_surface (GstC2dVideoConverter * convert,
     surface.stride2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
         GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2) : 0;
 
-    GST_DEBUG ("%s %s%s surface - stride0(%d) stride1(%d) stride2(%d)",
-        !(bits & C2D_TARGET) ? "Input" : "Output", format, compression,
-        surface.stride0, surface.stride1, surface.stride2);
+    GST_DEBUG ("%s %s surface - stride0(%d) stride1(%d) stride2(%d)",
+        !(bits & C2D_TARGET) ? "Input" : "Output", format, surface.stride0,
+        surface.stride1, surface.stride2);
 
     // Y plane virtual address.
     surface.plane0 = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
@@ -585,9 +575,9 @@ gst_c2d_create_surface (GstC2dVideoConverter * convert,
     surface.plane2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
         GST_VIDEO_FRAME_PLANE_DATA (frame, 2) : NULL;
 
-    GST_DEBUG ("%s %s%s surface - plane0(%p) plane1(%p) plane2(%p)",
-        !(bits & C2D_TARGET) ? "Input" : "Output", format, compression,
-        surface.plane0, surface.plane1, surface.plane2);
+    GST_DEBUG ("%s %s surface - plane0(%p) plane1(%p) plane2(%p)",
+        !(bits & C2D_TARGET) ? "Input" : "Output", format, surface.plane0,
+        surface.plane1, surface.plane2);
 
     // Y plane GPU address.
     surface.phys0 = gpuaddress;
@@ -600,9 +590,9 @@ gst_c2d_create_surface (GstC2dVideoConverter * convert,
         GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
         GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2)) : NULL;
 
-    GST_DEBUG ("%s %s%s surface - phys0(%p) phys1(%p) phys2(%p)",
-         !(bits & C2D_TARGET) ? "Input" : "Output", format, compression,
-         surface.phys0, surface.phys1, surface.phys2);
+    GST_DEBUG ("%s %s surface - phys0(%p) phys1(%p) phys2(%p)",
+        !(bits & C2D_TARGET) ? "Input" : "Output", format,surface.phys0,
+        surface.phys1, surface.phys2);
 
     type = (C2D_SURFACE_TYPE)(C2D_SURFACE_YUV_HOST | C2D_SURFACE_WITH_PHYS);
 
@@ -633,7 +623,7 @@ static gboolean
 gst_c2d_update_surface (GstC2dVideoConverter * convert,
     const GstVideoFrame * frame, guint surface_id, guint bits)
 {
-  const gchar *format = NULL, *compression = NULL;
+  const gchar *format = NULL;
   C2D_STATUS status = C2D_STATUS_NOT_SUPPORTED;
   gpointer gpuaddress = NULL;
 
@@ -661,30 +651,25 @@ gst_c2d_update_surface (GstC2dVideoConverter * convert,
         gst_video_format_to_c2d_format (GST_VIDEO_FRAME_FORMAT (frame));
     g_return_val_if_fail (surface.format != 0, FALSE);
 
-    if (surface.format & C2D_FORMAT_UBWC_COMPRESSED)
-      compression = " UBWC";
-    else
-      compression = "";
-
     // Set surface dimensions.
     surface.width = GST_VIDEO_FRAME_WIDTH (frame);
     surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
 
-    GST_DEBUG ("%s %s%s surface - width(%u) height(%u)", !(bits & C2D_TARGET) ?
-        "Input" : "Output", format, compression, surface.width, surface.height);
+    GST_DEBUG ("%s %s surface - width(%u) height(%u)", !(bits & C2D_TARGET) ?
+        "Input" : "Output", format, surface.width, surface.height);
 
     // Plane stride.
     surface.stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
 
-    GST_DEBUG ("%s %s%s surface - stride(%d)", !(bits & C2D_TARGET) ?
-        "Input" : "Output", format, compression, surface.stride);
+    GST_DEBUG ("%s %s surface - stride(%d)", !(bits & C2D_TARGET) ?
+        "Input" : "Output", format, surface.stride);
 
     // Set plane virtual and GPU address.
     surface.buffer = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
     surface.phys = gpuaddress;
 
-    GST_DEBUG ("%s %s%s surface - plane(%p) phys(%p)", !(bits & C2D_TARGET) ?
-        "Input" : "Output", format, compression, surface.buffer, surface.phys);
+    GST_DEBUG ("%s %s surface - plane(%p) phys(%p)", !(bits & C2D_TARGET) ?
+        "Input" : "Output", format, surface.buffer, surface.phys);
 
     type = (C2D_SURFACE_TYPE)(C2D_SURFACE_RGB_HOST | C2D_SURFACE_WITH_PHYS);
 
@@ -698,17 +683,12 @@ gst_c2d_update_surface (GstC2dVideoConverter * convert,
         gst_video_format_to_c2d_format (GST_VIDEO_FRAME_FORMAT (frame));
     g_return_val_if_fail (surface.format != 0, FALSE);
 
-    if (surface.format & C2D_FORMAT_UBWC_COMPRESSED)
-      compression = " UBWC";
-    else
-      compression = "";
-
     // Set surface dimensions.
     surface.width = GST_VIDEO_FRAME_WIDTH (frame);
     surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
 
-    GST_DEBUG ("%s %s%s surface - width(%u) height(%u)", !(bits & C2D_TARGET) ?
-        "Input" : "Output", format, compression, surface.width, surface.height);
+    GST_DEBUG ("%s %s surface - width(%u) height(%u)", !(bits & C2D_TARGET) ?
+        "Input" : "Output", format, surface.width, surface.height);
 
     // Y plane stride.
     surface.stride0 = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
@@ -719,9 +699,9 @@ gst_c2d_update_surface (GstC2dVideoConverter * convert,
     surface.stride2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
         GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2) : 0;
 
-    GST_DEBUG ("%s %s%s surface - stride0(%d) stride1(%d) stride2(%d)",
-        !(bits & C2D_TARGET) ? "Input" : "Output", format, compression,
-        surface.stride0, surface.stride1, surface.stride2);
+    GST_DEBUG ("%s %s surface - stride0(%d) stride1(%d) stride2(%d)",
+        !(bits & C2D_TARGET) ? "Input" : "Output", format, surface.stride0,
+        surface.stride1, surface.stride2);
 
     // Y plane virtual address.
     surface.plane0 = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
@@ -732,9 +712,9 @@ gst_c2d_update_surface (GstC2dVideoConverter * convert,
     surface.plane2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
         GST_VIDEO_FRAME_PLANE_DATA (frame, 2) : NULL;
 
-    GST_DEBUG ("%s %s%s surface - plane0(%p) plane1(%p) plane2(%p)",
-        !(bits & C2D_TARGET) ? "Input" : "Output", format, compression,
-        surface.plane0, surface.plane1, surface.plane2);
+    GST_DEBUG ("%s %s surface - plane0(%p) plane1(%p) plane2(%p)",
+        !(bits & C2D_TARGET) ? "Input" : "Output", format, surface.plane0,
+        surface.plane1, surface.plane2);
 
     // Y plane GPU address.
     surface.phys0 = gpuaddress;
@@ -747,9 +727,9 @@ gst_c2d_update_surface (GstC2dVideoConverter * convert,
         GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
         GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2)) : NULL;
 
-    GST_DEBUG ("%s %s%s surface - phys0(%p) phys1(%p) phys2(%p)",
-         !(bits & C2D_TARGET) ? "Input" : "Output", format, compression,
-         surface.phys0, surface.phys1, surface.phys2);
+    GST_DEBUG ("%s %s surface - phys0(%p) phys1(%p) phys2(%p)",
+        !(bits & C2D_TARGET) ? "Input" : "Output", format, surface.phys0,
+        surface.phys1, surface.phys2);
 
     type = (C2D_SURFACE_TYPE)(C2D_SURFACE_YUV_HOST | C2D_SURFACE_WITH_PHYS);
 

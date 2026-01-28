@@ -553,7 +553,6 @@ gst_video_transform_transform_caps (GstBaseTransform * base,
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
   GST_DEBUG_OBJECT (vtrans, "Filter caps %" GST_PTR_FORMAT, filter);
 
-
   result = gst_caps_new_empty ();
 
   // In case there is no memory:GBM caps structure prepend one.
@@ -576,9 +575,9 @@ gst_video_transform_transform_caps (GstBaseTransform * base,
           GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
     }
 
-    // Remove the format/color/compression related fields.
+    // Remove the format/color related fields.
     gst_structure_remove_fields (structure, "format", "colorimetry",
-        "chroma-site", "compression", NULL);
+        "chroma-site", NULL);
 
     gst_caps_append_structure_full (result, structure, features);
   }
@@ -606,9 +605,9 @@ gst_video_transform_transform_caps (GstBaseTransform * base,
           GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
     }
 
-    // Remove the format/color/compression related fields.
+    // Remove the format/color related fields.
     gst_structure_remove_fields (structure, "format", "colorimetry",
-        "chroma-site", "compression", NULL);
+        "chroma-site", NULL);
 
     gst_caps_append_structure_full (result, structure,
         gst_caps_features_copy (features));
@@ -631,9 +630,9 @@ gst_video_transform_transform_caps (GstBaseTransform * base,
           GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
     }
 
-    // Remove the format/color/compression related fields.
+    // Remove the format/color related fields.
     gst_structure_remove_fields (structure, "format", "colorimetry",
-        "chroma-site", "compression", NULL);
+        "chroma-site", NULL);
 
     gst_caps_append_structure (result, structure);
   }
@@ -833,15 +832,6 @@ gst_video_transform_fixate_format (GstVideoTransform *vtrans,
       gst_structure_fixate_field_string (output, "chroma-site", string);
     else
       gst_structure_set (output, "chroma-site", G_TYPE_STRING, string, NULL);
-  }
-
-  if (gst_structure_has_field (input, "compression") && sametype) {
-    const gchar *string = gst_structure_get_string (input, "compression");
-
-    if (gst_structure_has_field (output, "compression"))
-      gst_structure_fixate_field_string (output, "compression", string);
-    else
-      gst_structure_set (output, "compression", G_TYPE_STRING, string, NULL);
   }
 }
 
@@ -1499,7 +1489,7 @@ gst_video_transform_fixate_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * incaps, GstCaps * outcaps)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (base);
-  GstStructure *input, *output;
+  GstStructure *input = NULL, *output = NULL;
 
   // Truncate and make the output caps writable.
   outcaps = gst_caps_truncate (outcaps);
@@ -1556,9 +1546,8 @@ gst_video_transform_fixate_caps (GstBaseTransform * base,
     }
   }
 
-  // Remove compression field if caps do not contain memory:GBM feature.
-  if (!gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
-    gst_structure_remove_field (output, "compression");
+  // Fixate any remaining fields to defalut values.
+  gst_structure_fixate (output);
 
   // Free the local copy of the input caps structure.
   gst_structure_free (input);
