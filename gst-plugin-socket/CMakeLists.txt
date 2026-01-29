@@ -47,10 +47,6 @@ target_include_directories(${GST_QTI_SOCKETSRC} PUBLIC
   ${GST_QCOM_ML_INCLUDE_DIRS}
 )
 
-target_include_directories(${GST_QTI_SOCKETSRC} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include
-)
-
 target_link_libraries(${GST_QTI_SOCKETSRC} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
@@ -78,10 +74,6 @@ add_library(${GST_QTI_SOCKETSINK} SHARED
 target_include_directories(${GST_QTI_SOCKETSINK} PUBLIC
   ${GST_INCLUDE_DIRS}
   ${GST_PLUGIN_BASE_DIR}
-)
-
-target_include_directories(${GST_QTI_SOCKETSINK} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include
 )
 
 target_link_libraries(${GST_QTI_SOCKETSINK} PRIVATE
