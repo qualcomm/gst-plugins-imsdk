@@ -10,6 +10,38 @@
 
 #include <opencv4/opencv2/opencv.hpp>
 
+// Version-specific format conversions
+#define GST_OCV_COLOR_RGB2YUV_YUY2 147 // cv::COLOR_RGB2YUV_YUY2 = 147
+#define GST_OCV_COLOR_BGR2YUV_YUY2 148 // cv::COLOR_BGR2YUV_YUY2 = 148
+#define GST_OCV_COLOR_RGBA2YUV_YUY2 151 // cv::COLOR_RGBA2YUV_YUY2 = 151
+#define GST_OCV_COLOR_BGRA2YUV_YUY2 152 // cv::COLOR_BGRA2YUV_YUY2 = 152
+
+// Custom format conversions
+// NV12/NV21 -> NV12/NV21
+#define GST_OCV_COLOR_NV12_to_NV21 (cv::COLOR_COLORCVT_MAX + 1)
+#define GST_OCV_COLOR_NV21_to_NV12 (cv::COLOR_COLORCVT_MAX + 2)
+// NV12/NV21 -> YUY2 (YUYV)
+#define GST_OCV_COLOR_NV12_to_YUY2 (cv::COLOR_COLORCVT_MAX + 3)
+#define GST_OCV_COLOR_NV21_to_YUY2 (cv::COLOR_COLORCVT_MAX + 4)
+// YUY2 (YUYV)-> NV12/NV21
+#define GST_OCV_COLOR_YUY2_to_NV12 (cv::COLOR_COLORCVT_MAX + 5)
+#define GST_OCV_COLOR_YUY2_to_NV21 (cv::COLOR_COLORCVT_MAX + 6)
+// RGB/BGR -> NV12/NV21
+#define GST_OCV_COLOR_RGB_to_NV12 (cv::COLOR_COLORCVT_MAX + 7)
+#define GST_OCV_COLOR_RGB_to_NV21 (cv::COLOR_COLORCVT_MAX + 8)
+#define GST_OCV_COLOR_BGR_to_NV12 (cv::COLOR_COLORCVT_MAX + 9)
+#define GST_OCV_COLOR_BGR_to_NV21 (cv::COLOR_COLORCVT_MAX + 10)
+// RGBA/BGRA -> NV12/NV21
+#define GST_OCV_COLOR_RGBA_to_NV12 (cv::COLOR_COLORCVT_MAX + 11)
+#define GST_OCV_COLOR_RGBA_to_NV21 (cv::COLOR_COLORCVT_MAX + 12)
+#define GST_OCV_COLOR_BGRA_to_NV12 (cv::COLOR_COLORCVT_MAX + 13)
+#define GST_OCV_COLOR_BGRA_to_NV21 (cv::COLOR_COLORCVT_MAX + 14)
+// GRAY -> NV12/NV21
+#define GST_OCV_COLOR_GRAY_to_NV12 (cv::COLOR_COLORCVT_MAX + 15)
+#define GST_OCV_COLOR_GRAY_to_NV21 (cv::COLOR_COLORCVT_MAX + 16)
+// GRAY -> YUY2
+#define GST_OCV_COLOR_GRAY_to_YUY2 (cv::COLOR_COLORCVT_MAX + 17)
+
 #define GST_CAT_DEFAULT gst_video_converter_engine_debug
 
 // Convinient macros for printing plane values.
@@ -23,6 +55,11 @@
 
 #define GST_OCV_INVALID_STAGE_ID    (-1)
 #define GST_OCV_MAX_DRAW_OBJECTS    50
+
+#define GST_OCV_INVALID_CONVERSION  (-1)
+#define GST_OCV_EXTERNAL_CONVERSION (cv::COLOR_COLORCVT_MAX)
+
+#define GST_OCV_NEUTRAL_CHROMA      128
 
 #define GST_OCV_OBJ_IS_YUV(obj)     (obj && (obj->flags & GST_OCV_FLAG_YUV))
 #define GST_OCV_OBJ_IS_RGB(obj)     (obj && (obj->flags & GST_OCV_FLAG_RGB))
@@ -233,7 +270,7 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
   object->planes[0].width = GST_ROUND_DOWN_8 (width);
   object->planes[0].height = GST_ROUND_DOWN_2 (height);
 
-  bpp = GST_VIDEO_INFO_COMP_PSTRIDE(&(frame->info), 0);
+  bpp = GST_VIDEO_INFO_COMP_PSTRIDE (&(frame->info), 0);
 
   // Add the offset to the region of interest to the data pointer.
   object->planes[0].data =
@@ -284,6 +321,12 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
               (y * object->planes[1].stride) + (x * 2));
       object->planes[1].stgid = GST_OCV_INVALID_STAGE_ID;
       break;
+    case GST_VIDEO_FORMAT_YUY2:
+      object->planes[0].type = CV_8UC2;
+      object->planes[0].data =
+          (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame,0) +
+              (y * object->planes[0].stride) + (x * 2));
+      break;
     case GST_VIDEO_FORMAT_P010_10LE:
       // Update plane 0 offset.
       object->planes[0].data =
@@ -298,8 +341,13 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
               ((GST_ROUND_UP_2 (y) / 2) * object->planes[1].stride) + (x * 2));
       object->planes[1].stgid = GST_OCV_INVALID_STAGE_ID;
       break;
+    case GST_VIDEO_FORMAT_RGBA:
+    case GST_VIDEO_FORMAT_BGRA:
+    case GST_VIDEO_FORMAT_RGBx:
+    case GST_VIDEO_FORMAT_BGRx:
+      object->planes[0].type = CV_8UC4;
     default:
-      // No need for initialize anything in te secondary plane.
+      // No need for initialize anything in the secondary plane.
       break;
   }
 
@@ -327,7 +375,7 @@ gst_ocv_video_converter_fetch_stage_buffer (GstOcvVideoConverter * convert,
     if (buffer->used || (buffer->size < size))
       continue;
 
-    buffer->used = true;
+    buffer->used = TRUE;
 
     GST_TRACE ("Using staging buffer at index %u, data %p and size %u",
         buffer->idx, buffer->data, buffer->size);
@@ -342,7 +390,7 @@ gst_ocv_video_converter_fetch_stage_buffer (GstOcvVideoConverter * convert,
   buffer->idx = idx;
   buffer->data = g_malloc0 (size);
   buffer->size = size;
-  buffer->used = true;
+  buffer->used = TRUE;
 
   GST_TRACE ("Allocated staging buffer at index %u, data %p and size %u",
       buffer->idx, buffer->data, buffer->size);
@@ -357,7 +405,7 @@ gst_ocv_video_converter_release_stage_buffer (GstOcvVideoConverter * convert,
   GstOcvStageBuffer *buffer = NULL;
 
   buffer = &(g_array_index (convert->stgbufs, GstOcvStageBuffer, idx));
-  buffer->used = false;
+  buffer->used = FALSE;
 
   GST_TRACE ("Released staging buffer at index %u, data %p and size %u",
       buffer->idx, buffer->data, buffer->size);
@@ -404,7 +452,7 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
       obj->planes[0].stride = GST_ROUND_UP_8 (width) * 4;
-      obj->planes[0].type = CV_8UC3;
+      obj->planes[0].type = CV_8UC4;
       obj->n_planes = 1;
       obj->flags = GST_OCV_FLAG_RGB;
       break;
@@ -446,6 +494,14 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       obj->n_planes = 2;
       obj->flags = GST_OCV_FLAG_YUV;
       break;
+    case GST_VIDEO_FORMAT_YUY2:
+      obj->planes[0].width = GST_ROUND_UP_8 (width);
+      obj->planes[0].height = height;
+      obj->planes[0].stride = GST_ROUND_UP_8 (width) * 2;
+      obj->planes[0].type = CV_8UC2;
+      obj->n_planes = 1;
+      obj->flags = GST_OCV_FLAG_YUV;
+      break;
     case GST_VIDEO_FORMAT_P010_10LE:
       obj->planes[0].width = GST_ROUND_UP_8 (width);
       obj->planes[0].height = height;
@@ -460,7 +516,7 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
       break;
     default:
       GST_ERROR ("Unknown format %s", gst_video_format_to_string (format));
-      return false;
+      return FALSE;
   }
 
   obj->format = format;
@@ -482,7 +538,7 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
         GST_OCV_PLANE_ARGS (&(obj->planes[idx])));
   }
 
-  return true;
+  return TRUE;
 }
 
 static inline void
@@ -505,7 +561,17 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       gst_video_format_to_string (d_obj->format));
 
   switch (s_obj->format + (d_obj->format << 16)) {
-    // YUV to RGB
+    // NV12/NV21 -> NV21/NV12
+    case GST_VIDEO_FORMAT_NV12 + (GST_VIDEO_FORMAT_NV21 << 16):
+      return GST_OCV_COLOR_NV12_to_NV21;
+    case GST_VIDEO_FORMAT_NV21 + (GST_VIDEO_FORMAT_NV12 << 16):
+      return GST_OCV_COLOR_NV21_to_NV12;
+    // NV12/NV21 -> YUY2
+    case GST_VIDEO_FORMAT_NV12 + (GST_VIDEO_FORMAT_YUY2 << 16):
+      return GST_OCV_COLOR_NV12_to_YUY2;
+    case GST_VIDEO_FORMAT_NV21 + (GST_VIDEO_FORMAT_YUY2 << 16):
+      return GST_OCV_COLOR_NV21_to_YUY2;
+    // NV12/NV21 -> RGB/BGR
     case GST_VIDEO_FORMAT_NV12 + (GST_VIDEO_FORMAT_RGB << 16):
       return cv::COLOR_YUV2RGB_NV12;
     case GST_VIDEO_FORMAT_NV12 + (GST_VIDEO_FORMAT_BGR << 16):
@@ -514,7 +580,7 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_YUV2RGB_NV21;
     case GST_VIDEO_FORMAT_NV21 + (GST_VIDEO_FORMAT_BGR << 16):
       return cv::COLOR_YUV2BGR_NV21;
-    // YUV to RGBA
+    // NV12/NV21 -> RGBA/BGRA
     case GST_VIDEO_FORMAT_NV12 + (GST_VIDEO_FORMAT_RGBA << 16):
       return cv::COLOR_YUV2RGBA_NV12;
     case GST_VIDEO_FORMAT_NV12 + (GST_VIDEO_FORMAT_BGRA << 16):
@@ -523,7 +589,7 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_YUV2RGBA_NV21;
     case GST_VIDEO_FORMAT_NV21 + (GST_VIDEO_FORMAT_BGRA << 16):
       return cv::COLOR_YUV2BGRA_NV21;
-    // YUV to RGBx; Might not work.
+    // NV12/NV21 -> RGBx/BGRx; Might not work.
     case GST_VIDEO_FORMAT_NV12 + (GST_VIDEO_FORMAT_RGBx << 16):
       return cv::COLOR_YUV2RGBA_NV12;
     case GST_VIDEO_FORMAT_NV12 + (GST_VIDEO_FORMAT_BGRx << 16):
@@ -532,53 +598,57 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_YUV2RGBA_NV21;
     case GST_VIDEO_FORMAT_NV21 + (GST_VIDEO_FORMAT_BGRx << 16):
       return cv::COLOR_YUV2BGRA_NV21;
-    // YUV to GRAY
+    // NV12/NV21 -> GRAY
     case GST_VIDEO_FORMAT_NV12 + (GST_VIDEO_FORMAT_GRAY8 << 16):
-      return cv::COLOR_YUV2GRAY_NV12 ;
+      return cv::COLOR_YUV2GRAY_NV12;
     case GST_VIDEO_FORMAT_NV21 + (GST_VIDEO_FORMAT_GRAY8 << 16):
-      return cv::COLOR_YUV2GRAY_NV21 ;
-    // RGB to YUV
+      return cv::COLOR_YUV2GRAY_NV21;
+    // YUY2 (YUYV) -> NV12/NV21
+    case GST_VIDEO_FORMAT_YUY2 + (GST_VIDEO_FORMAT_NV12 << 16):
+      return GST_OCV_COLOR_YUY2_to_NV12;
+    case GST_VIDEO_FORMAT_YUY2 + (GST_VIDEO_FORMAT_NV21 << 16):
+      return GST_OCV_COLOR_YUY2_to_NV21;
+    // YUY2 (YUYV) -> RGB/BGR
+    case GST_VIDEO_FORMAT_YUY2 + (GST_VIDEO_FORMAT_RGB << 16):
+      return cv::COLOR_YUV2RGB_YUY2;
+    case GST_VIDEO_FORMAT_YUY2 + (GST_VIDEO_FORMAT_BGR << 16):
+      return cv::COLOR_YUV2BGR_YUY2;
+    // YUY2 (YUYV) -> RGBA/BGRA
+    case GST_VIDEO_FORMAT_YUY2 + (GST_VIDEO_FORMAT_RGBA << 16):
+      return cv::COLOR_YUV2RGBA_YUY2;
+    case GST_VIDEO_FORMAT_YUY2 + (GST_VIDEO_FORMAT_BGRA << 16):
+      return cv::COLOR_YUV2BGRA_YUY2;
+    // YUY2 (YUYV) -> GRAY
+    case GST_VIDEO_FORMAT_YUY2 + (GST_VIDEO_FORMAT_GRAY8 << 16):
+      return cv::COLOR_YUV2GRAY_YUY2;
+    // RGB/BGR -> NV12/NV21
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_NV12 << 16):
-      return cv::COLOR_RGB2YUV_I420;
+      return GST_OCV_COLOR_RGB_to_NV12;
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_NV21 << 16):
-      return cv::COLOR_RGB2YUV_YV12;
+      return GST_OCV_COLOR_RGB_to_NV21;
     case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_NV12 << 16):
-      return cv::COLOR_BGR2YUV_I420;
+      return GST_OCV_COLOR_BGR_to_NV12;
     case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_NV21 << 16):
-      return cv::COLOR_BGR2YUV_YV12;
-    // RGBA to YUV
-    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_NV12 << 16):
-      return cv::COLOR_RGBA2YUV_I420;
-    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_NV21 << 16):
-      return cv::COLOR_RGBA2YUV_YV12;
-    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_NV12 << 16):
-      return cv::COLOR_BGRA2YUV_I420;
-    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_NV21 << 16):
-      return cv::COLOR_BGRA2YUV_YV12;
-    // RGBx to YUV; Might not work.
-    case GST_VIDEO_FORMAT_RGBx + (GST_VIDEO_FORMAT_NV12 << 16):
-      return cv::COLOR_RGBA2YUV_I420;
-    case GST_VIDEO_FORMAT_RGBx + (GST_VIDEO_FORMAT_NV21 << 16):
-      return cv::COLOR_RGBA2YUV_YV12;
-    case GST_VIDEO_FORMAT_BGRx + (GST_VIDEO_FORMAT_NV12 << 16):
-      return cv::COLOR_BGRA2YUV_I420;
-    case GST_VIDEO_FORMAT_BGRx + (GST_VIDEO_FORMAT_NV21 << 16):
-      return cv::COLOR_BGRA2YUV_YV12;
-    // RGB to GRAY
-    case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_GRAY8 << 16):
-      return cv::COLOR_RGB2GRAY;
-    case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_GRAY8 << 16):
-      return cv::COLOR_BGR2GRAY;
-    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_GRAY8 << 16):
-      return cv::COLOR_RGBA2GRAY;
-    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_GRAY8 << 16):
-      return cv::COLOR_BGRA2GRAY;
-    // RGB to RGB
+      return GST_OCV_COLOR_BGR_to_NV21;
+    // RGB/BGR -> YUY2 (YUYV)
+    case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_YUY2 << 16):
+#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+      return cv::COLOR_RGB2YUV_YUY2;
+#else
+      return GST_OCV_COLOR_RGB2YUV_YUY2;
+#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+    case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_YUY2 << 16):
+#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+      return cv::COLOR_BGR2YUV_YUY2;
+#else
+      return GST_OCV_COLOR_BGR2YUV_YUY2;
+#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+    // RGB/BGR -> RGB/BGR
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_BGR << 16):
       return cv::COLOR_RGB2BGR;
     case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_RGB << 16):
       return cv::COLOR_BGR2RGB;
-    // RGB to RGBA
+    // RGB/BGR -> RGBA/BGRA
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_BGRA << 16):
       return cv::COLOR_RGB2BGRA;
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_RGBA << 16):
@@ -587,7 +657,7 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_BGR2BGRA;
     case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_RGBA << 16):
       return cv::COLOR_BGR2RGBA;
-    // RGB to RGBx
+    // RGB/BGR -> RGBx/BGRx
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_BGRx << 16):
       return cv::COLOR_RGB2BGRA;
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_RGBx << 16):
@@ -596,7 +666,38 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_BGR2BGRA;
     case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_RGBx << 16):
       return cv::COLOR_BGR2RGBA;
-    // RGBA to RGB
+    // RGB/BGR -> GRAY
+    case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_GRAY8 << 16):
+      return cv::COLOR_RGB2GRAY;
+    case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_GRAY8 << 16):
+      return cv::COLOR_BGR2GRAY;
+    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_GRAY8 << 16):
+      return cv::COLOR_RGBA2GRAY;
+    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_GRAY8 << 16):
+      return cv::COLOR_BGRA2GRAY;
+    // RGBA/BGRA -> NV12/NV21
+    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_NV12 << 16):
+      return GST_OCV_COLOR_RGBA_to_NV12;
+    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_NV21 << 16):
+      return GST_OCV_COLOR_RGBA_to_NV21;
+    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_NV12 << 16):
+      return GST_OCV_COLOR_BGRA_to_NV12;
+    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_NV21 << 16):
+      return GST_OCV_COLOR_BGRA_to_NV21;
+    // RGBA/BGRA -> YUY2 (YUYV)
+    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_YUY2 << 16):
+#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+      return cv::COLOR_RGBA2YUV_YUY2;
+#else
+      return GST_OCV_COLOR_RGBA2YUV_YUY2;
+#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_YUY2 << 16):
+#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+      return cv::COLOR_BGRA2YUV_YUY2;
+#else
+      return GST_OCV_COLOR_BGRA2YUV_YUY2;
+#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+    // RGBA/BGRA -> RGB/BGR
     case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_RGB << 16):
       return cv::COLOR_RGBA2RGB;
     case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_BGR << 16):
@@ -605,17 +706,26 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_BGRA2RGB;
     case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_BGR << 16):
       return cv::COLOR_BGRA2BGR;
-    // RGBA to RGBA
+    // RGBA/BGRA -> RGBA/BGRA
     case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_BGRA << 16):
       return cv::COLOR_RGBA2BGRA;
     case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_RGBA << 16):
       return cv::COLOR_BGRA2RGBA;
-    // RGBA to RGBx
+    // RGBA/BGRA -> RGBx/BGRx
     case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_BGRx << 16):
       return cv::COLOR_RGBA2BGRA;
     case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_RGBx << 16):
       return cv::COLOR_BGRA2RGBA;
-    // RGBx to RGB
+    // RGBx/BGRx -> NV12/NV21 Might not work.
+    case GST_VIDEO_FORMAT_RGBx + (GST_VIDEO_FORMAT_NV12 << 16):
+      return GST_OCV_COLOR_RGBA_to_NV12;
+    case GST_VIDEO_FORMAT_RGBx + (GST_VIDEO_FORMAT_NV21 << 16):
+      return GST_OCV_COLOR_RGBA_to_NV21;
+    case GST_VIDEO_FORMAT_BGRx + (GST_VIDEO_FORMAT_NV12 << 16):
+      return GST_OCV_COLOR_BGRA_to_NV12;
+    case GST_VIDEO_FORMAT_BGRx + (GST_VIDEO_FORMAT_NV21 << 16):
+      return GST_OCV_COLOR_BGRA_to_NV21;
+    // RGBx/BGRx -> RGB/BGR
     case GST_VIDEO_FORMAT_RGBx + (GST_VIDEO_FORMAT_RGB << 16):
       return cv::COLOR_RGBA2RGB;
     case GST_VIDEO_FORMAT_RGBx + (GST_VIDEO_FORMAT_BGR << 16):
@@ -624,31 +734,39 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_BGRA2RGB;
     case GST_VIDEO_FORMAT_BGRx + (GST_VIDEO_FORMAT_BGR << 16):
       return cv::COLOR_BGRA2BGR;
-    // RGBx to RGBA
+    // RGBx/BGRx -> RGBA/BGRA
     case GST_VIDEO_FORMAT_RGBx + (GST_VIDEO_FORMAT_BGRA << 16):
       return cv::COLOR_RGBA2BGRA;
     case GST_VIDEO_FORMAT_BGRx + (GST_VIDEO_FORMAT_RGBA << 16):
       return cv::COLOR_BGRA2RGBA;
-    // RGBx to RGBx
+    // RGBx/BGRx -> RGBx/BGRx
     case GST_VIDEO_FORMAT_RGBx + (GST_VIDEO_FORMAT_BGRx << 16):
       return cv::COLOR_RGBA2BGRA;
     case GST_VIDEO_FORMAT_BGRx + (GST_VIDEO_FORMAT_RGBx << 16):
       return cv::COLOR_BGRA2RGBA;
-    // GRAY to RGB
+    // GRAY -> NV12/NV21
+    case GST_VIDEO_FORMAT_GRAY8 + (GST_VIDEO_FORMAT_NV12 << 16):
+      return GST_OCV_COLOR_GRAY_to_NV12;
+    case GST_VIDEO_FORMAT_GRAY8 + (GST_VIDEO_FORMAT_NV21 << 16):
+      return GST_OCV_COLOR_GRAY_to_NV21;
+    // GRAY -> YUY2
+    case GST_VIDEO_FORMAT_GRAY8 + (GST_VIDEO_FORMAT_YUY2 << 16):
+      return GST_OCV_COLOR_GRAY_to_YUY2;
+    // GRAY -> RGB/BGR
     case GST_VIDEO_FORMAT_GRAY8 + (GST_VIDEO_FORMAT_BGR << 16):
       return cv::COLOR_GRAY2BGR;
     case GST_VIDEO_FORMAT_GRAY8 + (GST_VIDEO_FORMAT_RGB << 16):
       return cv::COLOR_GRAY2RGB;
-    // GRAY to RGBA
+    // GRAY -> RGBA/BGRA
     case GST_VIDEO_FORMAT_GRAY8 + (GST_VIDEO_FORMAT_BGRA << 16):
       return cv::COLOR_GRAY2BGRA;
     case GST_VIDEO_FORMAT_GRAY8 + (GST_VIDEO_FORMAT_RGBA << 16):
       return cv::COLOR_GRAY2RGBA;
     default:
-      GST_WARNING ("Unsupported format conversion from '%s' to '%s'!",
+      GST_ERROR ("Unsupported format conversion from '%s' to '%s'!",
           gst_video_format_to_string (s_obj->format),
           gst_video_format_to_string (d_obj->format));
-      return -1;
+      return GST_OCV_INVALID_CONVERSION;
   }
 }
 
@@ -660,7 +778,7 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
   GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
   GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
   guint8 idx = 0;
-  gboolean resize = false;
+  gboolean resize = FALSE;
 
   // Cache the flip, rotation, resize and color convert flags.
   rotate = s_obj->rotate;
@@ -670,7 +788,7 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
   // Use stage object if other operations are pending
   if (resize || (flip != GST_OCV_FLIP_NONE) || (s_obj->format != d_obj->format)) {
     guint width = 0, height = 0;
-    gboolean success = false;
+    gboolean success = FALSE;
 
     width = s_obj->planes[0].width;
     height = s_obj->planes[0].height;
@@ -687,7 +805,7 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
     // Override destination object with stage object data, revert it later.
     success = gst_ocv_video_converter_stage_object_init (convert, d_obj,
         width, height, s_obj->format);
-    g_return_val_if_fail (success, false);
+    g_return_val_if_fail (success, FALSE);
   }
 
   if ((!GST_OCV_OBJ_IS_YUV (s_obj) && !GST_OCV_OBJ_IS_RGB (s_obj) &&
@@ -695,7 +813,7 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
       (!GST_OCV_OBJ_IS_YUV (d_obj) && !GST_OCV_OBJ_IS_RGB (d_obj) &&
       !GST_OCV_OBJ_IS_GRAY (d_obj))) {
     GST_WARNING ("Unknown format, or src and dst plane formats don't match!");
-    return false;
+    return FALSE;
   }
 
   for (idx = 0; idx < s_obj->n_planes; idx++) {
@@ -710,6 +828,65 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
     cv::rotate (src_mat, dst_mat, GST_OCV_GET_ROTATE (rotate));
 
     GST_TRACE ("Rotated plane No. %u", idx);
+
+    if (d_obj->format == GST_VIDEO_FORMAT_YUY2) {
+      guint32 y = 0, x = 0;
+
+      GST_TRACE ("Swapping u and v planes manually!");
+
+      switch (rotate) {
+      case GST_VCE_ROTATE_90:
+      {
+        for (y = 0; y < d_plane->height; y += 2) {
+          guint8* row_0 = ((guint8 *) d_plane->data) + d_plane->stride * y;
+          guint8* row_1 = ((guint8 *) d_plane->data) + d_plane->stride * (y + 1);
+
+          for (x = 0; x < d_plane->width * 2; x += 4) {
+            const guint8 v_val = row_1[x + 1];
+            const guint8 u_val = row_0[x + 3];
+            row_1[x + 1] = u_val;
+            row_0[x + 3] = v_val;
+          }
+        }
+
+        break;
+      }
+      case GST_VCE_ROTATE_180:
+      {
+        for (y = 0; y < d_plane->height; y++) {
+          guint8* row = ((guint8 *) d_plane->data) + d_plane->stride * y;
+
+          for (x = 0; x < d_plane->width * 2; x += 4) {
+            const guint8 v_val = row[x + 1];
+            const guint8 u_val = row[x + 3];
+            row[x + 1] = u_val;
+            row[x + 3] = v_val;
+          }
+        }
+
+        break;
+      }
+      case GST_VCE_ROTATE_270:
+      {
+        for (y = 0; y < d_plane->height; y += 2) {
+          guint8* row_0 = ((guint8 *) d_plane->data) + d_plane->stride * y;
+          guint8* row_1 = ((guint8 *) d_plane->data) + d_plane->stride * (y + 1);
+
+          for (x = 0; x < d_plane->width * 2; x += 4) {
+            const guint8 v_val = row_0[x + 1];
+            const guint8 u_val = row_1[x + 3];
+            row_0[x + 1] = u_val;
+            row_1[x + 3] = v_val;
+          }
+        }
+
+        break;
+      }
+
+      default:
+        break;
+      }
+    }
   }
 
   // If source is a stage object from previous operation, release stage buffers.
@@ -728,7 +905,7 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
   if (d_obj->flags & GST_OCV_FLAG_STAGED)
     gst_ocv_copy_object (&l_obj, d_obj);
 
-  return true;
+  return TRUE;
 }
 
 static inline gboolean
@@ -739,7 +916,7 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
   GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
   GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
   guint8 idx = 0;
-  gboolean resize = false;
+  gboolean resize = FALSE;
 
   // Cache the flip, rotation, resize and color convert flags.
   rotate = s_obj->rotate;
@@ -749,7 +926,7 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
   // Use stage object if other operations are pending
   if (resize || (rotate != GST_VCE_ROTATE_0) || (s_obj->format != d_obj->format)) {
     guint width = 0, height = 0;
-    gboolean success = false;
+    gboolean success = FALSE;
 
     width = s_obj->planes[0].width;
     height = s_obj->planes[0].height;
@@ -767,7 +944,7 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
     // Override destination object with stage object data, revert it later.
     success = gst_ocv_video_converter_stage_object_init (convert, d_obj,
         width, height, s_obj->format);
-    g_return_val_if_fail (success, false);
+    g_return_val_if_fail (success, FALSE);
   }
 
   if ((!GST_OCV_OBJ_IS_YUV (s_obj) && !GST_OCV_OBJ_IS_RGB (s_obj) &&
@@ -775,7 +952,7 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
       (!GST_OCV_OBJ_IS_YUV (d_obj) && !GST_OCV_OBJ_IS_RGB (d_obj) &&
       !GST_OCV_OBJ_IS_GRAY (d_obj))) {
     GST_WARNING ("Unknown format, or src and dst plane formats don't match!");
-    return false;
+    return FALSE;
   }
 
   for (idx = 0; idx < s_obj->n_planes; idx++) {
@@ -790,6 +967,24 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
     cv::flip (src_mat, dst_mat, GST_OCV_GET_FLIP (flip));
 
     GST_TRACE ("Flipped plane No. %u", idx);
+
+    if (d_obj->format == GST_VIDEO_FORMAT_YUY2 &&
+        (flip == GST_OCV_FLIP_HORIZONTAL || flip == GST_OCV_FLIP_BOTH)) {
+      guint32 y = 0, x = 0;
+
+      GST_TRACE ("Swapping u and v planes manually!");
+
+      for (y = 0; y < d_plane->height; y++) {
+        guint8* row = ((guint8 *) d_plane->data) + d_plane->stride * y;
+
+        for (x = 0; x < d_plane->width * 2; x += 4) {
+          const guint8 v_val = row[x + 1];
+          const guint8 u_val = row[x + 3];
+          row[x + 1] = u_val;
+          row[x + 3] = v_val;
+        }
+      }
+    }
   }
 
   // If source is a stage object from previous operation, release stage buffers.
@@ -808,7 +1003,7 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
   if (d_obj->flags & GST_OCV_FLAG_STAGED)
     gst_ocv_copy_object (&l_obj, d_obj);
 
-  return true;
+  return TRUE;
 }
 
 static inline gboolean
@@ -828,7 +1023,7 @@ gst_ocv_video_converter_resize (GstOcvVideoConverter * convert,
   if ((flip != GST_OCV_FLIP_NONE) || (rotate != GST_VCE_ROTATE_0) ||
       (s_obj->format != d_obj->format)) {
     guint width = 0, height = 0;
-    gboolean success = false;
+    gboolean success = FALSE;
 
     width = d_obj->planes[0].width;
     height = d_obj->planes[0].height;
@@ -845,7 +1040,7 @@ gst_ocv_video_converter_resize (GstOcvVideoConverter * convert,
     // Override destination object with stage object data, revert it later.
     success = gst_ocv_video_converter_stage_object_init (convert, d_obj,
         width, height, s_obj->format);
-    g_return_val_if_fail (success, false);
+    g_return_val_if_fail (success, FALSE);
   }
 
   if ((!GST_OCV_OBJ_IS_YUV (s_obj) && !GST_OCV_OBJ_IS_RGB (s_obj) &&
@@ -853,7 +1048,7 @@ gst_ocv_video_converter_resize (GstOcvVideoConverter * convert,
       (!GST_OCV_OBJ_IS_YUV (d_obj) && !GST_OCV_OBJ_IS_RGB (d_obj) &&
       !GST_OCV_OBJ_IS_GRAY (d_obj))) {
     GST_WARNING ("Unknown format!");
-    return false;
+    return FALSE;
   }
 
   for (idx = 0; idx < s_obj->n_planes; idx++) {
@@ -881,88 +1076,446 @@ gst_ocv_video_converter_resize (GstOcvVideoConverter * convert,
   // Transfer any pending rotate, flip and color convert and reset resize
   s_obj->flip = flip;
   s_obj->rotate = rotate;
-  s_obj->resize = false;
+  s_obj->resize = FALSE;
 
   // Restore the original destination object in case a stage was used.
   if (d_obj->flags & GST_OCV_FLAG_STAGED)
     gst_ocv_copy_object (&l_obj, d_obj);
 
-  return true;
+  return TRUE;
+}
+
+static inline gboolean
+gst_ocv_standard_conversion (GstOcvObject * s_obj, GstOcvObject * d_obj,
+    gint conversion_mode)
+{
+  switch (s_obj->n_planes) {
+    case 1:
+    {
+      try {
+        cv::Mat input_matrix (s_obj->planes[0].height, s_obj->planes[0].width,
+            s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
+        cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
+            d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
+
+        cv::cvtColor (input_matrix, output_matrix, conversion_mode);
+
+        return TRUE;
+      } catch (const cv::Exception& e) {
+        GST_ERROR ("OpenCV encountered error: %s", e.what());
+        return FALSE;
+      }
+    }
+    case 2:
+    {
+      try {
+        cv::Mat y_plane (s_obj->planes[0].height, s_obj->planes[0].width,
+            s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
+        cv::Mat uv_plane (s_obj->planes[1].height, s_obj->planes[1].width,
+            s_obj->planes[1].type, s_obj->planes[1].data, s_obj->planes[1].stride);
+        cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
+            d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
+
+        cv::cvtColorTwoPlane (y_plane, uv_plane, output_matrix, conversion_mode);
+
+        return TRUE;
+      } catch (const cv::Exception& e) {
+        GST_ERROR ("OpenCV encountered error: %s", e.what());
+        return FALSE;
+      }
+    }
+    default:
+      return FALSE;
+  }
+}
+
+static inline gboolean
+gst_ocv_video_converter_yuv_to_yuv (GstOcvObject * s_obj, GstOcvObject * d_obj,
+    gint conversion_mode)
+{
+  guint32 x_idx = 0, y_idx = 0;
+
+  switch (conversion_mode) {
+    case GST_OCV_COLOR_YUY2_to_NV12:
+    case GST_OCV_COLOR_YUY2_to_NV21:
+    {
+      const guint8 *src_data = (guint8 *) s_obj->planes[0].data;
+      guint8 *y_data = (guint8 *) d_obj->planes[0].data;
+      guint8 *uv_data = (guint8 *) d_obj->planes[1].data;
+
+      // Process in blocks of 2x2 pixels as destination chroma is interpolated.
+      //       YUY2              Luma      Chroma
+      // | Y0 U0 Y1 V0 |  ---> | Y0 Y1 | + | U V |
+      // | Y2 U1 Y3 V1 |  ---> | Y2 Y3 | // U = (U0 + U1) / 2 and V = (V0 + V1) / 2
+
+      for (y_idx = 0; y_idx < d_obj->planes[0].height; y_idx += 2) {
+        const guint8 *src_row_0 = src_data + y_idx * s_obj->planes[0].stride;
+        const guint8 *src_row_1 = src_data + (y_idx + 1) * s_obj->planes[0].stride;
+        guint8 *y_row_0 = y_data + y_idx * d_obj->planes[0].stride;
+        guint8 *y_row_1 = y_data + (y_idx + 1) * d_obj->planes[0].stride;
+        guint8 *uv_row = uv_data + (y_idx / 2) * d_obj->planes[1].stride;
+
+        for (x_idx = 0; x_idx < d_obj->planes[0].width; x_idx += 2) {
+          const guint32 row_idx = x_idx * 2;
+          const guint8 y0 = src_row_0[row_idx + 0];
+          const guint8 u0 = src_row_0[row_idx + 1];
+          const guint8 y1 = src_row_0[row_idx + 2];
+          const guint8 v0 = src_row_0[row_idx + 3];
+
+          y_row_0[x_idx + 0] = y0;
+          y_row_0[x_idx + 1] = y1;
+
+          const guint8 y2 = src_row_1[row_idx + 0];
+          const guint8 u1 = src_row_1[row_idx + 1];
+          const guint8 y3 = src_row_1[row_idx + 2];
+          const guint8 v1 = src_row_1[row_idx + 3];
+
+          y_row_1[x_idx + 0] = y2;
+          y_row_1[x_idx + 1] = y3;
+
+          const guint8 u = (guint8) ((u0 + u1 + 1) >> 1);
+          const guint8 v = (guint8) ((v0 + v1 + 1) >> 1);
+
+          uv_row[x_idx + 0] = (d_obj->format == GST_VIDEO_FORMAT_NV12) ? u : v;
+          uv_row[x_idx + 1] = (d_obj->format == GST_VIDEO_FORMAT_NV12) ? v : u;
+        }
+      }
+
+      return TRUE;
+    }
+    case GST_OCV_COLOR_NV12_to_YUY2:
+    case GST_OCV_COLOR_NV21_to_YUY2:
+    {
+      // Process in blocks of 2x2 pixels as destination chroma is copied twice (lossy)
+      //   Luma      Chroma              YUY2
+      // | Y0 Y1 | + | U V |  --->  | Y0 U Y1 V |
+      // | Y2 Y3 |            --->  | Y2 U Y3 V |
+
+      for (y_idx = 0; y_idx < s_obj->planes[0].height; y_idx += 2) {
+        const guint8 *y_row_0 = (guint8 *) s_obj->planes[0].data +
+            y_idx * s_obj->planes[0].stride;
+        const guint8 *y_row_1 = (guint8 *) s_obj->planes[0].data +
+            (y_idx + 1) * s_obj->planes[0].stride;
+        const guint8 *uv_row = (guint8 *) s_obj->planes[1].data +
+            (y_idx / 2) * s_obj->planes[1].stride;
+        guint8 *d_row_0 = (guint8 *) d_obj->planes[0].data +
+            y_idx * d_obj->planes[0].stride;
+        guint8 *d_row_1 = (guint8 *) d_obj->planes[0].data +
+            (y_idx + 1) * d_obj->planes[0].stride;
+
+        for (x_idx = 0; x_idx < s_obj->planes[0].width; x_idx += 2) {
+          const guint32 row_idx = x_idx * 2;
+
+          const guint8 u = (guint8) uv_row[x_idx +
+              ((s_obj->format == GST_VIDEO_FORMAT_NV12) ? 0 : 1)];
+          const guint8 v = (guint8) uv_row[x_idx +
+              ((s_obj->format == GST_VIDEO_FORMAT_NV12) ? 1 : 0)];
+
+          d_row_0[row_idx + 0] = y_row_0[x_idx + 0]; // y0
+          d_row_0[row_idx + 1] = u;                  // u0
+          d_row_0[row_idx + 2] = y_row_0[x_idx + 1]; // y1
+          d_row_0[row_idx + 3] = v;                  // v0
+          d_row_1[row_idx + 0] = y_row_1[x_idx + 0]; // y2
+          d_row_1[row_idx + 1] = u;                  // u1
+          d_row_1[row_idx + 2] = y_row_1[x_idx + 1]; // y3
+          d_row_1[row_idx + 3] = v;                  // v1
+        }
+      }
+
+      return TRUE;
+    }
+    case GST_OCV_COLOR_NV12_to_NV21:
+    case GST_OCV_COLOR_NV21_to_NV12:
+    {
+      // Copy Y plane
+      memcpy (d_obj->planes[0].data, s_obj->planes[0].data,
+      s_obj->planes[0].height * s_obj->planes[0].stride);
+
+      // Swap U and V values for uv plane
+      for (y_idx = 0; y_idx < s_obj->planes[1].height; y_idx++) {
+        guint8 *src_uv_row = (guint8 *) s_obj->planes[1].data +
+            y_idx * s_obj->planes[1].stride;
+        guint8 *dest_uv_row = (guint8 *) d_obj->planes[1].data +
+            y_idx * d_obj->planes[1].stride;
+
+        for (x_idx = 0; x_idx < 2 * s_obj->planes[1].width; x_idx += 2) {
+          dest_uv_row[x_idx] = src_uv_row[x_idx + 1];
+          dest_uv_row[x_idx + 1] = src_uv_row[x_idx];
+        }
+      }
+
+      return TRUE;
+    }
+    default:
+      return FALSE;
+  }
+}
+
+static inline gboolean
+gst_ocv_video_converter_yuv_to_rgb (GstOcvObject * s_obj, GstOcvObject * d_obj,
+    gint conversion_mode)
+{
+  return gst_ocv_standard_conversion (s_obj, d_obj, conversion_mode);
+}
+
+static inline gboolean
+gst_ocv_video_converter_yuv_to_gray (GstOcvObject * s_obj, GstOcvObject * d_obj,
+    gint conversion_mode)
+{
+  switch (conversion_mode) {
+    case cv::COLOR_YUV2GRAY_NV12:
+    // case cv::COLOR_YUV2GRAY_NV21: -- Duplicate
+    {
+      // TODO: Fix to work with cvtColor
+      memcpy (d_obj->planes[0].data, s_obj->planes[0].data,
+      s_obj->planes[0].height * s_obj->planes[0].stride);
+
+      return TRUE;
+    }
+    case cv::COLOR_YUV2GRAY_YUY2:
+      return gst_ocv_standard_conversion (s_obj, d_obj, conversion_mode);
+
+    default:
+      return FALSE;
+  }
+}
+
+static inline gboolean
+gst_ocv_video_converter_rgb_to_yuv (GstOcvObject * s_obj, GstOcvObject * d_obj,
+    gint conversion_mode)
+{
+  switch (conversion_mode) {
+#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+    case cv::COLOR_RGB2YUV_YUY2:
+    case cv::COLOR_BGR2YUV_YUY2:
+    case cv::COLOR_RGBA2YUV_YUY2:
+    case cv::COLOR_BGRA2YUV_YUY2:
+#else
+    case GST_OCV_COLOR_RGB2YUV_YUY2:
+    case GST_OCV_COLOR_BGR2YUV_YUY2:
+    case GST_OCV_COLOR_RGBA2YUV_YUY2;
+    case GST_OCV_COLOR_BGRA2YUV_YUY2;
+#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
+    {
+      // Conversion is not supported on version below 4.9.0
+      if (cv::getVersionMajor() < 4 ||
+          (cv::getVersionMajor() == 4 && cv::getVersionMinor() < 9))
+        return FALSE;
+      else
+        return gst_ocv_standard_conversion (s_obj, d_obj, conversion_mode);
+    }
+    case GST_OCV_COLOR_RGB_to_NV12:
+    case GST_OCV_COLOR_RGB_to_NV21:
+    case GST_OCV_COLOR_BGR_to_NV12:
+    case GST_OCV_COLOR_BGR_to_NV21:
+    case GST_OCV_COLOR_RGBA_to_NV12:
+    case GST_OCV_COLOR_RGBA_to_NV21:
+    case GST_OCV_COLOR_BGRA_to_NV12:
+    case GST_OCV_COLOR_BGRA_to_NV21:
+    {
+      const gfloat kr = 0.299, kg = 0.587, kb = 0.114;
+      guint y_idx, x_idx = 0;
+
+      for (y_idx = 0; y_idx < d_obj->planes[0].height; y_idx++) {
+        guint8 *y_row = (guint8 *) d_obj->planes[0].data +
+            y_idx * d_obj->planes[0].stride;
+        guint8 *uv_row = (guint8 *) d_obj->planes[1].data +
+            (y_idx / 2) * d_obj->planes[1].stride;
+
+        for (x_idx = 0; x_idx < d_obj->planes[0].width; x_idx++) {
+          gint rgb_idx = 0;
+          guint32 u_sum = 0, v_sum = 0;
+          guint8 red = 0, green = 0, blue = 0, step = 3;
+
+          if (s_obj->format == GST_VIDEO_FORMAT_RGBA ||
+              s_obj->format == GST_VIDEO_FORMAT_BGRA)
+            step = 4;
+
+          rgb_idx = (y_idx * s_obj->planes[0].stride) + x_idx * step;
+
+          if (s_obj->format == GST_VIDEO_FORMAT_RGB ||
+              s_obj->format == GST_VIDEO_FORMAT_RGBA) {
+            red = ((guint8 *) s_obj->planes[0].data)[rgb_idx];
+            green = ((guint8 *) s_obj->planes[0].data)[rgb_idx + 1];
+            blue = ((guint8 *) s_obj->planes[0].data)[rgb_idx + 2];
+          } else {
+            red = ((guint8 *) s_obj->planes[0].data)[rgb_idx + 2];
+            green = ((guint8 *) s_obj->planes[0].data)[rgb_idx + 1];
+            blue = ((guint8 *) s_obj->planes[0].data)[rgb_idx];
+          }
+
+          guint8 luma = (red * kr) + (green * kg) + (blue * kb);
+          y_row[x_idx] = luma;
+
+          if (y_idx % 2 == 1 || x_idx % 2 == 1)
+            continue;
+
+          for (gint delta_y = 0; delta_y < 2; delta_y++) {
+            for (gint delta_x = 0; delta_x < 2; delta_x++) {
+              gint rgb_idx = 0;
+              guint8 red = 0, green = 0, blue = 0;
+
+              rgb_idx = ((y_idx + delta_y) * s_obj->planes[0].stride) +
+                  (x_idx + delta_x) * step;
+
+              if (s_obj->format == GST_VIDEO_FORMAT_RGB ||
+                  s_obj->format == GST_VIDEO_FORMAT_RGBA) {
+                red = ((guint8 *) s_obj->planes[0].data)[rgb_idx];
+                green = ((guint8 *) s_obj->planes[0].data)[rgb_idx + 1];
+                blue = ((guint8 *) s_obj->planes[0].data)[rgb_idx + 2];
+              } else {
+                red = ((guint8 *) s_obj->planes[0].data)[rgb_idx + 2];
+                green = ((guint8 *) s_obj->planes[0].data)[rgb_idx + 1];
+                blue = ((guint8 *) s_obj->planes[0].data)[rgb_idx];
+              }
+
+              guint32 cb = 128 + (red * (-(kr / (1.0 - kb)) / 2)) +
+                  (green * (-(kg / (1.0 - kb)) / 2)) + (blue * 0.5);
+              guint32 cr = 128 + (red * 0.5) + (green * (-(kg / (1.0 - kr)) / 2)) +
+                  (blue * (-(kb / (1.0 - kr)) / 2));
+
+              u_sum += cb;
+              v_sum += cr;
+            }
+          }
+
+          if (d_obj->format == GST_VIDEO_FORMAT_NV12) {
+            uv_row[x_idx] = (guint8) (u_sum / 4);
+            uv_row[x_idx + 1] = (guint8) (v_sum / 4);
+          } else {
+            uv_row[x_idx] = (guint8) (v_sum / 4);
+            uv_row[x_idx + 1] = (guint8) (u_sum / 4);
+          }
+        }
+      }
+
+      return TRUE;
+    }
+
+    default:
+      return FALSE;
+  }
+}
+
+static inline gboolean
+gst_ocv_video_converter_rgb_to_rgb (GstOcvObject * s_obj, GstOcvObject * d_obj,
+    gint conversion_mode)
+{
+  return gst_ocv_standard_conversion (s_obj, d_obj, conversion_mode);
+}
+
+static inline gboolean
+gst_ocv_video_converter_rgb_to_gray (GstOcvObject * s_obj, GstOcvObject * d_obj,
+    gint conversion_mode)
+{
+  return gst_ocv_standard_conversion (s_obj, d_obj, conversion_mode);
+}
+
+static inline gboolean
+gst_ocv_video_converter_gray_to_yuv (GstOcvObject * s_obj, GstOcvObject * d_obj,
+    gint conversion_mode)
+{
+  guint x_idx = 0, y_idx = 0;
+
+  switch (conversion_mode) {
+    case GST_OCV_COLOR_GRAY_to_NV12:
+    case GST_OCV_COLOR_GRAY_to_NV21:
+    {
+      memcpy (d_obj->planes[0].data, s_obj->planes[0].data,
+      s_obj->planes[0].height * s_obj->planes[0].stride);
+
+      for (x_idx = 0; x_idx < d_obj->planes[1].height; x_idx++)  {
+        for (y_idx = 0; y_idx < d_obj->planes[1].width * 2; y_idx++) {
+          (((guint8 *) d_obj->planes[1].data) +
+              x_idx * d_obj->planes[1].stride)[y_idx] = GST_OCV_NEUTRAL_CHROMA;
+        }
+      }
+
+      return TRUE;
+    }
+    case GST_OCV_COLOR_GRAY_to_YUY2:
+      // Process in blocks of 2x2 pixels
+      //   GRAY                YUY2
+      // | Y0 Y1 |  --->  | Y0 128 Y1 128 |
+      // | Y2 Y3 |  --->  | Y2 128 Y3 128 |
+
+      for (y_idx = 0; y_idx < s_obj->planes[0].height; y_idx += 2) {
+        const guint8 *y_row_0 = (guint8 *) s_obj->planes[0].data +
+            y_idx * s_obj->planes[0].stride;
+        const guint8 *y_row_1 = (guint8 *) s_obj->planes[0].data +
+            (y_idx + 1) * s_obj->planes[0].stride;
+        guint8 *d_row_0 = (guint8 *) d_obj->planes[0].data +
+            y_idx * d_obj->planes[0].stride;
+        guint8 *d_row_1 = (guint8 *) d_obj->planes[0].data +
+            (y_idx + 1) * d_obj->planes[0].stride;
+
+        for (x_idx = 0; x_idx < s_obj->planes[0].width; x_idx += 2) {
+          const guint32 row_idx = x_idx * 2;
+
+          d_row_0[row_idx + 0] = y_row_0[x_idx + 0];     // y0
+          d_row_0[row_idx + 1] = GST_OCV_NEUTRAL_CHROMA; // u0
+          d_row_0[row_idx + 2] = y_row_0[x_idx + 1];     // y1
+          d_row_0[row_idx + 3] = GST_OCV_NEUTRAL_CHROMA; // v0
+          d_row_1[row_idx + 0] = y_row_1[x_idx + 0];     // y2
+          d_row_1[row_idx + 1] = GST_OCV_NEUTRAL_CHROMA; // u1
+          d_row_1[row_idx + 2] = y_row_1[x_idx + 1];     // y3
+          d_row_1[row_idx + 3] = GST_OCV_NEUTRAL_CHROMA; // v1
+        }
+      }
+
+      return TRUE;
+
+    default:
+      return FALSE;
+  }
+}
+
+static inline gboolean
+gst_ocv_video_converter_gray_to_rgb (GstOcvObject * s_obj, GstOcvObject * d_obj,
+    gint conversion_mode)
+{
+  return gst_ocv_standard_conversion (s_obj, d_obj, conversion_mode);
 }
 
 static inline gboolean
 gst_ocv_video_converter_cvt_color (GstOcvVideoConverter * convert,
     GstOcvObject * s_obj, GstOcvObject * d_obj)
 {
-  gboolean success = false;
+  gboolean success = FALSE;
   gint conversion_mode = gst_ocv_get_conversion_mode (s_obj, d_obj);
 
   GST_TRACE ("Format conversion code: %d", conversion_mode);
 
-  if (-1 == conversion_mode) {
+  if (GST_OCV_INVALID_CONVERSION == conversion_mode) {
     GST_ERROR ("Unsupported format conversion!");
     if (s_obj->flags & GST_OCV_FLAG_STAGED)
       gst_ocv_video_converter_stage_object_deinit (convert, s_obj);
 
-    return false;
+    return FALSE;
   }
 
-  if (GST_OCV_OBJ_IS_YUV (s_obj) && GST_OCV_OBJ_IS_RGB (d_obj)) {
-    cv::Mat y_plane (s_obj->planes[0].height, s_obj->planes[0].width,
-        s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
-    cv::Mat uv_plane (s_obj->planes[1].height, s_obj->planes[1].width,
-        s_obj->planes[1].type, s_obj->planes[1].data, s_obj->planes[1].stride);
-    cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
-        d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
-
-    cv::cvtColorTwoPlane (y_plane, uv_plane, output_matrix, conversion_mode);
-
-    success = true;
-  } else if (GST_OCV_OBJ_IS_YUV (s_obj) && GST_OCV_OBJ_IS_YUV (d_obj)) {
-    GST_ERROR ("YUV to YUV conversion is currently unsupported!");
+  if (GST_OCV_OBJ_IS_YUV (s_obj) && GST_OCV_OBJ_IS_YUV (d_obj)) {
+    success = gst_ocv_video_converter_yuv_to_yuv (s_obj, d_obj, conversion_mode);
+  } else if (GST_OCV_OBJ_IS_YUV (s_obj) && GST_OCV_OBJ_IS_RGB (d_obj)) {
+    success = gst_ocv_video_converter_yuv_to_rgb (s_obj, d_obj, conversion_mode);
   } else if (GST_OCV_OBJ_IS_YUV (s_obj) && GST_OCV_OBJ_IS_GRAY (d_obj)) {
-    // TODO: Do yuv -> gray using cvtColor
-    memcpy (d_obj->planes[0].data, s_obj->planes[0].data,
-        s_obj->planes[0].height * s_obj->planes[0].stride);
-
-    success = true;
-  } else if (GST_OCV_OBJ_IS_RGB (s_obj) && GST_OCV_OBJ_IS_GRAY (d_obj)) {
-    // TODO: Add support for conversion to YUV
-    GST_ERROR ("RGB to YUV conversion is currently unsupported!");
+    success = gst_ocv_video_converter_yuv_to_gray (s_obj, d_obj, conversion_mode);
+  } else if (GST_OCV_OBJ_IS_RGB (s_obj) && GST_OCV_OBJ_IS_YUV (d_obj)) {
+    success = gst_ocv_video_converter_rgb_to_yuv (s_obj, d_obj, conversion_mode);
   } else if (GST_OCV_OBJ_IS_RGB (s_obj) && GST_OCV_OBJ_IS_RGB (d_obj)) {
-    cv::Mat input_matrix (s_obj->planes[0].height, s_obj->planes[0].width,
-        s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
-    cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
-        d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
-
-    cv::cvtColor (input_matrix, output_matrix, conversion_mode);
-
-    success = true;
+    success = gst_ocv_video_converter_rgb_to_rgb (s_obj, d_obj, conversion_mode);
   } else if (GST_OCV_OBJ_IS_RGB (s_obj) && GST_OCV_OBJ_IS_GRAY (d_obj)) {
-    cv::Mat input_matrix (s_obj->planes[0].height, s_obj->planes[0].width,
-        s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
-    cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
-        d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
-
-    cv::cvtColor (input_matrix, output_matrix, conversion_mode);
-
-    success = true;
+    success = gst_ocv_video_converter_rgb_to_gray (s_obj, d_obj, conversion_mode);
   } else if (GST_OCV_OBJ_IS_GRAY (s_obj) && GST_OCV_OBJ_IS_YUV (d_obj)) {
-    // TODO: Add support for GRAY to YUV conversion (GRAY -> RGB -> GRAY)
-    GST_ERROR ("GRAY to YUV conversion is currently unsupported!");
+    success = gst_ocv_video_converter_gray_to_yuv (s_obj, d_obj, conversion_mode);
   } else if (GST_OCV_OBJ_IS_GRAY (s_obj) && GST_OCV_OBJ_IS_RGB (d_obj)) {
-    cv::Mat input_matrix (s_obj->planes[0].height, s_obj->planes[0].width,
-        s_obj->planes[0].type, s_obj->planes[0].data, s_obj->planes[0].stride);
-    cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
-        d_obj->planes[0].type, d_obj->planes[0].data, d_obj->planes[0].stride);
+    success = gst_ocv_video_converter_gray_to_rgb (s_obj, d_obj, conversion_mode);
+  }
 
-    cv::cvtColor (input_matrix, output_matrix, conversion_mode);
-
-    success = true;
-  } else if (GST_OCV_OBJ_IS_GRAY (s_obj) && GST_OCV_OBJ_IS_GRAY (d_obj)) {
-    GST_ERROR ("GRAY to GRAY conversion is currently unsupported!");
-  } else {
-    GST_ERROR ("Unsupported color conversion families!");
+  if (success == FALSE) {
+    GST_ERROR ("Format %s to %s conversion is currently unsupported!",
+        gst_video_format_to_string (s_obj->format),
+        gst_video_format_to_string (d_obj->format));
   }
 
   // If source is a stage object from previous operation, release stage buffers.
@@ -982,7 +1535,7 @@ gst_ocv_video_converter_process (GstOcvVideoConverter * convert,
   GstOcvObject *s_obj = NULL, *d_obj = NULL;
   guint idx = 0, flip = 0, rotate = 0;
   gfloat w_scale = 0.0, h_scale = 0.0, scale = 0.0;
-  gboolean downscale = false, upscale = false, cvt_color = false;
+  gboolean downscale = FALSE, upscale = FALSE, cvt_color = FALSE;
 
   GST_TRACE ("Processing %d object pairs", n_objects / 2);
 
@@ -1016,46 +1569,46 @@ gst_ocv_video_converter_process (GstOcvVideoConverter * convert,
 
     if ((rotate == GST_VCE_ROTATE_90) || (rotate == GST_VCE_ROTATE_270)) {
       s_obj->resize = ((s_obj->planes[0].width != d_obj->planes[0].height) ||
-          (s_obj->planes[0].height != d_obj->planes[0].width)) ? true : false;
+          (s_obj->planes[0].height != d_obj->planes[0].width)) ? TRUE : FALSE;
     } else {
       s_obj->resize = ((s_obj->planes[0].width != d_obj->planes[0].width) ||
-          (s_obj->planes[0].height != d_obj->planes[0].height)) ? true : false;
+          (s_obj->planes[0].height != d_obj->planes[0].height)) ? TRUE : FALSE;
     }
 
     // First, do downscale if required so that next operations are less costly.
     if (downscale && !gst_ocv_video_converter_resize (convert, s_obj, d_obj)) {
       GST_ERROR ("Failed to resize image!");
-      return false;
+      return FALSE;
     }
 
     // Second, perform image rotate if necessary.
     if ((rotate != 0) && !gst_ocv_video_converter_rotate (convert, s_obj, d_obj)) {
       GST_ERROR ("Failed to rotate image!");
-      return false;
+      return FALSE;
     }
 
     // Third, perform image flip if necessary.
     if ((flip != 0) && !gst_ocv_video_converter_flip (convert, s_obj, d_obj)) {
       GST_ERROR ("Failed to flip image!");
-      return false;
+      return FALSE;
     }
 
     // Fourth, upscale output if needed
     if (upscale && !gst_ocv_video_converter_resize (convert, s_obj, d_obj)) {
       GST_ERROR ("Failed to upscale image!");
-      return false;
+      return FALSE;
     }
 
     // Fifth, perform color conversion if necessary.
     if (cvt_color && !gst_ocv_video_converter_cvt_color (convert, s_obj, d_obj)) {
       GST_ERROR ("Failed to convert image format!");
-      return false;
+      return FALSE;
     }
 
     GST_TRACE ("Object pair %u processed succesfully!", idx / 2);
   }
 
-  return true;
+  return TRUE;
 }
 
 gboolean
@@ -1109,7 +1662,7 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
 
       if (n_objects >= GST_OCV_MAX_DRAW_OBJECTS) {
         GST_ERROR ("Number of objects exceeds %d!", GST_OCV_MAX_DRAW_OBJECTS);
-        return false;
+        return FALSE;
       }
 
       if ((blit->mask & GST_VCE_MASK_FLIP_VERTICAL) &&
@@ -1169,12 +1722,12 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
     }
 
     // Sanity checks, output frame and blit entries must not be NULL.
-    g_return_val_if_fail (blits != NULL, false);
+    g_return_val_if_fail (blits != NULL, FALSE);
 
     for (num = 0; num < n_blits; num++) {
       if (!gst_ocv_video_converter_process (convert, objects, n_objects)) {
         GST_ERROR ("Failed to process frames for composition %u!", idx);
-        return false;
+        return FALSE;
       }
     }
 
@@ -1197,7 +1750,7 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
     }
   }
 
-  return true;
+  return TRUE;
 }
 
 gboolean
@@ -1206,7 +1759,7 @@ gst_ocv_video_converter_wait_fence (GstOcvVideoConverter * convert,
 {
   GST_WARNING ("Not implemented!");
 
-  return true;
+  return TRUE;
 }
 
 void
@@ -1219,7 +1772,7 @@ GstOcvVideoConverter *
 gst_ocv_video_converter_new (GstStructure * settings)
 {
   GstOcvVideoConverter *convert = NULL;
-  gboolean success = true;
+  gboolean success = TRUE;
 
   convert = g_slice_new0 (GstOcvVideoConverter);
   g_return_val_if_fail (convert != NULL, NULL);
@@ -1230,7 +1783,7 @@ gst_ocv_video_converter_new (GstStructure * settings)
   if (!success)
     goto cleanup;
 
-  convert->stgbufs = g_array_new (false, true, sizeof (GstOcvStageBuffer));
+  convert->stgbufs = g_array_new (FALSE, TRUE, sizeof (GstOcvStageBuffer));
   if (convert->stgbufs == NULL) {
     GST_ERROR ("Failed to create array for the staging buffers!");
     goto cleanup;
@@ -1254,7 +1807,7 @@ gst_ocv_video_converter_free (GstOcvVideoConverter * convert)
     return;
 
   if (convert->stgbufs != NULL)
-    g_array_free (convert->stgbufs, true);
+    g_array_free (convert->stgbufs, TRUE);
 
   g_mutex_clear (&convert->lock);
 
