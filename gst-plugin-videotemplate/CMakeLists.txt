@@ -39,7 +39,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
 # GStreamer plugin.
-set(GST_QTI_VIDEO_TEMPLATE qtivideotemplate)
+set(GST_QTI_VIDEO_TEMPLATE gstqtivideotemplate)
 
 add_library(${GST_QTI_VIDEO_TEMPLATE} SHARED
   qtivideotemplate.c
