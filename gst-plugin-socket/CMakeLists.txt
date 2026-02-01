@@ -34,7 +34,7 @@ add_definitions(-DHAVE_CONFIG_H)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
 
 # GStreamer source plugin.
-set(GST_QTI_SOCKETSRC qtisocketsrc)
+set(GST_QTI_SOCKETSRC gstqtisocketsrc)
 
 add_library(${GST_QTI_SOCKETSRC} SHARED
   qtisocketsrc.c
@@ -64,7 +64,7 @@ install(
 )
 
 # GStreamer sink plugin.
-set(GST_QTI_SOCKETSINK qtisocketsink)
+set(GST_QTI_SOCKETSINK gstqtisocketsink)
 
 add_library(${GST_QTI_SOCKETSINK} SHARED
   qtisocketsink.c
