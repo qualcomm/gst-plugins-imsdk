@@ -51,23 +51,12 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
 
 target_include_directories(${TARGET_NAME} PRIVATE
   ${GST_INCLUDE_DIRS}
-  ${KERNEL_BUILDDIR}/usr/include
   $<$<BOOL:${OPEN_CV_FOUND}>:${OPEN_CV_INCLUDE_DIRS}>
 )
 
 target_include_directories(${TARGET_NAME} INTERFACE
   $<BUILD_INTERFACE:${QTI_PLUGINS_BASE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
-)
-
-# Path for some headers in msm-5.4 kernel.
-target_include_directories(${TARGET_NAME} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include/vidc
-)
-
-# Path for some headers in msm-5.15 kernel.
-target_include_directories(${TARGET_NAME} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include/uapi
 )
 
 target_link_libraries(${TARGET_NAME} PRIVATE

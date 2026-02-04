@@ -8,6 +8,11 @@ add_library(${KAFKA} SHARED
 
 pkg_check_modules(RDKAFKA REQUIRED rdkafka)
 
+set_target_properties(${KAFKA} PROPERTIES
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}
+)
+
 target_include_directories(${KAFKA} PRIVATE
   ${GST_INCLUDE_DIRS}
   ${RDKAFKA_INCLUDE_DIRS}

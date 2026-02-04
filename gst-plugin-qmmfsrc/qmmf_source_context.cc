@@ -1001,7 +1001,8 @@ gst_qmmf_context_unregister_metadata_pad (GstQmmfContext * context, GstPad * pad
               " after pad unregistration", meta_pair.first);
 
           if (ref_info.metadata) {
-            free_camera_metadata (ref_info.metadata);
+            ::camera::CameraMetadata meta_wrapper(ref_info.metadata);
+            meta_wrapper.clear();
             ref_info.metadata = NULL;
           }
         }
@@ -1087,7 +1088,9 @@ gst_qmmf_context_store_metadata (GstQmmfContext * context, gpointer metadata)
     return;
   }
 
-  camerameta = clone_camera_metadata (buffer);
+  ::camera::CameraMetadata cloned_meta;
+  cloned_meta = buffer;
+  camerameta = cloned_meta.release();
 
   MetadataRefCount ref_count_info;
   ref_count_info.metadata = camerameta;
@@ -1714,7 +1717,8 @@ gst_qmmf_context_free (GstQmmfContext * context)
         GST_WARNING ("Freeing unreleased metadata for timestamp %" G_GUINT64_FORMAT
             " with ref_count %u/%u", pair.first, pair.second.ref_count,
             pair.second.total_pads);
-        free_camera_metadata (pair.second.metadata);
+        ::camera::CameraMetadata meta_wrapper(pair.second.metadata);
+        meta_wrapper.clear();
         pair.second.metadata = NULL;
       }
     }
@@ -2114,10 +2118,11 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
   rotate = qmmfsrc_gst_get_stream_rotaion (vpad->rotate);
   colorimetry = qmmfsrc_gst_get_stream_colorimetry (vpad->colorimetry);
   // Full range colorspace only support P010 or TP10
-  if (colorimetry != ::qmmf::recorder::Colorimetry::kBT601 &&
+  if ((colorimetry == ::qmmf::recorder::Colorimetry::kBT2100HLGFULL ||
+       colorimetry == ::qmmf::recorder::Colorimetry::kBT2100PQFULL) &&
       !(vpad->format == GST_VIDEO_FORMAT_P010_10LE ||
       vpad->format == GST_VIDEO_FORMAT_NV12_Q10LE32C)) {
-    GST_ERROR ("Unsupported video %s format with full range colorspace!",
+    GST_ERROR ("Video %s format is not 10bit, unsupported by BT2100HLG or PQ!",
         gst_qmmf_video_format_to_string (vpad->format));
     GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
     return FALSE;
@@ -2357,10 +2362,11 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
     gst_structure_get_uint (ipad->params, "quality", &imgparam.quality);
   } else if (ipad->codec == GST_IMAGE_CODEC_NONE) {
     // Full range colorspace only support P010 or TP10
-    if (colorimetry != ::qmmf::recorder::Colorimetry::kBT601 &&
+    if ((colorimetry == ::qmmf::recorder::Colorimetry::kBT2100HLGFULL ||
+         colorimetry == ::qmmf::recorder::Colorimetry::kBT2100PQFULL) &&
         !(ipad->format == GST_VIDEO_FORMAT_P010_10LE ||
         ipad->format == GST_VIDEO_FORMAT_NV12_Q10LE32C)) {
-      GST_ERROR ("Unsupported image %s format with full range colorspace!",
+      GST_ERROR ("Image %s format is not 10bit, unsupported by BT2100HLG or PQ!",
           gst_qmmf_video_format_to_string (ipad->format));
       GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
       return FALSE;
