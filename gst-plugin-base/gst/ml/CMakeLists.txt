@@ -53,20 +53,6 @@ target_include_directories(${TARGET_NAME} INTERFACE
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
 )
 
-target_include_directories(${TARGET_NAME} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include
-)
-
-# Path for some headers in msm-5.4 kernel.
-target_include_directories(${TARGET_NAME} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include/vidc
-)
-
-# Path for some headers in msm-5.15 kernel.
-target_include_directories(${TARGET_NAME} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include/uapi
-)
-
 target_compile_definitions(${TARGET_NAME} PRIVATE
   GST_ML_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/ml/modules"
   $<$<BOOL:${HAVE_LINUX_DMA_HEAP_H}>:HAVE_LINUX_DMA_HEAP_H>
