@@ -29,10 +29,6 @@ target_include_directories(${TARGET_NAME} INTERFACE
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
 )
 
-target_include_directories(${TARGET_NAME} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include
-)
-
 target_link_libraries(${TARGET_NAME} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
