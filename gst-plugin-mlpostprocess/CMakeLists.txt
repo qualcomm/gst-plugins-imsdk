@@ -57,7 +57,7 @@ add_library(${GST_QTI_ML_POST_PROCESS} SHARED
 )
 
 target_compile_definitions(${GST_QTI_ML_POST_PROCESS} PRIVATE
-  GST_ML_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/imsdk/mlpostprocess/modules"
+  GST_ML_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/imsdk/qtimlpostprocess/modules"
   $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
 )
 
