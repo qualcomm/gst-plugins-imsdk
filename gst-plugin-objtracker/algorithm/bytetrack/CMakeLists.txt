@@ -3,6 +3,9 @@ set(GST_QTI_OBJTRACKER_BYTETRACK  objtracker-bytetrack)
 set(LIB_NAME ${GST_QTI_OBJTRACKER_BYTETRACK})
 set(LIB_DESCRIPTION "GStreamer QTI Bytetrack Algorithm library")
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(EIGEN3 REQUIRED eigen3)
+
 add_library(${GST_QTI_OBJTRACKER_BYTETRACK} SHARED
   bytetrack-objtracker.cc
   BYTETracker.cpp
@@ -18,8 +21,8 @@ set_target_properties(${GST_QTI_OBJTRACKER_BYTETRACK} PROPERTIES
 )
 
 target_include_directories(${GST_QTI_OBJTRACKER_BYTETRACK} PRIVATE
+  ${EIGEN3_INCLUDE_DIRS}
   ${GST_INCLUDE_DIRS}
-  ${SYSROOT_INCDIR}/eigen3
 )
 
 target_link_libraries(${GST_QTI_OBJTRACKER_BYTETRACK} PRIVATE

@@ -52,7 +52,7 @@ target_link_libraries(${GST_QTI_META_TRANSFORM} PRIVATE
 )
 
 target_compile_definitions(${GST_QTI_META_TRANSFORM} PRIVATE
-  GST_META_TRANSFORM_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/imsdk/metatransform/modules"
+  GST_META_TRANSFORM_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/imsdk/qtimetatransform/modules"
 )
 
 install(

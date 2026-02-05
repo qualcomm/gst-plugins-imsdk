@@ -258,7 +258,7 @@ melspectrogram (Vectorf &x, int sr, int n_fft, int n_hop,
 static Matrixf
 power2db (Matrixf& x)
 {
-  auto log_sp = 10.0f * x.array ().max (1e-10).log10 ();
+  auto log_sp = 10.0f * x.array ().max (1e-10f).log10 ();
   return log_sp.cwiseMax (log_sp.maxCoeff () - 80.0f);
 }
 
