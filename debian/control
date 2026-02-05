@@ -346,6 +346,7 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
 Description: Sample applications or utilities for Qualcomm GStreamer (sample apps utils).
+Build-Profiles: <sample_apps>
 
 Package: libgstreamer1.0-qcom-sample-apps-utils-dev
 Section: libdevel
@@ -354,6 +355,7 @@ Depends:
  gstreamer1.0-qcom-sample-apps-utils (= ${binary:Version}),
  ${misc:Depends},
 Description: GStreamer plugin package: libgstreamer1.0-qcom-sample-apps-utils-dev.
+Build-Profiles: <sample_apps>
 
 Package: gstreamer1.0-qcom-sample-apps
 Section: utils
