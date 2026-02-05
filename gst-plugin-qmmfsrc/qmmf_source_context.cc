@@ -2180,8 +2180,8 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       GST_WARNING ("Non logical multi camera(%u), logical-stream-type makes no "
           "sense.", context->camera_id);
     } else {
+      ::qmmf::recorder::StreamUsecaseSelect usecase_select;
       ::qmmf::recorder::StreamCameraId cam_id;
-      ::qmmf::recorder::StitchLayoutSelect layout;
       GstQmmfLogicalCamInfo *pinfo = &context->logical_cam_info;
       gchar *info_name = NULL;
 
@@ -2203,17 +2203,17 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       } else if (vpad->log_stream_type < GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
         switch (vpad->log_stream_type) {
           case GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE:
-            GST_DEBUG ("Stitch layout is selected: SideBySide.");
-            layout.stitch_layout = ::qmmf::recorder::StitchLayout::kSideBySide;
+            GST_DEBUG ("Stream usecase is selected: SideBySide.");
+            usecase_select.stream_usecase = ::qmmf::recorder::RecorderStreamUsecase::kSideBySide;
             break;
           case GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA:
-            GST_DEBUG ("Stitch layout is selected: Panorama.");
-            layout.stitch_layout = ::qmmf::recorder::StitchLayout::kPanorama;
+            GST_DEBUG ("Stream usecase is selected: Panorama.");
+            usecase_select.stream_usecase = ::qmmf::recorder::RecorderStreamUsecase::kPanorama;
             break;
           default:
             break;
         }
-        extraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
+        extraparam.Update(::qmmf::recorder::QMMF_STREAM_USECASE, usecase_select);
       } else if (vpad->log_stream_type > GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
         GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
             vpad->log_stream_type);
@@ -2443,13 +2443,19 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
     }
   }
 
+  ::qmmf::recorder::StreamUsecaseSelect usecase_select;
+  if (ipad->log_stream_type == GST_PAD_LOGICAL_STREAM_TYPE_PD) {
+    GST_DEBUG ("Stream usecase is selected: PD.");
+    usecase_select.stream_usecase = ::qmmf::recorder::RecorderStreamUsecase::kPD;
+    xtraparam.Update(::qmmf::recorder::QMMF_STREAM_USECASE, usecase_select);
+  }
+
   if (gst_qmmfsrc_check_logical_cam_support ()) {
     if (!context->logical_cam_info.is_logical_cam) {
       GST_WARNING ("Non logical multi camera(%u), logical-stream-type makes no "
           "sense.", context->camera_id);
     } else {
       ::qmmf::recorder::StreamCameraId cam_id;
-      ::qmmf::recorder::StitchLayoutSelect layout;
       GstQmmfLogicalCamInfo *pinfo = &context->logical_cam_info;
       gchar *info_name = NULL;
 
@@ -2471,17 +2477,17 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
       } else if (ipad->log_stream_type < GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
         switch (ipad->log_stream_type) {
           case GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE:
-            GST_DEBUG ("Stitch layout is selected: SideBySide.");
-            layout.stitch_layout = ::qmmf::recorder::StitchLayout::kSideBySide;
+            GST_DEBUG ("Stream usecase is selected: SideBySide.");
+            usecase_select.stream_usecase = ::qmmf::recorder::RecorderStreamUsecase::kSideBySide;
             break;
           case GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA:
-            GST_DEBUG ("Stitch layout is selected: Panorama.");
-            layout.stitch_layout = ::qmmf::recorder::StitchLayout::kPanorama;
+            GST_DEBUG ("Stream usecase is selected: Panorama.");
+            usecase_select.stream_usecase = ::qmmf::recorder::RecorderStreamUsecase::kPanorama;
             break;
           default:
             break;
         }
-        xtraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
+        xtraparam.Update(::qmmf::recorder::QMMF_STREAM_USECASE, usecase_select);
       } else if (ipad->log_stream_type > GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
         GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
             ipad->log_stream_type);

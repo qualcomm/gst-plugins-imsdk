@@ -777,6 +777,11 @@ gst_qmmfsrc_pad_logical_stream_type_get_type (void)
       "The stream uses all physical cameras and stitch images to panorama.";
   variants[i++].value_nick = "panorama";
 
+  variants[i].value = GST_PAD_LOGICAL_STREAM_TYPE_PD;
+  variants[i].value_name =
+      "The stream uses PD (Phase Detection) data.";
+  variants[i++].value_nick = "pd";
+
   variants[i].value = GST_PAD_LOGICAL_STREAM_TYPE_NONE;
   variants[i].value_name = "None";
   variants[i].value_nick = "none";
