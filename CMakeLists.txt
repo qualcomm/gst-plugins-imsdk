@@ -34,7 +34,7 @@ option(ENABLE_GST_PLUGIN_MSGBROKER "Enable gst-plugin-msgbroker" ${ENABLE_GST_ME
 # ML Plugins
 option(ENABLE_GST_PLUGIN_METAMUX "Enable gst-plugin-metamux" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_METATRANSFORM "Enable gst-plugin-metatransform" ${ENABLE_GST_ML_PLUGINS})
-option(ENABLE_GST_PLUGIN_MLACONVERTER "Enable gst-plugin-mlaconverter" OFF) # not enabled in opensource mainline
+option(ENABLE_GST_PLUGIN_MLACONVERTER "Enable gst-plugin-mlaconverter" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLDEMUX "Enable gst-plugin-mldemux" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLMETAEXTRACTOR "Enable gst-plugin-mlmetaextractor" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLMETAPARSER "Enable gst-plugin-mlmetaparser" ${ENABLE_GST_ML_PLUGINS})
