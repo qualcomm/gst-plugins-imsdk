@@ -55,7 +55,7 @@ target_include_directories(${GST_QTI_ML_META_PARSER} PUBLIC
 )
 
 target_compile_definitions(${GST_QTI_ML_META_PARSER} PRIVATE
-  GST_PARSER_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/imsdk/mlmetaparser/modules"
+  GST_PARSER_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/imsdk/qtimlmetaparser/modules"
 )
 
 target_link_libraries(${GST_QTI_ML_META_PARSER} PRIVATE
