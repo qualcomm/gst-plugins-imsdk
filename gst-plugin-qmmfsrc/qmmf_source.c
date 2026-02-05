@@ -2289,7 +2289,8 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
 
   qmmfsrc->context = gst_qmmf_context_new (qmmfsrc_event_callback,
       qmmfsrc_metadata_callback, qmmfsrc);
-  g_return_if_fail (qmmfsrc->context != NULL);
+  QMMFSRC_RETURN_IF_FAIL (qmmfsrc, qmmfsrc->context != NULL,
+      "Failed to create context");
 
   GST_OBJECT_FLAG_SET (qmmfsrc, GST_ELEMENT_FLAG_SOURCE);
 }
