@@ -44,7 +44,7 @@ option(ENABLE_GST_PLUGIN_MLSNPE "Enable gst-plugin-mlsnpe" ${ENABLE_GST_ML_PLUGI
 option(ENABLE_GST_PLUGIN_MLTFLITE "Enable gst-plugin-mltflite" OFF) # not enabled in opensource mainline
 option(ENABLE_GST_PLUGIN_MLTOOLS "Enable gst-plugin-mltools" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLVCONVERTER "Enable gst-plugin-mlvconverter" ${ENABLE_GST_ML_PLUGINS})
-option(ENABLE_GST_PLUGIN_OBJTRACKER "Enable gst-plugin-objtracker" OFF) # not enabled in opensource mainline
+option(ENABLE_GST_PLUGIN_OBJTRACKER "Enable gst-plugin-objtracker" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_RESTRICTED_ZONE "Enable gst-plugin-restricted-zone" ${ENABLE_GST_ML_PLUGINS})
 
 # Video Processing plugins
