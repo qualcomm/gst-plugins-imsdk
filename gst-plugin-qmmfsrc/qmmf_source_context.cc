@@ -1677,6 +1677,8 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
 void
 gst_qmmf_context_free (GstQmmfContext * context)
 {
+  QMMFSRC_RETURN_IF_FAIL (NULL, context != NULL, "Context is NULL, skip free");
+
   context->recorder->Disconnect ();
   delete context->recorder;
 
@@ -1794,9 +1796,14 @@ gst_qmmf_context_parse_logical_cam_info (GstQmmfContext *context,
 gboolean
 gst_qmmf_context_open (GstQmmfContext * context)
 {
-  ::qmmf::recorder::Recorder *recorder = context->recorder;
+  ::qmmf::recorder::Recorder *recorder = NULL;
   gint status = 0;
-  uint32_t op_mode = context->op_mode;
+  uint32_t op_mode = 0;
+
+  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, context != NULL, FALSE, "Context is NULL");
+
+  recorder = context->recorder;
+  op_mode = context->op_mode;
 
   GST_TRACE ("Open QMMF context");
 
@@ -2772,8 +2779,12 @@ void
 gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     const GValue * value)
 {
-  ::qmmf::recorder::Recorder *recorder = context->recorder;
+  ::qmmf::recorder::Recorder *recorder = NULL;
   ::camera::CameraMetadata meta;
+
+  QMMFSRC_RETURN_IF_FAIL (NULL, context != NULL, "Context is NULL");
+
+  recorder = context->recorder;
 
   switch (param_id) {
     case PARAM_CAMERA_ID:
