@@ -109,7 +109,7 @@ gst_structure_extract_restricted_zones (GQuark field_id, const GValue * value,
     x = g_value_get_int (gst_value_array_get_value (subvalue, 0));
     y = g_value_get_int (gst_value_array_get_value (subvalue, 1));
 
-    zone.push_back(cv::Point2f(x, y));
+    zone.push_back (cv::Point2f (x, y));
 
     GST_INFO ("%s: Coordinate: [%u, %u]", g_quark_to_string (field_id), x, y);
   }
@@ -120,7 +120,7 @@ gst_structure_extract_restricted_zones (GQuark field_id, const GValue * value,
     return FALSE;
   }
 
-  engine->zones.emplace(g_quark_to_string (field_id), zone);
+  engine->zones.emplace (g_quark_to_string (field_id), zone);
   return TRUE;
 }
 
@@ -190,12 +190,17 @@ gst_restricted_zone_engine_process (GstRestrictedZoneEngine * engine, GstBuffer 
   while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (buffer, state)) != NULL) {
     GstStructure *param = NULL;
     GArray *landmarks = NULL, *records = NULL;
+    GValue zones = G_VALUE_INIT, value = G_VALUE_INIT;
     GstVideoKeypoint *l_ankle = NULL, *r_ankle = NULL;
     gpointer key = NULL;
     gfloat distance = -G_MAXFLOAT;
 
-    if (roimeta->roi_type != g_quark_from_static_string ("person"))
+    g_value_init (&zones, GST_TYPE_ARRAY);
+
+    if (roimeta->roi_type != g_quark_from_static_string ("person")) {
+      g_value_unset (&zones);
       continue;
+    }
 
     GST_TRACE ("Received ROI meta %s and ID[0x%X]",
         g_quark_to_string (roimeta->roi_type), roimeta->id);
@@ -204,8 +209,10 @@ gst_restricted_zone_engine_process (GstRestrictedZoneEngine * engine, GstBuffer 
         "ObjectDetection");
 
     // If there are no ROI landmarks do not process this meta.
-    if (!gst_structure_has_field (param, "landmarks"))
+    if (!gst_structure_has_field (param, "landmarks")) {
+      g_value_unset (&zones);
       continue;
+    }
 
     gst_structure_get (param, "landmarks", G_TYPE_ARRAY, &landmarks, NULL);
 
@@ -213,11 +220,13 @@ gst_restricted_zone_engine_process (GstRestrictedZoneEngine * engine, GstBuffer 
     l_ankle = gst_video_landmarks_get_keypoint (landmarks, "left_ankle");
     r_ankle = gst_video_landmarks_get_keypoint (landmarks, "right_ankle");
 
-    if ((l_ankle == NULL) || (r_ankle == NULL))
+    if ((l_ankle == NULL) || (r_ankle == NULL)) {
+      g_value_unset (&zones);
       continue;
+    }
 
-    cv::Point2f l_foot(roimeta->x + l_ankle->x, roimeta->y + l_ankle->y);
-    cv::Point2f r_foot(roimeta->x + r_ankle->x, roimeta->y + r_ankle->y);
+    cv::Point2f l_foot (l_ankle->x, l_ankle->y);
+    cv::Point2f r_foot (r_ankle->x, r_ankle->y);
 
     GST_TRACE ("ROI '%s' with ID[0x%X]: Left Foot [%f %f] Right Foot [%f %f]",
         g_quark_to_string (roimeta->roi_type), roimeta->id, l_foot.x, l_foot.y,
@@ -227,12 +236,19 @@ gst_restricted_zone_engine_process (GstRestrictedZoneEngine * engine, GstBuffer 
       auto name = zone.first.c_str();
       auto polygon = zone.second;
 
-      auto l_distance = cv::pointPolygonTest(polygon, l_foot, true);
-      auto r_distance = cv::pointPolygonTest(polygon, r_foot, true);
+      auto l_distance = cv::pointPolygonTest (polygon, l_foot, true);
+      auto r_distance = cv::pointPolygonTest (polygon, r_foot, true);
 
       GST_LOG ("Distance of ROI '%s' with ID[0x%X] from '%s': Left Foot [%f] "
           "Right Foot [%f]", g_quark_to_string (roimeta->roi_type), roimeta->id,
           name, l_distance, r_distance);
+
+      // If current ROI is in the given zone
+      if (MAX (l_distance, r_distance) >= 0) {
+        g_value_init (&value, G_TYPE_STRING);
+        g_value_set_string (&value, name);
+        gst_value_array_append_and_take_value (&zones, &value);
+      }
 
       distance = MAX (distance, MAX (l_distance, r_distance));
 
@@ -246,18 +262,25 @@ gst_restricted_zone_engine_process (GstRestrictedZoneEngine * engine, GstBuffer 
 
     // No distance records for this ROI meta, create a new records list.
     if (records == NULL) {
+      // This probably means the object appears on the frame for the first time
+      // (no trajectory data available)
       records = g_array_new (FALSE, FALSE, sizeof (gfloat));
       g_hash_table_insert (engine->trajectories, key, records);
     }
 
+    // Append current distance to trajectories array (to track movement of object over time)
     records = g_array_append_val (records, distance);
 
     // Records exceed maximum depth, discard old entires.
     while (records->len > engine->maxrecords)
       records = g_array_remove_index (records, 0);
 
-    if (gst_min_distance_records_in_zone (records))
+    if (gst_min_distance_records_in_zone (records)) {
       gst_structure_set (param, "color", G_TYPE_UINT, 0xFF0000FF, NULL);
+      gst_structure_take_value (param, "zones", &zones);
+    }
+
+    g_value_unset (&zones);
   }
 
   return TRUE;
