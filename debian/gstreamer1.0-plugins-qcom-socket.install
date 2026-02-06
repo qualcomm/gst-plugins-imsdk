@@ -1,2 +1,2 @@
-usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libqtisocketsink.so
-usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libqtisocketsrc.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtisocketsink.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtisocketsrc.so
