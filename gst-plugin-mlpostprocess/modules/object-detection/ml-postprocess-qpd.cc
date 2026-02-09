@@ -275,9 +275,13 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       lmk.x = (cx + x) * paxelwidth;
       lmk.y = (cy + y) * paxelheight;
 
-      lmk.x = (lmk.x - region.x) / region.width;
-      lmk.y = (lmk.y - region.y) / region.height;
+      // Normalize landmark X and Y within bbox coordinates
+      lmk.x -= region.x + (entry.left * region.width);
+      lmk.y -= region.y + (entry.top * region.height);
 
+      // Convert to relative coordinates.
+      lmk.x /= (entry.right - entry.left) * region.width;
+      lmk.y /= (entry.bottom - entry.top) * region.height;
 
       lmk.x = std::min(std::max(lmk.x, 0.0f), 1.0f);
       lmk.y = std::min(std::max(lmk.y, 0.0f), 1.0f);
