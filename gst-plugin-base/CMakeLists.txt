@@ -6,6 +6,9 @@ project(gstreamer-qcom-oss-base-1.0
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+find_program(GIR_SCANNER "g-ir-scanner-wrapper")
+find_program(GIR_COMPILER "g-ir-compiler-wrapper")
+
 find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools

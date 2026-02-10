@@ -86,3 +86,56 @@ install(
   FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
   DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/pkgconfig
 )
+
+if(GIR_SCANNER AND GIR_COMPILER AND PYTHON_SITEPACKAGES_DIR)
+  # Generate GIR and typelib files for Python
+  set(GIR_TARGET_NAME "GstQtiML-1.0.gir")
+
+  add_custom_command(
+    OUTPUT ${GIR_TARGET_NAME}
+    COMMAND ${GIR_SCANNER}
+            --warn-all --verbose
+            --namespace=GstQtiML
+            --nsversion=1.0
+            --identifier-prefix=GstML
+            --identifier-prefix=Gst
+            --symbol-prefix=gst_ml
+            --symbol-prefix=gst
+            --library=${TARGET_NAME}
+            --output=${GIR_TARGET_NAME}
+            --include=Gst-1.0
+            --include=GstVideo-1.0
+            --cflags-begin -I${QTI_PLUGINS_BASE_SOURCE_DIR} --cflags-end
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-type.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-type.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-info.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-info.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-frame.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-frame.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstmlmeta.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstmlmeta.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstmlpool.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstmlpool.c
+    DEPENDS ${TARGET_NAME}
+  )
+
+  set(TYPELIB_TARGET_NAME "GstQtiML-1.0.typelib")
+
+  add_custom_command(
+    OUTPUT ${TYPELIB_TARGET_NAME}
+    COMMAND ${GIR_COMPILER} ${GIR_TARGET_NAME} --output=${TYPELIB_TARGET_NAME}
+    DEPENDS ${GIR_TARGET_NAME}
+  )
+
+  add_custom_target(GstQtiML-1.0 ALL DEPENDS ${TYPELIB_TARGET_NAME})
+
+  install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/${GIR_TARGET_NAME}
+    DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_DATADIR}/gir-1.0/
+  )
+
+  install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/${TYPELIB_TARGET_NAME}
+    DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/girepository-1.0/
+  )
+endif()
