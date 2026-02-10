@@ -612,19 +612,23 @@ gst_ml_audio_converter_set_property (GObject * object, guint prop_id,
     }
     case PROP_PARAMS:
     {
+      const gchar *string = g_value_get_string (value);
       GValue structure = G_VALUE_INIT;
 
       g_value_init (&structure, GST_TYPE_STRUCTURE);
 
-      if (!gst_parse_string_property_value (value, &structure)) {
-        GST_ERROR_OBJECT (mlconverter, "Failed to parse zone configuration!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&structure, string)) {
+        GST_ERROR_OBJECT (mlconverter, "Failed to deserialize file!");
+        break;
+      } else if (!gst_value_deserialize (&structure, string)) {
+        GST_ERROR_OBJECT (mlconverter, "Failed to deserialize string!");
         break;
       }
 
-      if (mlconverter->params != NULL)
-        gst_structure_free (mlconverter->params);
-
+      g_clear_pointer (&mlconverter->params, gst_structure_free);
       mlconverter->params = GST_STRUCTURE (g_value_dup_boxed (&structure));
+
       g_value_unset (&structure);
       break;
     }

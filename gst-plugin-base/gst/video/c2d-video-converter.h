@@ -47,7 +47,7 @@ typedef struct _GstC2dVideoConverter GstC2dVideoConverter;
  *
  * Initialize instance of C2D converter backend.
  *
- * return: Pointer to C2D converter on success or NULL on failure
+ * Returns: Pointer to C2D converter on success or NULL on failure
  */
 GST_VIDEO_API GstC2dVideoConverter *
 gst_c2d_video_converter_new (GstStructure * settings);
@@ -57,8 +57,6 @@ gst_c2d_video_converter_new (GstStructure * settings);
  * @convert: Pointer to C2D converter backend.
  *
  * Deinitialise the C2D converter.
- *
- * return: NONE
  */
 GST_VIDEO_API void
 gst_c2d_video_converter_free (GstC2dVideoConverter * convert);
@@ -72,7 +70,7 @@ gst_c2d_video_converter_free (GstC2dVideoConverter * convert);
  *
  * Submit the a number of video composition which will be executed together.
  *
- * return: Pointer to request on success or NULL on failure
+ * Returns: Pointer to request on success or NULL on failure
  */
 GST_VIDEO_API gboolean
 gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
@@ -86,7 +84,7 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
  *
  * Wait for the sumbitted to the GPU compositions to finish.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
 gst_c2d_video_converter_wait_fence (GstC2dVideoConverter * convert,
@@ -97,8 +95,6 @@ gst_c2d_video_converter_wait_fence (GstC2dVideoConverter * convert,
  * @convert: Pointer to C2D converter backend.
  *
  * Wait for compositions sumbitted to the GPU to finish and flush cached data.
- *
- * return: NONE
  */
 GST_VIDEO_API void
 gst_c2d_video_converter_flush (GstC2dVideoConverter * convert);

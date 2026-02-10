@@ -680,6 +680,7 @@ gst_ml_video_converter_apply_affine_matrix (GstMLVideoConverter * mlconverter,
 
   param = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
   value = gst_structure_get_value (param, "xtraparams");
+
   xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
   value = gst_structure_get_value (xtraparams, "affine-matrix");
 
@@ -693,10 +694,10 @@ gst_ml_video_converter_apply_affine_matrix (GstMLVideoConverter * mlconverter,
   for (idx = 0; idx < 9; idx++, row = (idx / 3), col = (idx % 3))
     matrix[row][col] = g_value_get_double (gst_value_array_get_value (value, idx));
 
-  gst_video_point_affine_correction (&(source->a), matrix);
-  gst_video_point_affine_correction (&(source->b), matrix);
-  gst_video_point_affine_correction (&(source->c), matrix);
-  gst_video_point_affine_correction (&(source->d), matrix);
+  gst_video_point_affine_transform (&(source->a), matrix);
+  gst_video_point_affine_transform (&(source->b), matrix);
+  gst_video_point_affine_transform (&(source->c), matrix);
+  gst_video_point_affine_transform (&(source->d), matrix);
 
   GST_TRACE_OBJECT (mlconverter, "Affine transformation quadrilateral: A(%f, %f)"
       " B(%f, %f) C(%f, %f) D(%f, %f)", source->a.x, source->a.y, source->b.x,
@@ -1686,7 +1687,7 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
 
   config = gst_buffer_pool_get_config (pool);
 
-  alignment = gst_gfx_adreno_get_alignment ();
+  alignment = gst_gfx_get_alignment ();
   stride = GST_ML_INFO_TENSOR_DIM_W (mlconverter->tensorlayout, &info) *
       GST_ML_INFO_TENSOR_DIM_C (mlconverter->tensorlayout, &info);
 

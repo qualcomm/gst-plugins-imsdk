@@ -122,7 +122,7 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
   pixinfo.format = GST_VIDEO_INFO_FORMAT (info);
 
   success = gst_c2_engine_set_parameter (c2vdec->engine,
-      GST_C2_PARAM_OUT_PIXEL_FORMAT, GPOINTER_CAST (&pixinfo));
+      GST_C2_PARAM_OUT_PIXEL_FORMAT, GST_PTR_CAST (&pixinfo));
   if (!success) {
     GST_ERROR_OBJECT (c2vdec, "Failed to set output format parameter!");
     return FALSE;
@@ -132,7 +132,7 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
   resolution.height = GST_VIDEO_INFO_HEIGHT (info);
 
   success = gst_c2_engine_set_parameter (c2vdec->engine,
-      GST_C2_PARAM_OUT_RESOLUTION, GPOINTER_CAST (&resolution));
+      GST_C2_PARAM_OUT_RESOLUTION, GST_PTR_CAST (&resolution));
   if (!success) {
     GST_ERROR_OBJECT (c2vdec, "Failed to set output resolution parameter!");
     return FALSE;
@@ -143,7 +143,7 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
       info->colorimetry.transfer != GST_VIDEO_TRANSFER_UNKNOWN &&
       info->colorimetry.range != GST_VIDEO_COLOR_RANGE_UNKNOWN) {
     success = gst_c2_engine_set_parameter (c2vdec->engine,
-        GST_C2_PARAM_COLOR_ASPECTS_TUNING, GPOINTER_CAST (&info->colorimetry));
+        GST_C2_PARAM_COLOR_ASPECTS_TUNING, GST_PTR_CAST (&info->colorimetry));
     if (!success) {
       GST_ERROR_OBJECT (c2vdec, "Failed to set Color Aspects parameter!");
       return FALSE;
@@ -167,7 +167,7 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
 
     if (success) {
       success = gst_c2_engine_set_parameter (c2vdec->engine,
-          GST_C2_PARAM_HDR_STATIC_METADATA, GPOINTER_CAST (&hdrstaticinfo));
+          GST_C2_PARAM_HDR_STATIC_METADATA, GST_PTR_CAST (&hdrstaticinfo));
       if (!success) {
         GST_ERROR_OBJECT (c2vdec, "Failed to set Hdr static metadata parameter!");
         return FALSE;
@@ -182,7 +182,7 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
       GST_VIDEO_INFO_FPS_D (info), &framerate);
 
   success = gst_c2_engine_set_parameter (c2vdec->engine,
-      GST_C2_PARAM_IN_FRAMERATE, GPOINTER_CAST (&framerate));
+      GST_C2_PARAM_IN_FRAMERATE, GST_PTR_CAST (&framerate));
   if (!success) {
     GST_ERROR_OBJECT (c2vdec, "Failed to set input framerate parameter!");
     return FALSE;

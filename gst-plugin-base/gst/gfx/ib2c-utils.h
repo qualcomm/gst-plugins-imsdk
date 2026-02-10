@@ -15,10 +15,10 @@
 
 namespace ib2c {
 
-#define EXTRACT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
-#define EXTRACT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
-#define EXTRACT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
-#define EXTRACT_ALPHA_COLOR(color) (((color) & 0xFF) / 255.0)
+#define GST_COLOR_RED(color)   (((color >> 24) & 0xFF) / 255.0)
+#define GST_COLOR_GREEN(color) (((color >> 16) & 0xFF) / 255.0)
+#define GST_COLOR_BLUE(color)  (((color >> 8) & 0xFF) / 255.0)
+#define GST_COLOR_ALPHA(color) (((color) & 0xFF) / 255.0)
 
 template<typename ...Args> void Log(Args&&... args) {
 

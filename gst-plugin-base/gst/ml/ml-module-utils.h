@@ -19,7 +19,7 @@ G_BEGIN_DECLS
  *
  * Get an available unique sequentially increasing number.
  *
- * return: Index on success or -1 on failure.
+ * Returns: Index on success or -1 on failure.
  */
 GST_API gint8
 gst_ml_stage_get_unique_index (void);
@@ -31,7 +31,7 @@ gst_ml_stage_get_unique_index (void);
  * Add an index number to the internal mapping.
  * If the index is already registered this function will fail.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_ml_stage_register_unique_index (gint8 index);
@@ -42,7 +42,7 @@ gst_ml_stage_register_unique_index (gint8 index);
  *
  * Remove an index number from the internal mapping.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_stage_unregister_unique_index (gint8 index);
@@ -56,7 +56,7 @@ gst_ml_stage_unregister_unique_index (gint8 index);
  *
  * Helper function for assigning a value to a tensor.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint idx,
@@ -71,7 +71,7 @@ gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint idx,
  *
  * Helper function for comparing values at two indexes inside the same tensor.
  *
- * return: (1) If value at left index is greater.
+ * Returns: (1) If value at left index is greater.
  *         (-1) If value at right index is greater.
  *         (0) If both values are equal
  */
@@ -85,7 +85,7 @@ gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
  * Helper function for retrieving if the the postion and dimensions of
  * the region exists
  *
- * return: (TRUE) The source region fields exists.
+ * Returns: (TRUE) The source region fields exists.
  *         (FALSE) The source region fields doesn't exists.
  */
 gboolean
@@ -99,7 +99,7 @@ gst_ml_structure_has_source_dimensions (const GstStructure * structure);
  *
  * Helper function for retrieving if the width and height exist.
  *
- * return: (TRUE) The width and height fields exists.
+ * Returns: (TRUE) The width and height fields exists.
  *         (FALSE) The width and height fields doesn't exists.
  */
 GST_API void
@@ -115,7 +115,7 @@ gst_ml_structure_set_source_dimensions (GstStructure * structure,
  * Helper function for retrieving the width and height of the model source
  * image tensor. Primary to be used in some post-processing modules.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_structure_get_source_dimensions (const GstStructure * structure,
@@ -128,7 +128,7 @@ gst_ml_structure_get_source_dimensions (const GstStructure * structure,
  * Helper function for retrieving if the the postion and dimensions of
  * the region exists
  *
- * return: (TRUE) The source region fields exists.
+ * Returns: (TRUE) The source region fields exists.
  *         (FALSE) The source region fields doesn't exists.
  */
 gboolean
@@ -142,7 +142,7 @@ gst_ml_structure_has_source_region (const GstStructure * structure);
  * Helper function for populating the postion and dimensions of the region
  * in the model source tensor actually ocupied with data.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_structure_set_source_region (GstStructure * structure,
@@ -156,7 +156,7 @@ gst_ml_structure_set_source_region (GstStructure * structure,
  * Helper function for retrieving the postion and dimensions of the region
  * in the model source tensor actually ocupied with data.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_structure_get_source_region (const GstStructure * structure,

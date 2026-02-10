@@ -170,26 +170,3 @@ gst_buffer_get_text_metas_parent_id (GstBuffer * buffer, const gint parent_id)
   }
   return metalist;
 }
-
-// TODO: NEEDED?
-GstTextMeta *
-gst_buffer_copy_text_meta (GstBuffer * buffer, GstTextMeta * meta)
-{
-  g_return_val_if_fail (buffer != NULL, NULL);
-  g_return_val_if_fail (meta != NULL, NULL);
-  g_return_val_if_fail (meta->contents != NULL, NULL);
-
-  GstTextMeta *newmeta = gst_buffer_add_text_meta (buffer, meta->contents,
-      meta->confidence, meta->color);
-
-  if (NULL == newmeta)
-    return NULL;
-
-  if (meta->xtraparams != NULL)
-    newmeta->xtraparams = gst_structure_copy (meta->xtraparams);
-
-  newmeta->id = meta->id;
-  newmeta->parent_id = meta->parent_id;
-
-  return newmeta;
-}

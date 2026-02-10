@@ -341,8 +341,8 @@ gst_ml_audio_classification_fill_video_output (
 
       // Set text color.
       cairo_set_source_rgba (context,
-            EXTRACT_RED_COLOR (entry->color), EXTRACT_GREEN_COLOR (entry->color),
-            EXTRACT_BLUE_COLOR (entry->color), EXTRACT_ALPHA_COLOR (entry->color));
+            GST_COLOR_RED (entry->color), GST_COLOR_GREEN (entry->color),
+            GST_COLOR_BLUE (entry->color), GST_COLOR_ALPHA (entry->color));
 
       // (0,0) is at top left corner of the buffer.
       cairo_move_to (context, 0.0, (fontsize * (num + 1)) - 6);

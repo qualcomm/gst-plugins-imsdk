@@ -52,42 +52,45 @@ gst_ml_frame_map (GstMLFrame * frame, const GstMLInfo * info,
     gsize size = (n_memory == 1) ? gst_ml_info_size (&(frame)->info) :
         gst_ml_info_tensor_size (&(frame)->info, idx);
 
-    success = gst_buffer_map_range (buffer, idx, 1, &(frame)->map[idx], flags);
+    success = gst_buffer_map_range (buffer, idx, 1, &(frame)->mapinfo[idx], flags);
 
     if (!success) {
       GST_ERROR ("Failed to map buffer %p with memory at idx %u!", buffer, idx);
 
       for (num = 0; num < idx; ++num)
-        gst_buffer_unmap (buffer, &(frame)->map[num]);
+        gst_buffer_unmap (buffer, &(frame)->mapinfo[num]);
 
       return FALSE;
-    } else if (frame->map[idx].size < size) {
+    } else if (frame->mapinfo[idx].size < size) {
       GST_ERROR ("Size mismatch for buffer %p with memory at idx %u! "
           "Expected %" G_GSIZE_FORMAT " but received %" G_GSIZE_FORMAT "!",
-          buffer, idx, size, frame->map[idx].size);
+          buffer, idx, size, frame->mapinfo[idx].size);
 
       for (num = 0; num <= idx; ++num)
-        gst_buffer_unmap (buffer, &(frame)->map[num]);
+        gst_buffer_unmap (buffer, &(frame)->mapinfo[num]);
 
       return FALSE;
     }
   }
 
   frame->buffer = buffer;
-
   return TRUE;
 }
 
 void
 gst_ml_frame_unmap (GstMLFrame * frame)
 {
-  GstBuffer *buffer = NULL;
-  guint idx = 0;
+  guint idx = 0, n_memory = 0;
 
   g_return_if_fail (frame != NULL);
 
-  buffer = frame->buffer;
+  if (frame->buffer == NULL)
+    return;
 
-  for (idx = 0; idx < gst_buffer_n_memory (buffer); idx++)
-    gst_buffer_unmap (buffer, &(frame)->map[idx]);
+  n_memory = gst_buffer_n_memory (frame->buffer);
+
+  for (idx = 0; idx < n_memory; idx++)
+    gst_buffer_unmap (frame->buffer, &(frame)->mapinfo[idx]);
+
+  frame->buffer = NULL;
 }

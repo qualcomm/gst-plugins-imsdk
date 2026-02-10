@@ -397,7 +397,7 @@ gst_video_transform_decide_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
-  if (gst_query_get_video_alignment (query, &ds_align)) {
+  if (gst_query_parse_video_alignment (query, &ds_align)) {
     GST_DEBUG_OBJECT (vtrans, "Downstream alignment: padding (top: %u bottom: "
         "%u left: %u right: %u) stride (%u, %u, %u, %u)", ds_align.padding_top,
         ds_align.padding_bottom, ds_align.padding_left, ds_align.padding_right,
@@ -405,7 +405,7 @@ gst_video_transform_decide_allocation (GstBaseTransform * base,
         ds_align.stride_align[2], ds_align.stride_align[3]);
 
     // Find the most the appropriate alignment between us and downstream.
-    align = gst_video_calculate_common_alignment (&align, &ds_align);
+    gst_video_alignment_update (&align, &ds_align);
 
     GST_DEBUG_OBJECT (vtrans, "Common alignment: padding (top: %u bottom: %u "
         "left: %u right: %u) stride (%u, %u, %u, %u)", align.padding_top,
@@ -1599,7 +1599,7 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   blit.info = vtrans->ininfo;
 
   if ((vtrans->crop.w != 0) && (vtrans->crop.h != 0)) {
-    gst_video_rectangle_to_quadrilateral (&(vtrans->crop), &(blit.source));
+    gst_video_quadrilateral_from_rectangle (&(blit.source), &(vtrans->crop));
     blit.mask |= GST_VCE_MASK_SOURCE;
   }
 
@@ -1677,19 +1677,23 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
       break;
     case PROP_BACKEND_PARAM:
     {
+      const gchar *string = g_value_get_string (value);
       GValue structure = G_VALUE_INIT;
 
       g_value_init (&structure, GST_TYPE_STRUCTURE);
 
-      if (!gst_parse_string_property_value (value, &structure)) {
-        GST_ERROR_OBJECT (vtrans, "Failed to parse backend paramters!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&structure, string)) {
+        GST_ERROR_OBJECT (vtrans, "Failed to deserialize file!");
+        break;
+      } else if (!gst_value_deserialize (&structure, string)) {
+        GST_ERROR_OBJECT (vtrans, "Failed to deserialize string!");
         break;
       }
 
-      if (vtrans->backendparam != NULL)
-        gst_structure_free (vtrans->backendparam);
-
+      g_clear_pointer (&vtrans->backendparam, gst_structure_free);
       vtrans->backendparam = GST_STRUCTURE (g_value_dup_boxed (&structure));
+
       g_value_unset (&structure);
       break;
     }

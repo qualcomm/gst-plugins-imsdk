@@ -21,31 +21,31 @@ G_BEGIN_DECLS
     (GstVideoRegionOfInterestMeta*) gst_buffer_iterate_meta_filtered (buffer, \
         &state, GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE)
 
-#define GINT8_PTR_CAST(data)             ((gint8*) data)
-#define GUINT8_PTR_CAST(data)            ((guint8*) data)
-#define GINT16_PTR_CAST(data)            ((gint16*) data)
-#define GUINT16_PTR_CAST(data)           ((guint16*) data)
-#define GINT32_PTR_CAST(data)            ((gint32*) data)
-#define GUINT32_PTR_CAST(data)           ((guint32*) data)
-#define GINT64_PTR_CAST(data)            ((gint64*) data)
-#define GUINT64_PTR_CAST(data)           ((guint64*) data)
+#define GST_INT8_PTR_CAST(data)        ((gint8*) data)
+#define GST_UINT8_PTR_CAST(data)       ((guint8*) data)
+#define GST_INT16_PTR_CAST(data)       ((gint16*) data)
+#define GST_UINT16_PTR_CAST(data)      ((guint16*) data)
+#define GST_INT32_PTR_CAST(data)       ((gint32*) data)
+#define GST_UINT32_PTR_CAST(data)      ((guint32*) data)
+#define GST_INT64_PTR_CAST(data)       ((gint64*) data)
+#define GST_UINT64_PTR_CAST(data)      ((guint64*) data)
 #if defined(__ARM_FP16_FORMAT_IEEE)
-#define GFLOAT16_PTR_CAST(data)          ((__fp16*) data)
+#define GST_FLOAT16_PTR_CAST(data)     ((__fp16*) data)
 #endif // __ARM_FP16_FORMAT_IEEE
-#define GFLOAT_PTR_CAST(data)            ((gfloat*) data)
+#define GST_FLOAT_PTR_CAST(data)       ((gfloat*) data)
 
-#define GPOINTER_CAST(obj)               ((gpointer) obj)
-#define GST_PROTECTION_META_CAST(obj)    ((GstProtectionMeta *) obj)
+#define GST_PTR_CAST(obj)              ((gpointer) obj)
+#define GST_PROTECTION_META_CAST(obj)  ((GstProtectionMeta *) obj)
 
-#define EXTRACT_RED_COLOR(color)         ((color >> 24) & 0xFF)
-#define EXTRACT_GREEN_COLOR(color)       ((color >> 16) & 0xFF)
-#define EXTRACT_BLUE_COLOR(color)        ((color >> 8) & 0xFF)
-#define EXTRACT_ALPHA_COLOR(color)       ((color) & 0xFF)
+#define GST_COLOR_RED(color)           ((color >> 24) & 0xFF)
+#define GST_COLOR_GREEN(color)         ((color >> 16) & 0xFF)
+#define GST_COLOR_BLUE(color)          ((color >> 8) & 0xFF)
+#define GST_COLOR_ALPHA(color)         ((color) & 0xFF)
 
-#define EXTRACT_FLOAT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
-#define EXTRACT_FLOAT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
-#define EXTRACT_FLOAT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
-#define EXTRACT_FLOAT_ALPHA_COLOR(color) (((color) & 0xFF) / 255.0)
+#define GST_FLOAT_COLOR_RED(color)     (((color >> 24) & 0xFF) / 255.0)
+#define GST_FLOAT_COLOR_GREEN(color)   (((color >> 16) & 0xFF) / 255.0)
+#define GST_FLOAT_COLOR_BLUE(color)    (((color >> 8) & 0xFF) / 255.0)
+#define GST_FLOAT_COLOR_ALPHA(color)   (((color) & 0xFF) / 255.0)
 
 // The bit offset where the stream ID can be embedded in a variable
 #define GST_MUX_STREAM_ID_OFFSET       24
@@ -65,6 +65,33 @@ G_BEGIN_DECLS
 // Macro to extract stage from meta ID.
 #define GST_META_ID_GET_ENTRY(id) (id & 0xFF)
 
+typedef struct _GstClassLabel GstClassLabel;
+
+/**
+ * GstClassLabel:
+ * @name: Label name.
+ * @confidence: Confidence score.
+ * @color: Optional color value.
+ * @xtraparams: (optional): A #GstStructure containing additional parameters.
+ *
+ * Generic helper structure representing a class label.
+ */
+struct _GstClassLabel {
+  GQuark       name;
+  gdouble      confidence;
+  guint32      color;
+  GstStructure *xtraparams;
+};
+
+/**
+ * gst_class_label_reset:
+ * @label: A #GstClassLabel
+ *
+ * Helper function for freeing any allocated resources owned by the label.
+ */
+GST_API void
+gst_class_label_reset (GstClassLabel * label);
+
 /**
  * gst_mux_stream_name:
  * @index: The index of the muxed stream inside the buffer.
@@ -75,7 +102,7 @@ G_BEGIN_DECLS
  * This is convinient in order to avoid the constant allocation of a string
  * when corresponding to the batch number when there is a need for it.
  *
- * return: Pointer to string in "mux-stream-%2d" format or NULL on failure
+ * Returns: Pointer to string in "mux-stream-%2d" format or NULL on failure
  */
 GST_API const gchar *
 gst_mux_stream_name (guint index);
@@ -86,7 +113,7 @@ gst_mux_stream_name (guint index);
  *
  * Extract the stream ID of the buffer memory inside the muxed buffer.
  *
- * return: Stream ID on success or -1 on failure.
+ * Returns: Stream ID on success or -1 on failure.
  */
 GST_API gint
 gst_mux_buffer_get_memory_stream_id (GstBuffer * buffer, gint mem_idx);
@@ -98,24 +125,24 @@ gst_mux_buffer_get_memory_stream_id (GstBuffer * buffer, gint mem_idx);
  *
  * Check if given caps have a feature.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_caps_has_feature (const GstCaps * caps, const gchar * feature);
 
 /**
- * gst_parse_string_property_value:
- * @value: GValue of type G_TYPE_STRING which will be parsed.
- * @output: The output value which will contain the result. Usually of type
+ * gst_value_deserialize_file:
+ * @value: The output value which will contain the result. Usually of type
  *          GST_TYPE_STRUCTURE or G_TYPE_LIST.
+ * @filename: String containing file name and path.
  *
- * Parse a G_TYPE_STRING value containing either a list (or single) GValue in
- * string format or a file location which contains that string data.
+ * Extract the contents of a GStreamer string file and deserialize it to
+ * GValue of type GST_TYPE_STRUCTURE or G_TYPE_LIST.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
-gst_parse_string_property_value (const GValue * value, GValue * output);
+gst_value_deserialize_file (GValue * value, const gchar * filename);
 
 /**
  * gst_structure_from_json_file:
@@ -152,12 +179,15 @@ gst_structure_to_json_string (GstStructure * structure);
 
 /**
  * gst_buffer_get_protection_meta_id:
- * @buffer: The #GstBuffer from in which to search.
+ * @buffer: A #GstBuffer
  * @name: The name of the #GstProtectionMeta.
  *
- * Search and retieve a #GstProtectionMeta with the given name.
+ * Find the #GstProtectionMeta on @buffer with the given @name.
  *
- * return: Pointer to #GstProtectionMeta on success or NULL on failure
+ * Buffers can contain multiple #GstProtectionMeta metadata items.
+ *
+ * Returns: (transfer none) (nullable): The #GstProtectionMeta with @id or
+ *          %NULL when there is no such metadata on @buffer.
  */
 GST_API GstProtectionMeta *
 gst_buffer_get_protection_meta_id (GstBuffer * buffer, const gchar * name);
@@ -168,8 +198,6 @@ gst_buffer_get_protection_meta_id (GstBuffer * buffer, const gchar * name);
  * @source: The #GstBuffer from which to copy #GstProtectionMeta.
  *
  * Copy all #GstProtectionMeta from the source to the destination #GstBuffer.
- *
- * return: NONE
  */
 GST_API void
 gst_buffer_copy_protection_meta (GstBuffer * destination, GstBuffer * source);
@@ -182,7 +210,7 @@ gst_buffer_copy_protection_meta (GstBuffer * destination, GstBuffer * source);
  * Simple replacement for g_array_copy() in glib version < 2.62
  * TODO: Remove when only glib version >= 2.62 is used.
  *
- * return: A copy of of the array.
+ * Returns: A copy of of the array.
  **/
 GST_API GArray *
 g_array_copy (GArray * array);

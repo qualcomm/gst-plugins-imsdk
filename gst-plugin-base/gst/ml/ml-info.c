@@ -34,6 +34,9 @@
 
 #include "ml-info.h"
 
+G_DEFINE_BOXED_TYPE (GstMLInfo, gst_ml_info,
+    (GBoxedCopyFunc) gst_ml_info_copy, (GBoxedFreeFunc) gst_ml_info_free);
+
 #define GST_CAT_DEFAULT gst_ml_info_debug_category()
 static GstDebugCategory *
 gst_ml_info_debug_category (void)

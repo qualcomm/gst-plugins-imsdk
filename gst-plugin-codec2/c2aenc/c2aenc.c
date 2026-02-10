@@ -59,35 +59,35 @@ gst_c2_aenc_setup_parameters (GstC2AEncoder * c2aenc, GstAudioInfo * info,
   GST_TRACE_OBJECT (c2aenc, "streamformat - %d", streamformat);
 
   success = gst_c2_engine_set_parameter (c2aenc->engine,
-      GST_C2_PARAM_IN_SAMPLE_RATE, GPOINTER_CAST (&samplerate));
+      GST_C2_PARAM_IN_SAMPLE_RATE, GST_PTR_CAST (&samplerate));
   if (!success) {
     GST_ERROR_OBJECT (c2aenc, "Failed to set output samplerate parameter!");
     return FALSE;
   }
 
   success = gst_c2_engine_set_parameter (c2aenc->engine,
-      GST_C2_PARAM_IN_CHANNELS_COUNT, GPOINTER_CAST (&channels));
+      GST_C2_PARAM_IN_CHANNELS_COUNT, GST_PTR_CAST (&channels));
   if (!success) {
     GST_ERROR_OBJECT (c2aenc, "Failed to set output channels parameter!");
     return FALSE;
   }
 
   success = gst_c2_engine_set_parameter (c2aenc->engine,
-      GST_C2_PARAM_IN_BITDEPTH, GPOINTER_CAST (&depth));
+      GST_C2_PARAM_IN_BITDEPTH, GST_PTR_CAST (&depth));
   if (!success) {
     GST_ERROR_OBJECT (c2aenc, "Failed to set output depth parameter!");
     return FALSE;
   }
 
   success = gst_c2_engine_set_parameter (c2aenc->engine,
-      GST_C2_PARAM_OUT_AAC_FORMAT, GPOINTER_CAST (&streamformat));
+      GST_C2_PARAM_OUT_AAC_FORMAT, GST_PTR_CAST (&streamformat));
   if (!success) {
     GST_ERROR_OBJECT (c2aenc, "Failed to set output streamformat parameter!");
     return FALSE;
   }
 
   success = gst_c2_engine_set_parameter (c2aenc->engine,
-      GST_C2_PARAM_BITRATE, GPOINTER_CAST (&c2aenc->bitrate));
+      GST_C2_PARAM_BITRATE, GST_PTR_CAST (&c2aenc->bitrate));
   if (!success) {
     GST_ERROR_OBJECT (c2aenc, "Failed to set output streamformat parameter!");
     return FALSE;
@@ -345,7 +345,7 @@ gst_c2_aenc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
     level = (param >> 16) & 0xFFFF;
 
   success = gst_c2_engine_set_parameter (c2aenc->engine,
-      GST_C2_PARAM_PROFILE_LEVEL, GPOINTER_CAST (&param));
+      GST_C2_PARAM_PROFILE_LEVEL, GST_PTR_CAST (&param));
   if (!success) {
     GST_ERROR_OBJECT (c2aenc, "Failed to set profile/level parameter!");
     gst_caps_unref (caps);
@@ -514,7 +514,7 @@ gst_c2_aenc_set_property (GObject * object, guint prop_id,
         break;
 
       gboolean success = gst_c2_engine_set_parameter (c2aenc->engine,
-          GST_C2_PARAM_BITRATE, GPOINTER_CAST (&(c2aenc->bitrate)));
+          GST_C2_PARAM_BITRATE, GST_PTR_CAST (&(c2aenc->bitrate)));
       if (!success)
         GST_ERROR_OBJECT (c2aenc, "Failed to set bitrate parameter!");
       break;

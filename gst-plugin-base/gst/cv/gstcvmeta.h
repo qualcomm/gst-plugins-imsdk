@@ -55,8 +55,8 @@ struct _GstCvOptclFlowStats {
  * GstCvOptclFlowMeta:
  * @meta: Parent #GstMeta
  * @id: ID corresponding to the memory index inside GstBuffer.
- * @mvectors: Array containing GstCvMotionVector data.
- * @stats: Array containing GstCvOptclFlowStats data.
+ * @mvectors: A #GArray of #GstCvMotionVector data.
+ * @stats:  A #GArray of #GstCvOptclFlowStats data.
  *
  * Extra buffer metadata describing CV Optical Flow properties
  */
@@ -73,13 +73,48 @@ GST_API GType gst_cv_optclflow_meta_api_get_type (void);
 
 GST_API const GstMetaInfo * gst_cv_optclflow_meta_get_info (void);
 
+/**
+ * gst_buffer_add_cv_optclflow_meta:
+ * @buffer: A #GstBuffer
+ * @mvectors: (transfer full) (element-type GstCvMotionVector):
+ *            A #GArray containing GstCvMotionVector values
+ * @stats: (transfer full) (element-type GstCvOptclFlowMeta):
+ *         A #GArray containing GstCvOptclFlowMeta values
+ *
+ * Attaches GstCvOptclFlowMeta metadata to @buffer with the given parameters.
+ *
+ * Returns: (transfer none): The #GstCvOptclFlowMeta on @buffer.
+ */
 GST_API GstCvOptclFlowMeta *
 gst_buffer_add_cv_optclflow_meta (GstBuffer * buffer, GArray * mvectors,
                                   GArray * stats);
 
+/**
+ * gst_buffer_get_cv_optclflow_meta:
+ * @buffer: A #GstBuffer
+ *
+ * Find the #GstCvOptclFlowMeta on @buffer with the lowest @id.
+ *
+ * Buffers can contain multiple #GstCvOptclFlowMeta metadata items.
+ *
+ * Returns: (transfer none) (nullable): The #GstCvOptclFlowMeta with lowest id
+ *          (usually 0) or %NULL when there is no such metadata on @buffer.
+ */
 GST_API GstCvOptclFlowMeta *
 gst_buffer_get_cv_optclflow_meta (GstBuffer * buffer);
 
+/**
+ * gst_buffer_get_cv_optclflow_meta_id:
+ * @buffer: A #GstBuffer
+ * @id: a metadata id
+ *
+ * Find the #GstCvOptclFlowMeta on @buffer with the given @id.
+ *
+ * Buffers can contain multiple #GstCvOptclFlowMeta metadata items.
+ *
+ * Returns: (transfer none) (nullable): The #GstCvOptclFlowMeta with @id or
+ *          %NULL when there is no such metadata on @buffer.
+ */
 GST_API GstCvOptclFlowMeta *
 gst_buffer_get_cv_optclflow_meta_id (GstBuffer * buffer, guint id);
 

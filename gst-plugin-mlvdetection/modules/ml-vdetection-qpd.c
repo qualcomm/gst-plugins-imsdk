@@ -246,13 +246,13 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   gst_ml_structure_get_source_region (pmeta->info, &region);
 
   // First tensor represents confidence scores.
-  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  scores = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   // Second tensor represents the coordinates of the bounding boxes.
-  bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+  bboxes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
   // Third tensor represents the landmarks coordinates.
-  landmarks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+  landmarks = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
   // Fourth tensor represents landmark scores.
-  lmkscores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
+  lmkscores = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
 
   // The 1st tensor dimension represents the number of detection classes.
   n_classes = GST_ML_FRAME_DIM (mlframe, 0, 3);

@@ -51,10 +51,10 @@ typedef struct _GstMLTensorMeta GstMLTensorMeta;
  * GstMLTensorMeta:
  * @meta: Parent #GstMeta
  * @id: ID corresponding to the memory index inside GstBuffer.
+ * @name: Tensor name
  * @type: Tensor type
  * @n_dimensions: Number of tensor dimensions
  * @dimensions: Tensor dimensions values
- * @name: Tensor name
  * @qscale: Dequantization scale
  * @qoffset: Dequantization offset
  *
@@ -66,36 +66,69 @@ struct _GstMLTensorMeta {
   guint     id;
 
   // Tensor parameters.
+  GQuark    name;
   GstMLType type;
   guint     n_dimensions;
   guint     dimensions[GST_ML_TENSOR_MAX_DIMS];
-  GQuark    name;
 
   // Dequantization parameters.
   gfloat    qscale;
   gfloat    qoffset;
 };
 
-GST_API
-GType gst_ml_tensor_meta_api_get_type (void);
+GST_API GType
+gst_ml_tensor_meta_api_get_type (void);
 
-GST_API
-const GstMetaInfo * gst_ml_tensor_meta_get_info (void);
+GST_API const GstMetaInfo *
+gst_ml_tensor_meta_get_info (void);
 
-GST_API
-GstMLTensorMeta * gst_buffer_add_ml_tensor_meta (GstBuffer * buffer,
-    const GstMLType type, const guint n_dimensions,
-    const guint dimensions[GST_ML_TENSOR_MAX_DIMS]);
+GST_API gsize
+gst_ml_tensor_meta_size (const GstMLTensorMeta * meta);
 
-GST_API
-GstMLTensorMeta * gst_buffer_get_ml_tensor_meta (GstBuffer * buffer);
+/**
+ * gst_buffer_add_ml_tensor_meta:
+ * @buffer: A #GstBuffer
+ * @type: A #GstMLType
+ * @n_dimensions: Number of tensor dimensions
+ * @dimensions: Array with tensor dimensions
+ *
+ * Attaches GstMLTensorMeta metadata to @buffer with the given parameters.
+ *
+ * Returns: (transfer none): The #GstMLTensorMeta on @buffer.
+ */
+GST_API GstMLTensorMeta *
+gst_buffer_add_ml_tensor_meta (GstBuffer * buffer, const GstMLType type,
+                               const guint n_dimensions,
+                               const guint dimensions[GST_ML_TENSOR_MAX_DIMS]);
 
-GST_API
-GstMLTensorMeta * gst_buffer_get_ml_tensor_meta_id (GstBuffer * buffer,
-                                                    guint id);
+/**
+ * gst_buffer_get_ml_tensor_meta:
+ * @buffer: A #GstBuffer
+ *
+ * Find the #GstMLTensorMeta on @buffer with the lowest @id.
+ *
+ * Buffers can contain multiple #GstMLTensorMeta metadata items.
+ *
+ * Returns: (transfer none) (nullable): The #GstMLTensorMeta with lowest id
+ *          (usually 0) or %NULL when there is no such metadata on @buffer.
+ */
+GST_API GstMLTensorMeta *
+gst_buffer_get_ml_tensor_meta (GstBuffer * buffer);
 
-GST_API
-gsize gst_ml_meta_tensor_size  (const GstMLTensorMeta * meta);
+/**
+ * gst_buffer_get_ml_tensor_meta_id:
+ * @buffer: A #GstBuffer
+ * @id: A metadata id
+ *
+ * Find the #GstMLTensorMeta on @buffer with the given @id.
+ *
+ * Buffers can contain multiple #GstMLTensorMeta metadata items.
+ *
+ * Returns: (transfer none) (nullable): The #GstMLTensorMeta with @id or
+ *          %NULL when there is no such metadata on @buffer.
+ */
+GST_API GstMLTensorMeta *
+gst_buffer_get_ml_tensor_meta_id (GstBuffer * buffer, guint id);
 
 G_END_DECLS
 

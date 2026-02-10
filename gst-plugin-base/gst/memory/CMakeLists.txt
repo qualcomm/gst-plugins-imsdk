@@ -21,7 +21,7 @@ target_include_directories(${TARGET_NAME} PUBLIC
 )
 
 target_include_directories(${TARGET_NAME} INTERFACE
-  $<BUILD_INTERFACE:${QTI_PLUGINS_BASE_DIR}>
+  $<BUILD_INTERFACE:${QTI_PLUGINS_BASE_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
 )
 
@@ -47,7 +47,7 @@ install(
 set(ENV{PKG_CONFIG_PATH} "${CMAKE_CURRENT_BINARY_DIR}:$ENV{PKG_CONFIG_PATH}")
 
 configure_file(
-  ${BASE_COMMON_PC_IN}
+  ${QTI_PLUGINS_BASE_SOURCE_DIR}/common.pc.in
   ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
   @ONLY
 )

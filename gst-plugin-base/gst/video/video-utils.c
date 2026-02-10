@@ -132,7 +132,7 @@ gst_video_retrieve_gpu_alignment (GstVideoInfo * info, GstVideoAlignment * align
   guint num = 0;
 
   for (num = 0; num < GST_VIDEO_INFO_N_PLANES (info); num++) {
-    gint alignment = gst_gfx_adreno_get_alignment ();
+    gint alignment = gst_gfx_get_alignment ();
     gint comp[GST_VIDEO_MAX_COMPONENTS] = { 0, };
 
     gst_video_format_info_component (vfinfo, num, comp);
@@ -156,37 +156,38 @@ gst_video_retrieve_gpu_alignment (GstVideoInfo * info, GstVideoAlignment * align
   return gst_video_info_align (info, align);
 }
 
-GstVideoAlignment
-gst_video_calculate_common_alignment (GstVideoAlignment * l_align,
-    GstVideoAlignment * r_align)
+void
+gst_video_alignment_update (GstVideoAlignment * align,
+    const GstVideoAlignment * otheralign)
 {
-  GstVideoAlignment align = { 0, };
+  GstVideoAlignment alignment = { 0, };
   guint num = 0, max = 0;
 
   // Take the highest number of padding lines and pixels.
-  align.padding_bottom = MAX (l_align->padding_bottom, r_align->padding_bottom);
-  align.padding_top = MAX (l_align->padding_top, r_align->padding_top);
-  align.padding_left = MAX (l_align->padding_left, r_align->padding_left);
-  align.padding_right = MAX (l_align->padding_right, r_align->padding_right);
+  alignment.padding_bottom = MAX (align->padding_bottom, otheralign->padding_bottom);
+  alignment.padding_top = MAX (align->padding_top, otheralign->padding_top);
+  alignment.padding_left = MAX (align->padding_left, otheralign->padding_left);
+  alignment.padding_right = MAX (align->padding_right, otheralign->padding_right);
 
   // Calculate the lowest common multiple for the stride alignments.
   for (num = 0; num < GST_VIDEO_MAX_PLANES; num++) {
-    max = MAX (l_align->stride_align[num], r_align->stride_align[num]);
-    align.stride_align[num] = max;
+    max = MAX (align->stride_align[num], otheralign->stride_align[num]);
+    alignment.stride_align[num] = max;
 
-    if ((l_align->stride_align[num] == 0) || (r_align->stride_align[num] == 0))
+    if ((align->stride_align[num] == 0) || (otheralign->stride_align[num] == 0))
       continue;
 
-    while (((align.stride_align[num] + 1) % (l_align->stride_align[num] + 1) != 0) ||
-           ((align.stride_align[num] + 1) % (r_align->stride_align[num] + 1) != 0))
-      align.stride_align[num] += max + 1;
+    while (((alignment.stride_align[num] + 1) % (align->stride_align[num] + 1) != 0) ||
+           ((alignment.stride_align[num] + 1) % (otheralign->stride_align[num] + 1) != 0))
+      alignment.stride_align[num] += max + 1;
   }
 
-  return align;
+  // Update the alignment structure with the calculated common values.
+  *align = alignment;
 }
 
 gboolean
-gst_query_get_video_alignment (GstQuery * query, GstVideoAlignment * align)
+gst_query_parse_video_alignment (GstQuery * query, GstVideoAlignment * align)
 {
   const GstStructure *params = NULL;
   guint idx = 0;
@@ -258,9 +259,9 @@ gst_buffer_get_video_region_of_interest_metas_parent_id (GstBuffer * buffer,
 }
 
 void
-gst_video_region_of_interest_coordinates_correction (
-    GstVideoRegionOfInterestMeta * roimeta, GstVideoRectangle * source,
-    GstVideoRectangle * destination)
+gst_video_region_of_interest_meta_transform_coordinates (
+    GstVideoRegionOfInterestMeta * roimeta, const GstVideoRectangle * source,
+    const GstVideoRectangle * destination)
 {
   gdouble w_scale = 0.0, h_scale = 0.0;
 
@@ -294,7 +295,7 @@ gst_buffer_has_valid_parent_meta (GstBuffer * buffer, gint parent_id)
 }
 
 void
-gst_video_point_affine_correction (GstVideoPoint * point, gdouble matrix[3][3])
+gst_video_point_affine_transform (GstVideoPoint * point, gdouble matrix[3][3])
 {
   gdouble x = 0.0, y = 0.0, z = 0.0;
 

@@ -196,7 +196,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   prediction = &(g_array_index (predictions, GstMLClassPrediction, 0));
   prediction->info = pmeta->info;
 
-  data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  data = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   n_characters = GST_ML_FRAME_DIM (mlframe, 0, 2);
   n_rows = GST_ML_FRAME_DIM (mlframe, 0, 0);
 

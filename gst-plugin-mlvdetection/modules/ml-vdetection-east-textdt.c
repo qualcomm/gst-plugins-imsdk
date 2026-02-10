@@ -175,11 +175,11 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   n_cols = GST_ML_FRAME_DIM (mlframe, 0, 2);
 
   if (GST_ML_FRAME_DIM (mlframe, 0, 3) == 1) {
-    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-    geometry = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    scores = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+    geometry = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
   } else {
-    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
-    geometry = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+    scores = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    geometry = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   }
 
   for (y = 0; y < n_rows; y++) {

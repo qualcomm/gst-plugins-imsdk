@@ -169,9 +169,9 @@ gst_ml_module_extract_rootpoints (GstMLSubModule * submodule,
   n_parts = GST_ML_FRAME_DIM (mlframe, 0, 3);
 
   // Convenient pointer to the keypoints heatmap inside the 1st tensor.
-  heatmap = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  heatmap = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   // Pointer to the keypoints coordinate offsets inside the 2nd tensor.
-  offsets = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+  offsets = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
 
   // The width (position 0) and height (position 1) of the paxel block.
   paxelsize[0] = (submodule->inwidth - 1) / (n_columns - 1);
@@ -276,11 +276,11 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
   n_edges = GST_ML_FRAME_DIM (mlframe, 2, 3) / 4;
 
   // Pointer to the keypoints heatmap inside the 1st tensor.
-  heatmap = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  heatmap = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   // Pointer to the keypoints coordinate offsets inside the 2nd tensor.
-  offsets = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+  offsets = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
   // Pointer to the displacement data inside the 3rd tensor.
-  displacements = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+  displacements = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
 
   // The width (position 0) and height (position 1) of the paxel block.
   paxelsize[0] = (submodule->inwidth - 1) / (n_columns - 1);

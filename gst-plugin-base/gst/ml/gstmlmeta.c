@@ -179,7 +179,7 @@ gst_buffer_get_ml_tensor_meta_id (GstBuffer * buffer, guint id)
 }
 
 gsize
-gst_ml_meta_tensor_size  (const GstMLTensorMeta * meta)
+gst_ml_tensor_meta_size  (const GstMLTensorMeta * meta)
 {
   guint idx = 0, value = 0;
   gsize size = 0;

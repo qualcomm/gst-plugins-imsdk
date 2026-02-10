@@ -63,36 +63,35 @@ struct _GstMLInfo {
   guint     tensors[GST_ML_MAX_TENSORS][GST_ML_TENSOR_MAX_DIMS];
 };
 
-GST_API
-GType gst_ml_info_get_type     (void);
+GST_API GType
+gst_ml_info_get_type (void);
 
-GST_API
-void gst_ml_info_init          (GstMLInfo * info);
+GST_API void
+gst_ml_info_init (GstMLInfo * info);
 
-GST_API
-GstMLInfo * gst_ml_info_new    (void);
+GST_API GstMLInfo *
+gst_ml_info_new (void);
 
-GST_API
-GstMLInfo * gst_ml_info_copy   (const GstMLInfo * info);
+GST_API GstMLInfo *
+gst_ml_info_copy (const GstMLInfo * info);
 
-GST_API
-void gst_ml_info_free          (GstMLInfo * info);
+GST_API void
+gst_ml_info_free (GstMLInfo * info);
 
-GST_API
-gboolean gst_ml_info_from_caps (GstMLInfo * info, const GstCaps  * caps);
+GST_API gboolean
+gst_ml_info_from_caps (GstMLInfo * info, const GstCaps  * caps);
 
-GST_API
-GstCaps * gst_ml_info_to_caps  (const GstMLInfo * info);
+GST_API GstCaps *
+gst_ml_info_to_caps (const GstMLInfo * info);
 
-GST_API
-gboolean gst_ml_info_is_equal  (const GstMLInfo * l_info,
-                                const GstMLInfo * r_info);
+GST_API gboolean
+gst_ml_info_is_equal (const GstMLInfo * l_info, const GstMLInfo * r_info);
 
-GST_API
-gsize gst_ml_info_tensor_size  (const GstMLInfo * info, guint index);
+GST_API gsize
+gst_ml_info_tensor_size (const GstMLInfo * info, guint index);
 
-GST_API
-gsize gst_ml_info_size         (const GstMLInfo * info);
+GST_API gsize
+gst_ml_info_size (const GstMLInfo * info);
 
 
 #define GST_ML_INFO_TYPE(i)           ((i)->type)

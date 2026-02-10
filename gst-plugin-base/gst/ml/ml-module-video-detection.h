@@ -120,7 +120,7 @@ struct _GstMLBoxPrediction {
  *
  * Helper function for freeing any resources allocated owned by the entry.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_box_entry_cleanup (GstMLBoxEntry * entry);
@@ -131,7 +131,7 @@ gst_ml_box_entry_cleanup (GstMLBoxEntry * entry);
  *
  * Helper function for freeing any resources allocated owned by the prediction.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_box_prediction_cleanup (GstMLBoxPrediction * prediction);
@@ -143,7 +143,7 @@ gst_ml_box_prediction_cleanup (GstMLBoxPrediction * prediction);
  *
  * Helper function for comparing two ML box entries.
  *
- * return: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
+ * Returns: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
  */
 GST_API gint
 gst_ml_box_compare_entries (const GstMLBoxEntry * l_entry,
@@ -157,7 +157,7 @@ gst_ml_box_compare_entries (const GstMLBoxEntry * l_entry,
  *
  * Helper function for transforming ML box dimensions from absolute to relative.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_box_relative_translation (GstMLBoxEntry * box, gint width, gint height);
@@ -170,7 +170,7 @@ gst_ml_box_relative_translation (GstMLBoxEntry * box, gint width, gint height);
  * Helper function for adjusting ML box dimensions to within the region
  * which actually contains data and transforming them to relative.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_box_transform_dimensions (GstMLBoxEntry * box, GstVideoRectangle * region);
@@ -182,7 +182,7 @@ gst_ml_box_transform_dimensions (GstMLBoxEntry * box, GstVideoRectangle * region
  *
  * Helper function for scoring how much two entries are overlapping.
  *
- * return: Score from 0.0 (no overlap) to 1.0 (fully overlapping)
+ * Returns: Score from 0.0 (no overlap) to 1.0 (fully overlapping)
  */
 GST_API gfloat
 gst_ml_boxes_intersection_score (GstMLBoxEntry * l_box, GstMLBoxEntry * r_box);
@@ -194,7 +194,7 @@ gst_ml_boxes_intersection_score (GstMLBoxEntry * l_box, GstMLBoxEntry * r_box);
  *
  * Helper function for Non-Max Suppression (NMS) algorithm.
  *
- * return: (-2) If confidence of the prediction is lower then any in the list.
+ * Returns: (-2) If confidence of the prediction is lower then any in the list.
  *         (-1) If no prediction with the same label is present in the list.
  *         (>= 0) If confidence of the prediction is higher then any in the list.
  */
@@ -214,7 +214,7 @@ gst_ml_box_non_max_suppression (GstMLBoxEntry * l_box, GArray * boxes);
  * Post-processing module must define the 3rd argument of the implemented
  * 'gst_ml_module_process' API as 'GArray *'.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_ml_module_video_detection_execute (GstMLModule * module, GstMLFrame * mlframe,

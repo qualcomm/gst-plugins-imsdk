@@ -108,11 +108,11 @@ struct _GstMLBufferPoolClass
   GstBufferPoolClass parent;
 };
 
-GST_API
-GType             gst_ml_buffer_pool_get_type (void);
+GST_API GType
+gst_ml_buffer_pool_get_type (void);
 
-GST_API
-GstBufferPool *   gst_ml_buffer_pool_new      (const gchar * memtype);
+GST_API GstBufferPool *
+gst_ml_buffer_pool_new (const gchar * memtype);
 
 G_END_DECLS
 

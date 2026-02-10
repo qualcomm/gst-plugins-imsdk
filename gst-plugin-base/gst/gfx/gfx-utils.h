@@ -11,14 +11,14 @@
 G_BEGIN_DECLS
 
 /**
- * gst_gfx_adreno_get_alignment:
+ * gst_gfx_get_alignment:
  *
  * Helper function for retrieving the alignment requirements of Adreno GPU.
  *
- * return: Alignment requirement in bytes.
+ * Returns: Alignment requirement in bytes.
  */
 GST_API gint
-gst_gfx_adreno_get_alignment (void);
+gst_gfx_get_alignment (void);
 
 G_END_DECLS
 

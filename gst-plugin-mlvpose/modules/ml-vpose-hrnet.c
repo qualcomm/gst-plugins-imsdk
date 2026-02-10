@@ -253,7 +253,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   n_keypoints = GST_ML_FRAME_DIM (mlframe, 0, 3);
 
   // Convenient pointer to the keypoints heatmap inside the 1st tensor.
-  heatmap = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  heatmap = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   mltype = GST_ML_FRAME_TYPE (mlframe);
 
   // The total number of macro blocks in the matrix.

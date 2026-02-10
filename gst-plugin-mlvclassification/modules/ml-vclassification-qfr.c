@@ -259,7 +259,7 @@ gst_ml_module_face_recognition (GstMLSubModule * submodule,
   gfloat score = 0.0, maxscore = 0.0, maxconfidence = 0.0;
   gint pid = -1;
 
-  data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, index));
+  data = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, index));
   n_features = GST_ML_FRAME_DIM (mlframe, index, 1);
 
   for (id = 0; id < submodule->database->len; id++, maxscore = 0.0) {
@@ -298,7 +298,7 @@ gst_ml_module_face_has_liveliness (GstMLSubModule * submodule,
   guint n_features = 0;
   gdouble score = 0.0;
 
-  data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, index));
+  data = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, index));
   n_features = GST_ML_FRAME_DIM (mlframe, index, 1);
 
   // Liveliness score using cosine distance between tensor data and database.
@@ -317,7 +317,7 @@ gst_ml_module_accessory_tensor_score (GstMLSubModule * submodule,
   guint n_values = 0;
   gfloat sum = 0.0, score = 0.0;
 
-  data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, index));
+  data = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, index));
   n_values = GST_ML_FRAME_DIM (mlframe, index, 1);
 
   // Two possible values scores, TRUE or FALSE.

@@ -53,8 +53,7 @@ gst_video_classification_meta_transform (GstBuffer * transbuffer, GstMeta * meta
     label->xtraparams = gst_structure_copy (label->xtraparams);
   }
 
-  g_array_set_clear_func (labels,
-      (GDestroyNotify) gst_video_classification_label_cleanup);
+  g_array_set_clear_func (labels, (GDestroyNotify) gst_class_label_reset);
 
   dmeta = gst_buffer_add_video_classification_meta (transbuffer, labels);
 
@@ -68,13 +67,6 @@ gst_video_classification_meta_transform (GstBuffer * transbuffer, GstMeta * meta
 
   GST_DEBUG ("Duplicate Video Classification metadata");
   return TRUE;
-}
-
-void
-gst_video_classification_label_cleanup (GstClassLabel * label)
-{
-  if (label->xtraparams != NULL)
-    gst_structure_free (label->xtraparams);
 }
 
 GType
@@ -199,8 +191,7 @@ gst_buffer_copy_video_classification_meta (GstBuffer * buffer,
     label->xtraparams = gst_structure_copy (label->xtraparams);
   }
 
-  g_array_set_clear_func (labels,
-      (GDestroyNotify) gst_video_classification_label_cleanup);
+  g_array_set_clear_func (labels, (GDestroyNotify) gst_class_label_reset);
 
   newmeta = gst_buffer_add_video_classification_meta (buffer, labels);
 
