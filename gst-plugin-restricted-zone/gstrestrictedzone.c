@@ -102,19 +102,23 @@ gst_restricted_zone_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_ZONE_CONFIG:
     {
+      const gchar *string = g_value_get_string (value);
       GValue structure = G_VALUE_INIT;
 
       g_value_init (&structure, GST_TYPE_STRUCTURE);
 
-      if (!gst_parse_string_property_value (value, &structure)) {
-        GST_ERROR_OBJECT (rz, "Failed to parse zone configuration!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&structure, string)) {
+        GST_ERROR_OBJECT (rz, "Failed to deserialize file!");
+        break;
+      } else if (!gst_value_deserialize (&structure, string)) {
+        GST_ERROR_OBJECT (rz, "Failed to deserialize string!");
         break;
       }
 
-      if (rz->config != NULL)
-        gst_structure_free (rz->config);
-
+      g_clear_pointer (&rz->config, gst_structure_free);
       rz->config = GST_STRUCTURE (g_value_dup_boxed (&structure));
+
       g_value_unset (&structure);
       break;
     }

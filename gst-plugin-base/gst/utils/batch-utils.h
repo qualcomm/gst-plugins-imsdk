@@ -20,10 +20,10 @@ G_BEGIN_DECLS
  * This is convinient in order to avoid the constant allocation of a string
  * when corresponding to the batch number when there is a need for it.
  *
- * return: Pointer to string in "batch-channel-%2d" format or NULL on failure
+ * Returns: Pointer to string in "batch-channel-%2d" format or NULL on failure
  */
-GST_API const gchar *
-gst_batch_channel_name (guint index);
+GST_API
+const gchar * gst_batch_channel_name (guint index);
 
 G_END_DECLS
 

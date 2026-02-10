@@ -118,19 +118,23 @@ gst_meta_transform_set_property (GObject * object, guint prop_id,
       break;
     case PROP_MODULE_PARAMS:
     {
+      const gchar *string = g_value_get_string (value);
       GValue structure = G_VALUE_INIT;
 
       g_value_init (&structure, GST_TYPE_STRUCTURE);
 
-      if (!gst_parse_string_property_value (value, &structure)) {
-        GST_ERROR_OBJECT (metatrans, "Failed to parse constants!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&structure, string)) {
+        GST_ERROR_OBJECT (metatrans, "Failed to deserialize file!");
+        break;
+      } else if (!gst_value_deserialize (&structure, string)) {
+        GST_ERROR_OBJECT (metatrans, "Failed to deserialize string!");
         break;
       }
 
-      if (metatrans->params != NULL)
-        gst_structure_free (metatrans->params);
-
+      g_clear_pointer (&metatrans->params, gst_structure_free);
       metatrans->params = GST_STRUCTURE (g_value_dup_boxed (&structure));
+
       g_value_unset (&structure);
       break;
     }

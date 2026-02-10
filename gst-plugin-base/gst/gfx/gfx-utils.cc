@@ -10,7 +10,7 @@
 #endif // HAVE_GLES2_H
 
 gint
-gst_gfx_adreno_get_alignment ()
+gst_gfx_get_alignment ()
 {
   gint alignment = -1;
 

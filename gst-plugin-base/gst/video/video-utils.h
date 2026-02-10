@@ -23,7 +23,8 @@ typedef struct _GstVideoPoint GstVideoPoint;
  *
  * Point coordinates in pixels.
  */
-struct _GstVideoPoint {
+struct _GstVideoPoint
+{
   gfloat x;
   gfloat y;
 };
@@ -33,7 +34,7 @@ struct _GstVideoPoint {
  *
  * Helper function for checking whether the QCOM GBM backend is supported.
  *
- * return: TRUE if supported or FALSE if not supported
+ * Returns: TRUE if supported or FALSE if not supported
  */
 GST_VIDEO_API gboolean
 gst_gbm_qcom_backend_is_supported (void);
@@ -45,79 +46,71 @@ gst_gbm_qcom_backend_is_supported (void);
  *
  * Helper function for retrieving the alignment requirements of the GPU.
  *
- * return: TRUE if supported or FALSE if not supported
+ * Returns: TRUE if supported or FALSE if not supported
  */
 GST_VIDEO_API gboolean
 gst_video_retrieve_gpu_alignment (GstVideoInfo * info, GstVideoAlignment * align);
 
 /**
- * gst_video_calculate_common_alignment:
+ * gst_video_alignment_update:
+ * @align: the #GstVideoAlignment entry which will be updated
+ * @otheralign: the other #GstVideoAlignment entry with which to do calculations
  *
- * Helper function for calculating the commmon alignment between two video
- * alignment structures.
- *
- * return: Video alignment struct with calculated common values
+ * Helper function for updating a video alignemnt strcuture wuth the calculated
+ * commmon alignment between it and another video alignemnt structure.
  */
-GST_VIDEO_API GstVideoAlignment
-gst_video_calculate_common_alignment (GstVideoAlignment * l_align,
-                                      GstVideoAlignment * r_align);
+GST_VIDEO_API void
+gst_video_alignment_update (GstVideoAlignment * align,
+                            const GstVideoAlignment * otheralign);
 
 /**
- * gst_query_get_video_alignment:
+ * gst_query_parse_video_alignment:
  * @query: #GstQuery with allocation information.
- * @align: #GstVideoAlignment from the GST_VIDEO_META in the query.
+ * @align: #GstVideoAlignment filled from the GST_VIDEO_META in the query.
  *
  * Helper function to parse the query to get video alignment from allocation
  * meta.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
-gst_query_get_video_alignment (GstQuery * query, GstVideoAlignment * align);
+gst_query_parse_video_alignment (GstQuery * query, GstVideoAlignment * align);
 
 /**
  * gst_buffer_get_video_region_of_interest_metas_parent_id:
- * @buffer: The #GstBuffer to which to copy the meta.
- * @parent_id: The metadata parent ID for which to check.
+ * @buffer: A #GstBuffer
+ * @parent_id: A parent metadata id
  *
- * Helper function for finding all GstVideoRegionOfInterestMeta on buffer with
- * the given parent id.
+ * Find the #GstVideoRegionOfInterestMeta on @buffer with the given @parent_id.
  *
- * return: Pointer to list of #GstVideoRegionOfInterestMeta if any where found
+ * Buffers can contain multiple #GstVideoRegionOfInterestMeta metadata items.
+ *
+ * Returns: (transfer full) (element-type GstVideoRegionOfInterestMeta) (nullable):
+ *          list of #GstVideoRegionOfInterestMeta with @parent_id or %NULL when
+ *          there is no such metadata on @buffer.
  */
 GST_VIDEO_API GList *
 gst_buffer_get_video_region_of_interest_metas_parent_id (GstBuffer * buffer,
                                                          const gint parent_id);
 
 /**
- * gst_buffer_copy_video_region_of_interest_meta:
- * @buffer: The #GstBuffer to which to copy the meta.
- * @meta: The #GstVideoRegionOfInterestMeta which will be copied.
+ * gst_buffer_copy_video_region_of_interest_meta: (skip):
  *
- * Helper function for copying ROI meta belonging to a different buffer into another.
- *
- * return: Pointer to the newly allocated ROI meta
+ * WARNING: INTERNAL USAGE ONLY. Subject to change.
  */
 GST_VIDEO_API GstVideoRegionOfInterestMeta *
 gst_buffer_copy_video_region_of_interest_meta (GstBuffer * buffer,
                                                GstVideoRegionOfInterestMeta * meta);
 
 /**
- * gst_video_region_of_interest_coordinates_correction:
- * @meta: The #GstVideoRegionOfInterestMeta whos coordinates will be corrected.
- * @source: Source offset coordinates and dimensions for scale calculation.
- * @destination: Destination offset coordinates and dimensions for scale calculation.
+ * gst_video_region_of_interest_meta_transform_coordinates: (skip):
  *
- * Helper function for correcting region coordinates based on a source and
- * destionation rectangles. Used primarily when transfering ROI meta from one
- * buffer into another with some source to destination transformation.
- *
- * return: NONE
+ * WARNING: INTERNAL USAGE ONLY. Subject to change.
  */
 GST_VIDEO_API void
-gst_video_region_of_interest_coordinates_correction (
-    GstVideoRegionOfInterestMeta * roimeta, GstVideoRectangle * source,
-    GstVideoRectangle * destination);
+gst_video_region_of_interest_meta_transform_coordinates (
+    GstVideoRegionOfInterestMeta * roimeta, const GstVideoRectangle * source,
+    const GstVideoRectangle * destination);
 
 /**
  * gst_buffer_has_valid_parent_meta:
@@ -135,16 +128,14 @@ GST_VIDEO_API gboolean
 gst_buffer_has_valid_parent_meta (GstBuffer * buffer, gint parent_id);
 
 /**
- * gst_video_point_affine_correction:
+ * gst_video_point_affine_transform:
  * @point: #GstVideoPoint to which the affine matrix will be applied.
  * @matrix: Affine transformation matrix.
  *
  * Helper function for adjusting coordinates of a 2D point with affine matrix.
- *
- * return: NONE
  */
 GST_VIDEO_API void
-gst_video_point_affine_correction (GstVideoPoint * point, gdouble matrix[3][3]);
+gst_video_point_affine_transform (GstVideoPoint * point, gdouble matrix[3][3]);
 
 /**
  * gst_video_info_modify_with_meta:
@@ -153,7 +144,7 @@ gst_video_point_affine_correction (GstVideoPoint * point, gdouble matrix[3][3]);
  *
  * Helper function to derive some information from GstVideoMeta
  *
- * return: TRUE if meta isn't null and the basic info matches in both structs
+ * Returns: TRUE if meta isn't null and the basic info matches in both structs
  */
 GST_VIDEO_API gboolean
 gst_video_info_modify_with_meta (GstVideoInfo * info, const GstVideoMeta * meta);

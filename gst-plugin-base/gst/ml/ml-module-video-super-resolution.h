@@ -54,7 +54,7 @@ G_BEGIN_DECLS
  * Post-processing module must define the 3rd argument of the implemented
  * 'gst_ml_module_process' API as 'GstVideoFrame *'.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_ml_module_video_super_resolution_execute (GstMLModule * module,

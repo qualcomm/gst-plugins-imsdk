@@ -54,9 +54,9 @@ gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
 
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 1);
 
-  mlboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
-  classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
+  mlboxes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  scores = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+  classes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
 
   for (idx = 0; idx < n_paxels; idx++) {
     GstMLBoxEntry bbox = { 0, };
@@ -124,8 +124,8 @@ gst_ml_module_colormask_parse_monoblock_tensor (GstMLSubModule * submodule,
   // Number blocks in the 5t (protos) tensor.
   n_blocks = GST_ML_FRAME_DIM (mlframe, 4, 3) * GST_ML_FRAME_DIM (mlframe, 4, 2);
 
-  masks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
-  protos = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 4));
+  masks = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+  protos = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 4));
 
   // Allocate memory for the resulted segmentation mask.
   colormask = g_new0 (guint32, n_blocks);
@@ -348,12 +348,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       // Calculate the source index. Second calculate the column offset.
       num += region.x + gst_util_uint64_scale_int (column, region.w, width);
 
-      outdata[idx] = EXTRACT_RED_COLOR (colormask[num]);
-      outdata[idx + 1] = EXTRACT_GREEN_COLOR (colormask[num]);
-      outdata[idx + 2] = EXTRACT_BLUE_COLOR (colormask[num]);
+      outdata[idx] = GST_COLOR_RED (colormask[num]);
+      outdata[idx + 1] = GST_COLOR_GREEN (colormask[num]);
+      outdata[idx + 2] = GST_COLOR_BLUE (colormask[num]);
 
       if (bpp == 4)
-        outdata[idx + 3] = EXTRACT_ALPHA_COLOR (colormask[num]);
+        outdata[idx + 3] = GST_COLOR_ALPHA (colormask[num]);
     }
   }
 

@@ -99,7 +99,7 @@ struct _GstMLClassPrediction {
  *
  * Helper function for freeing any resources allocated owned by the entry.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_class_entry_cleanup (GstMLClassEntry * entry);
@@ -110,7 +110,7 @@ gst_ml_class_entry_cleanup (GstMLClassEntry * entry);
  *
  * Helper function for freeing any resources allocated owned by the prediction.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_class_prediction_cleanup (GstMLClassPrediction * prediction);
@@ -122,7 +122,7 @@ gst_ml_class_prediction_cleanup (GstMLClassPrediction * prediction);
  *
  * Helper function for comparing two ML class entries.
  *
- * return: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
+ * Returns: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
  */
 GST_API gint
 gst_ml_class_compare_entries (const GstMLClassEntry * l_entry,
@@ -141,7 +141,7 @@ gst_ml_class_compare_entries (const GstMLClassEntry * l_entry,
  * Post-processing module must define the 3rd argument of the implemented
  * 'gst_ml_module_process' API as 'GArray *'.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_ml_module_video_classification_execute (GstMLModule * module, GstMLFrame * mlframe,

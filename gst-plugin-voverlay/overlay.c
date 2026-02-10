@@ -176,9 +176,9 @@ gst_cairo_draw_text (cairo_t * context, guint color, gdouble x, gdouble y,
     gchar * text, gdouble fontsize)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-      EXTRACT_FLOAT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+      GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+      GST_FLOAT_COLOR_ALPHA (color));
 
   // Set the starting position of the bounding box text.
   cairo_move_to (context, x, (y + (fontsize * 4.0F / 5.0F)));
@@ -195,9 +195,9 @@ gst_cairo_draw_line (cairo_t * context, guint color, gdouble x, gdouble y,
      gdouble dx, gdouble dy, gdouble linewidth)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-      EXTRACT_FLOAT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+      GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+      GST_FLOAT_COLOR_ALPHA (color));
 
   // Set rectangle lines width.
   cairo_set_line_width (context, linewidth);
@@ -215,9 +215,9 @@ gst_cairo_draw_rectangle (cairo_t * context, guint color, gdouble x, gdouble y,
     gdouble width, gdouble height, gdouble linewidth, gboolean filled, gboolean inverse)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-      EXTRACT_FLOAT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+      GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+      GST_FLOAT_COLOR_ALPHA (color));
 
   // Set rectangle lines width.
   cairo_set_line_width (context, linewidth);
@@ -247,9 +247,9 @@ gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
     gdouble radius, gdouble linewidth, gboolean filled, gboolean inverse)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-      EXTRACT_FLOAT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+      GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+      GST_FLOAT_COLOR_ALPHA (color));
 
   // Set rectangle lines width.
   cairo_set_line_width (context, linewidth);
@@ -292,9 +292,9 @@ gst_cairo_draw_polygon (cairo_t * context, guint color,
   cairo_close_path (context);
 
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-      EXTRACT_FLOAT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+      GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+      GST_FLOAT_COLOR_ALPHA (color));
 
   if (inverse) {
     cairo_surface_t* surface = cairo_get_target (context);
@@ -361,9 +361,9 @@ gst_cairo_draw_arrow (cairo_t * context, guint color, gdouble x, gdouble y,
   cairo_stroke_preserve (context);
 
   // Set infill color.
-  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-      EXTRACT_FLOAT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+      GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+      GST_FLOAT_COLOR_ALPHA (color));
   cairo_fill (context);
 
   return (cairo_status (context) == CAIRO_STATUS_SUCCESS) ? TRUE : FALSE;
@@ -565,7 +565,7 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
   gboolean success = TRUE;
   guint track_id = -1;
 
-  if (EXTRACT_FLOAT_ALPHA_COLOR (label->color) == 0.0)
+  if (GST_FLOAT_COLOR_ALPHA (label->color) == 0.0)
     return success;
 
   gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
@@ -589,16 +589,16 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
   GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f],"
       " Fontsize: %.2f", text, color, x, y, fontsize);
 
-  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-      EXTRACT_FLOAT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+      GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+      GST_FLOAT_COLOR_ALPHA (color));
   cairo_paint (context);
 
   // Choose the best contrasting color to the background.
-  color = EXTRACT_ALPHA_COLOR (color);
-  color += ((EXTRACT_RED_COLOR (label->color) > 0x7F) ? 0x00 : 0xFF) << 8;
-  color += ((EXTRACT_GREEN_COLOR (label->color) > 0x7F) ? 0x00 : 0xFF) << 16;
-  color += ((EXTRACT_BLUE_COLOR (label->color) > 0x7F) ? 0x00 : 0xFF) << 24;
+  color = GST_COLOR_ALPHA (color);
+  color += ((GST_COLOR_RED (label->color) > 0x7F) ? 0x00 : 0xFF) << 8;
+  color += ((GST_COLOR_GREEN (label->color) > 0x7F) ? 0x00 : 0xFF) << 16;
+  color += ((GST_COLOR_BLUE (label->color) > 0x7F) ? 0x00 : 0xFF) << 24;
 
   success = gst_cairo_draw_text (context, color, x, y, text, fontsize);
 
@@ -613,7 +613,7 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
       "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
-  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
+  gst_video_quadrilateral_from_rectangle (&(blit->source), &source);
   return success;
 }
 
@@ -636,7 +636,7 @@ gst_overlay_handle_landmarks_entry (GstVOverlay * overlay, cairo_t * context,
   for (idx = 0; idx < keypoints->len; idx++) {
     GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
 
-    if (EXTRACT_FLOAT_ALPHA_COLOR (kp->color) == 0.0)
+    if (GST_FLOAT_COLOR_ALPHA (kp->color) == 0.0)
       continue;
 
     x = (kp->x - destination->x) / scale;
@@ -658,7 +658,7 @@ gst_overlay_handle_landmarks_entry (GstVOverlay * overlay, cairo_t * context,
     s_kp = &(g_array_index (keypoints, GstVideoKeypoint, link->s_kp_idx));
     d_kp = &(g_array_index (keypoints, GstVideoKeypoint, link->d_kp_idx));
 
-    if (EXTRACT_FLOAT_ALPHA_COLOR (s_kp->color) == 0.0)
+    if (GST_FLOAT_COLOR_ALPHA (s_kp->color) == 0.0)
       continue;
 
     x = (s_kp->x - destination->x) / scale;
@@ -743,7 +743,7 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
       "ObjectDetection");
   gst_structure_get_uint (objparam, "color", &color);
 
-  if (EXTRACT_FLOAT_ALPHA_COLOR (color) == 0.0)
+  if (GST_FLOAT_COLOR_ALPHA (color) == 0.0)
     return success;
 
   gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
@@ -754,7 +754,7 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
 
   // Adjust bbox dimensions so that it fits inside the overlay frame.
   gst_overlay_update_rectangle_dimensions (overlay, blit->info, &source);
-  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
+  gst_video_quadrilateral_from_rectangle (&(blit->source), &source);
 
   destination->x = roimeta->x;
   destination->y = roimeta->y;
@@ -805,7 +805,7 @@ gst_overlay_handle_bbox_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 
   // Adjust bbox dimensions so that it fits inside the overlay frame.
   gst_overlay_update_rectangle_dimensions (overlay, blit->info, &source);
-  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
+  gst_video_quadrilateral_from_rectangle (&(blit->source), &source);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
       "[%d %d %d %d]", source.x, source.y, source.w, source.h,
@@ -1027,7 +1027,7 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 
   // Adjust mask source dimensions so that it fits inside the overlay frame.
   gst_overlay_update_rectangle_dimensions (overlay,  blit->info, &source);
-  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
+  gst_video_quadrilateral_from_rectangle (&(blit->source), &source);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
       "[%d %d %d %d]", source.x, source.y, source.w, source.h,
@@ -1121,7 +1121,7 @@ gst_overlay_handle_image_entry (GstVOverlay * overlay, GstVideoBlit * blit,
       "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
-  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
+  gst_video_quadrilateral_from_rectangle (&(blit->source), &source);
 
   // Load static image file contents in case it was not already loaded.
   if (simage->width > GST_VIDEO_FRAME_WIDTH (&vframe)) {
@@ -1308,7 +1308,7 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
 
       label = &(g_array_index (classmeta->labels, GstClassLabel, 0));
 
-      if (EXTRACT_FLOAT_ALPHA_COLOR (label->color) == 0.0)
+      if (GST_FLOAT_COLOR_ALPHA (label->color) == 0.0)
         continue;
 
       success &= gst_overlay_handle_classification_entry (overlay, context,
@@ -1327,7 +1327,7 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
       gst_structure_get_uint (objparam, "color", &(label.color));
       gst_structure_get_double (objparam, "confidence", &(label.confidence));
 
-      if (EXTRACT_FLOAT_ALPHA_COLOR (label.color) != 0.0) {
+      if (GST_FLOAT_COLOR_ALPHA (label.color) != 0.0) {
         success &= gst_overlay_handle_classification_entry (overlay, context,
             blit, &label, objparam);
       }
@@ -1384,7 +1384,7 @@ gst_overlay_draw_classification_entries (GstVOverlay * overlay,
       label = &(g_array_index (classmeta->labels, GstClassLabel, num));
       blit = &(composition->blits[(*index) + num]);
 
-      if (EXTRACT_FLOAT_ALPHA_COLOR (label->color) == 0.0)
+      if (GST_FLOAT_COLOR_ALPHA (label->color) == 0.0)
         continue;
 
       success = gst_overlay_video_blit_initialize (overlay,
@@ -1459,7 +1459,7 @@ gst_overlay_draw_landmarks_entries (GstVOverlay * overlay,
 
     // Adjust pose rectangle so that it fits inside the overlay frame.
     gst_overlay_update_rectangle_dimensions (overlay, blit->info, &source);
-    gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
+    gst_video_quadrilateral_from_rectangle (&(blit->source), &source);
 
     success = gst_cairo_draw_setup (blit, &frame, &surface, &context);
     g_return_val_if_fail (success, FALSE);
@@ -1534,7 +1534,7 @@ gst_overlay_draw_bbox_entries (GstVOverlay * overlay,
     GstOverlayBBox *bbox = &g_array_index (overlay->bboxes, GstOverlayBBox, num);
 
     // Skip this bounding box entry as it has been disabled or alpha is 0.
-    if (!bbox->enable || EXTRACT_FLOAT_ALPHA_COLOR (bbox->color) == 0.0)
+    if (!bbox->enable || GST_FLOAT_COLOR_ALPHA (bbox->color) == 0.0)
       continue;
 
     if (bbox->blit.buffer != NULL) {
@@ -1580,7 +1580,7 @@ gst_overlay_draw_timestamp_entries (GstVOverlay * overlay,
         &g_array_index (overlay->timestamps, GstOverlayTimestamp, num);
 
     // Skip this timstamp entry as it has been disabled or alpha is 0.
-    if (!timestamp->enable || EXTRACT_FLOAT_ALPHA_COLOR (timestamp->color) == 0.0)
+    if (!timestamp->enable || GST_FLOAT_COLOR_ALPHA (timestamp->color) == 0.0)
       continue;
 
     blit = &(composition->blits[(*index)]);
@@ -1618,7 +1618,7 @@ gst_overlay_draw_string_entries (GstVOverlay * overlay,
         &g_array_index (overlay->strings, GstOverlayString, num);
 
     // Skip this text entry as it has been disabled or alpha is 0.
-    if (!string->enable || EXTRACT_FLOAT_ALPHA_COLOR (string->color) == 0.0)
+    if (!string->enable || GST_FLOAT_COLOR_ALPHA (string->color) == 0.0)
       continue;
 
     if (string->blit.buffer != NULL) {
@@ -1662,7 +1662,7 @@ gst_overlay_draw_mask_entries (GstVOverlay * overlay,
     GstOverlayMask *mask = &g_array_index (overlay->masks, GstOverlayMask, num);
 
     // Skip this privacy mask entry as it has been disabled or alpha is 0.
-    if (!mask->enable || EXTRACT_FLOAT_ALPHA_COLOR (mask->color) == 0.0)
+    if (!mask->enable || GST_FLOAT_COLOR_ALPHA (mask->color) == 0.0)
       continue;
 
     if (mask->blit.buffer != NULL) {
@@ -2074,75 +2074,93 @@ gst_overlay_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
   GstVOverlay *overlay = GST_OVERLAY (object);
+  const gchar *string = NULL;
   GValue list = G_VALUE_INIT;
+
+  g_value_init (&list, GST_TYPE_LIST);
 
   GST_OVERLAY_LOCK (overlay);
 
   switch (prop_id) {
     case PROP_BBOXES:
-      g_value_init (&list, GST_TYPE_LIST);
+      string = g_value_get_string (value);
 
-      if (!gst_parse_string_property_value (value, &list)) {
-        GST_ERROR_OBJECT (overlay, "Failed to parse input for bboxes!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize bboxes file!");
+        break;
+      } else if (!gst_value_deserialize (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize bboxes string!");
         break;
       }
 
       if (!gst_extract_bboxes (&list, overlay->bboxes))
         GST_ERROR_OBJECT (overlay, "Failed to exract bboxes!");
 
-      g_value_unset (&list);
       break;
     case PROP_TIMESTAMPS:
-      g_value_init (&list, GST_TYPE_LIST);
+      string = g_value_get_string (value);
 
-      if (!gst_parse_string_property_value (value, &list)) {
-        GST_ERROR_OBJECT (overlay, "Failed to parse input for timestamps!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize timestamps file!");
+        break;
+      } else if (!gst_value_deserialize (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize timestamps string!");
         break;
       }
 
       if (!gst_extract_timestamps (&list, overlay->timestamps))
         GST_ERROR_OBJECT (overlay, "Failed to exract timestamps!");
 
-      g_value_unset (&list);
       break;
     case PROP_STRINGS:
-      g_value_init (&list, GST_TYPE_LIST);
+      string = g_value_get_string (value);
 
-      if (!gst_parse_string_property_value (value, &list)) {
-        GST_ERROR_OBJECT (overlay, "Failed to parse input for strings!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize strings file!");
+        break;
+      } else if (!gst_value_deserialize (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize strings string!");
         break;
       }
 
       if (!gst_extract_strings (&list, overlay->strings))
         GST_ERROR_OBJECT (overlay, "Failed to exract strings!");
 
-      g_value_unset (&list);
       break;
     case PROP_PRIVACY_MASKS:
-      g_value_init (&list, GST_TYPE_LIST);
+      string = g_value_get_string (value);
 
-      if (!gst_parse_string_property_value (value, &list)) {
-        GST_ERROR_OBJECT (overlay, "Failed to parse input for masks!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize privacy masks file!");
+        break;
+      } else if (!gst_value_deserialize (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize privacy masks string!");
         break;
       }
 
       if (!gst_extract_masks (&list, overlay->masks))
         GST_ERROR_OBJECT (overlay, "Failed to exract privacy masks!");
 
-      g_value_unset (&list);
       break;
     case PROP_STATIC_IMAGES:
-      g_value_init (&list, GST_TYPE_LIST);
+      string = g_value_get_string (value);
 
-      if (!gst_parse_string_property_value (value, &list)) {
-        GST_ERROR_OBJECT (overlay, "Failed to parse input for images!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize static images file!");
+        break;
+      } else if (!gst_value_deserialize (&list, string)) {
+        GST_ERROR_OBJECT (overlay, "Failed to deserialize static images string!");
         break;
       }
 
       if (!gst_extract_static_images (&list, overlay->simages))
         GST_ERROR_OBJECT (overlay, "Failed to exract static images!");
 
-      g_value_unset (&list);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2150,6 +2168,8 @@ gst_overlay_set_property (GObject * object, guint prop_id,
   }
 
   GST_OVERLAY_UNLOCK (overlay);
+
+  g_value_unset (&list);
 }
 
 static void

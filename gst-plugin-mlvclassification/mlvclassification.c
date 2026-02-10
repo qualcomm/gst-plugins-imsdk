@@ -383,9 +383,9 @@ gst_ml_video_classification_fill_video_output (
       color = entry->color;
 
       // Set text background color.
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       width = ceil (strlen (g_quark_to_string (entry->name)) *
           DEFAULT_FONT_SIZE * 3.0F / 5.0F);
@@ -394,14 +394,14 @@ gst_ml_video_classification_fill_video_output (
       cairo_fill (context);
 
       // Choose the best contrasting color to the background.
-      color = EXTRACT_ALPHA_COLOR (color);
-      color += ((EXTRACT_RED_COLOR (entry->color) > 0x7F) ? 0x00 : 0xFF) << 8;
-      color += ((EXTRACT_GREEN_COLOR (entry->color) > 0x7F) ? 0x00 : 0xFF) << 16;
-      color += ((EXTRACT_BLUE_COLOR (entry->color) > 0x7F) ? 0x00 : 0xFF) << 24;
+      color = GST_COLOR_ALPHA (color);
+      color += ((GST_COLOR_RED (entry->color) > 0x7F) ? 0x00 : 0xFF) << 8;
+      color += ((GST_COLOR_GREEN (entry->color) > 0x7F) ? 0x00 : 0xFF) << 16;
+      color += ((GST_COLOR_BLUE (entry->color) > 0x7F) ? 0x00 : 0xFF) << 24;
 
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       // (0,0) is at top left corner of the buffer.
       cairo_move_to (context, 0.0, (DEFAULT_FONT_SIZE * (num + 1) * 4.0F / 5.0F));
@@ -1094,19 +1094,23 @@ gst_ml_video_classification_set_property (GObject * object, guint prop_id,
       break;
     case PROP_CONSTANTS:
     {
+      const gchar *string = g_value_get_string (value);
       GValue structure = G_VALUE_INIT;
 
       g_value_init (&structure, GST_TYPE_STRUCTURE);
 
-      if (!gst_parse_string_property_value (value, &structure)) {
-        GST_ERROR_OBJECT (classification, "Failed to parse constants!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&structure, string)) {
+        GST_ERROR_OBJECT (classification, "Failed to deserialize file!");
+        break;
+      } else if (!gst_value_deserialize (&structure, string)) {
+        GST_ERROR_OBJECT (classification, "Failed to deserialize string!");
         break;
       }
 
-      if (classification->mlconstants != NULL)
-        gst_structure_free (classification->mlconstants);
-
+      g_clear_pointer (&classification->mlconstants, gst_structure_free);
       classification->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&structure));
+
       g_value_unset (&structure);
       break;
     }

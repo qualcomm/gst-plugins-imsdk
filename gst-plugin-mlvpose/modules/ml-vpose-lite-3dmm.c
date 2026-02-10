@@ -371,7 +371,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 2)
     vertices_idx = 1;
 
-  vertices = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, vertices_idx));
+  vertices = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, vertices_idx));
   n_vertices = GST_ML_FRAME_DIM (mlframe, vertices_idx, 1);
 
   confidence = vertices[n_vertices - 1];

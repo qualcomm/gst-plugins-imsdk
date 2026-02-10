@@ -260,7 +260,7 @@ gst_video_split_composition_populate_metas (GstVideoSplitSrcPad * srcpad,
         continue;
 
       rmeta = gst_buffer_copy_video_region_of_interest_meta (outbuffer, rmeta);
-      gst_video_region_of_interest_coordinates_correction (rmeta, &source,
+      gst_video_region_of_interest_meta_transform_coordinates (rmeta, &source,
           destination);
 
       GST_TRACE_OBJECT (srcpad, "Transferred 'VideoRegionOfInterest' meta "
@@ -287,7 +287,7 @@ gst_video_split_composition_populate_metas (GstVideoSplitSrcPad * srcpad,
         continue;
 
       lmkmeta = gst_buffer_copy_video_landmarks_meta (outbuffer, lmkmeta);
-      gst_video_landmarks_coordinates_correction (lmkmeta, &source, destination);
+      gst_video_landmarks_meta_transform_coordinates (lmkmeta, &source, destination);
 
       GST_TRACE_OBJECT (srcpad, "Transferred 'VideoLandmarks' meta "
           "with ID[0x%X] and parent ID[0x%X] to buffer %p", lmkmeta->id,
@@ -320,7 +320,7 @@ gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
     source.h = GST_VIDEO_INFO_HEIGHT (vblit->info);
   }
 
-  gst_video_rectangle_to_quadrilateral (&source, &(vblit->source));
+  gst_video_quadrilateral_from_rectangle (&(vblit->source), &source);
   vblit->mask |= GST_VCE_MASK_SOURCE;
 
   destination = &(vblit->destination);

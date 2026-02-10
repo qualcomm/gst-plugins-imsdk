@@ -125,7 +125,7 @@ struct _GstMLPosePrediction {
  *
  * Helper function for freeing any resources allocated owned by the entry.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_pose_entry_cleanup (GstMLPoseEntry * entry);
@@ -136,7 +136,7 @@ gst_ml_pose_entry_cleanup (GstMLPoseEntry * entry);
  *
  * Helper function for freeing any resources allocated owned by the prediction.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_pose_prediction_cleanup (GstMLPosePrediction * prediction);
@@ -148,7 +148,7 @@ gst_ml_pose_prediction_cleanup (GstMLPosePrediction * prediction);
  *
  * Helper function for comparing two ML pose entries.
  *
- * return: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
+ * Returns: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
  */
 GST_API gint
 gst_ml_pose_compare_entries (const GstMLPoseEntry * l_entry,
@@ -164,7 +164,7 @@ gst_ml_pose_compare_entries (const GstMLPoseEntry * l_entry,
  * GValue list with seed index provided by user into array comprised by
  * #GstMLKeypointsLink.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_ml_load_links (const GValue * list, const guint idx, GArray * links);
@@ -177,7 +177,7 @@ gst_ml_load_links (const GValue * list, const guint idx, GArray * links);
  * Helper function to load the keypoint pairs/links from GValue list into
  * array comprised by #GstMLKeypointsLink.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_ml_load_connections (const GValue * list, GArray * connections);
@@ -190,7 +190,7 @@ gst_ml_load_connections (const GValue * list, GArray * connections);
  * Helper function for adjusting ML keypoint dimensions to within the region
  * which actually contains data and transforming them to relative.
  *
- * return: None
+ * Returns: None
  */
 GST_API void
 gst_ml_keypoint_transform_coordinates (GstMLKeypoint * keypoint,
@@ -209,7 +209,7 @@ gst_ml_keypoint_transform_coordinates (GstMLKeypoint * keypoint,
  * Post-processing module must define the 3rd argument of the implemented
  * 'gst_ml_module_process' API as 'GArray *'.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_ml_module_video_pose_execute (GstMLModule * module, GstMLFrame * mlframe,

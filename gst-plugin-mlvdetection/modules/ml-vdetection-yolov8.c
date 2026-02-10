@@ -72,7 +72,7 @@ gst_ml_module_parse_monoblock_frame (GstMLSubModule * submodule,
   // We subtract 4 because the last 4 are the bbox coordinates.
   n_classes = GST_ML_FRAME_DIM (mlframe, 0, 1) - 4;
 
-  bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  bboxes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   scores = &bboxes[4 * n_paxels];
 
   for (idx = 0; idx < n_paxels; idx++) {
@@ -177,8 +177,8 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 2);
   n_classes = GST_ML_FRAME_DIM (mlframe, 1, 1);
 
-  bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+  bboxes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  scores = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
 
   for (idx = 0; idx < n_paxels; idx++) {
     GstMLBoxEntry entry = { 0, };
@@ -280,9 +280,9 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
 
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 1);
 
-  bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
-  classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+  bboxes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  scores = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+  classes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
 
   for (idx = 0; idx < n_paxels; idx++) {
     GstMLBoxEntry entry = { 0, };

@@ -148,6 +148,18 @@ gst_json_builder_structure_entry (GQuark field, const GValue * value,
   return gst_json_builder_set_value (builder, value);
 }
 
+void
+gst_class_label_reset (GstClassLabel * label)
+{
+  g_return_if_fail (label != NULL);
+
+  label->name = 0;
+  label->confidence = 0.0;
+  label->color = 0;
+
+  g_clear_pointer (&label->xtraparams, gst_structure_free);
+}
+
 const gchar *
 gst_mux_stream_name (guint index)
 {
@@ -193,52 +205,43 @@ gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
 }
 
 gboolean
-gst_parse_string_property_value (const GValue * value, GValue * output)
+gst_value_deserialize_file (GValue * value, const gchar * filename)
 {
-  const gchar *input = g_value_get_string (value);
+  GError *error = NULL;
+  gchar *contents = NULL;
+  gboolean success = FALSE;
 
-  if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
-    GError *error = NULL;
-    gchar *contents = NULL;
-    gboolean success = FALSE;
-
-    if (!g_file_get_contents (input, &contents, NULL, &error)) {
-      GST_ERROR ("Failed to get file contents, error: '%s'!",
-          GST_STR_NULL (error->message));
-      g_clear_error (&error);
-      return FALSE;
-    }
-
-    // Remove trailing space and replace new lines with a comma delimiter.
-    contents = g_strstrip (contents);
-    contents = g_strdelimit (contents, "\n", ',');
-
-    // Add opening and closing brackets if output value is of type list.
-    if (G_VALUE_HOLDS (output, GST_TYPE_LIST)) {
-      GString *string = g_string_new (contents);
-
-      string = g_string_prepend (string, "{ ");
-      string = g_string_append (string, " }");
-
-      g_free (contents);
-
-      // Get the raw character data.
-      contents = g_string_free (string, FALSE);
-    }
-
-    success = gst_value_deserialize (output, contents);
-    g_free (contents);
-
-    if (!success) {
-      GST_ERROR ("Failed to deserialize file contents!");
-      return FALSE;
-    }
-  } else if (!gst_value_deserialize (output, input)) {
-    GST_ERROR ("Failed to deserialize string!");
+  if (!g_file_get_contents (filename, &contents, NULL, &error)) {
+    GST_ERROR ("Failed to get file contents, error: '%s'!",
+        GST_STR_NULL (error->message));
+    g_clear_error (&error);
     return FALSE;
   }
 
-  return TRUE;
+  // Remove trailing space and replace new lines with a comma delimiter.
+  contents = g_strstrip (contents);
+  contents = g_strdelimit (contents, "\n", ',');
+
+  // Add opening and closing brackets if output value is of type list.
+  if (G_VALUE_HOLDS (value, GST_TYPE_LIST)) {
+    GString *string = g_string_new (contents);
+
+    string = g_string_prepend (string, "{ ");
+    string = g_string_append (string, " }");
+
+    g_free (contents);
+
+    // Get the raw character data.
+    contents = g_string_free (string, FALSE);
+  }
+
+  success = gst_value_deserialize (value, contents);
+  g_free (contents);
+
+  if (!success)
+    GST_ERROR ("Failed to deserialize file contents!");
+
+  return success;
 }
 
 GstStructure *

@@ -10,6 +10,7 @@ find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools
 pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_BASE REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_JSON REQUIRED json-glib-1.0)
@@ -54,16 +55,14 @@ include_directories(
 )
 
 # Define path to gst-plugins-base tree
-set(QTI_PLUGINS_BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(QTI_PLUGINS_BASE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(QTI_PLUGINS_BASE_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
-# Define the path to the common pkg-config template file used by all subdirectories
-set(BASE_COMMON_PC_IN ${CMAKE_CURRENT_SOURCE_DIR}/gst/common.pc.in)
-
-add_subdirectory(gst/gfx)
 add_subdirectory(gst/utils)
+add_subdirectory(gst/allocators)
+add_subdirectory(gst/gfx)
 add_subdirectory(gst/video)
 add_subdirectory(gst/memory)
 add_subdirectory(gst/ml)
 add_subdirectory(gst/cv)
-add_subdirectory(gst/allocators)
 add_subdirectory(gst/camera)

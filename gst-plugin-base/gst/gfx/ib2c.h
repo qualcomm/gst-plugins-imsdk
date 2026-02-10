@@ -393,7 +393,7 @@ class IEngine {
    *
    * Register a IB2C surface for use into the internal layers.
    *
-   * return: Positive surface ID on success or exception on failure.
+   * Returns: Positive surface ID on success or exception on failure.
    **/
   virtual uint64_t CreateSurface(const Surface& surface, uint32_t flags) = 0;
 
@@ -402,7 +402,7 @@ class IEngine {
    *
    * Deregister a IB2C surface from the internal layers.
    *
-   * return: Exception on failure.
+   * Returns: Exception on failure.
    **/
   virtual void DestroySurface(uint64_t surface_id) = 0;
 
@@ -412,7 +412,7 @@ class IEngine {
    *
    * Execute the given set of blending compositions.
    *
-   * return: Pointer to the fence object or nullptr if synchronous is true.
+   * Returns: Pointer to the fence object or nullptr if synchronous is true.
    **/
   virtual std::uintptr_t Compose(const Compositions& compositions,
                                  bool synchronous = false) = 0;
@@ -422,7 +422,7 @@ class IEngine {
    *
    * Wait for a submitted compotions to finish.
    *
-   * return: Exception on failure.
+   * Returns: Exception on failure.
    **/
   virtual void Finish(std::uintptr_t fence) = 0;
 };
@@ -433,7 +433,7 @@ class IEngine {
  *
  * Main API for loading an instance of OpenGLES based engine.
  *
- * return: Pointer to new engine instance.
+ * Returns: Pointer to new engine instance.
  **/
 IEngine* NewGlEngine(const char** vendor, const char** renderer);
 

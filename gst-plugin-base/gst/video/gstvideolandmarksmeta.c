@@ -197,8 +197,8 @@ gst_buffer_copy_video_landmarks_meta (GstBuffer * buffer,
 }
 
 void
-gst_video_landmarks_coordinates_correction (GstVideoLandmarksMeta * meta,
-    GstVideoRectangle * source, GstVideoRectangle * destination)
+gst_video_landmarks_meta_transform_coordinates (GstVideoLandmarksMeta * meta,
+    const GstVideoRectangle * source, const GstVideoRectangle * destination)
 {
   GstVideoKeypoint *kp = NULL;
   gdouble w_scale = 0.0, h_scale = 0.0;

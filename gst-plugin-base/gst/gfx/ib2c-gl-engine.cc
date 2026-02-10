@@ -490,8 +490,8 @@ std::string Engine::RenderYuvTexture(std::vector<GraphicTuple>& graphics,
                        " frame buffer at color attachment 0 for YUV rendering");
 
     if (clean) {
-      GLfloat luma = EXTRACT_RED_COLOR(color), alpha = EXTRACT_ALPHA_COLOR(color);
-      GLfloat cr = EXTRACT_GREEN_COLOR(color), cb = EXTRACT_BLUE_COLOR(color);
+      GLfloat luma = GST_COLOR_RED(color), alpha = GST_COLOR_ALPHA(color);
+      GLfloat cr = GST_COLOR_GREEN(color), cb = GST_COLOR_BLUE(color);
 
       // Set/Clear the background of the texture attached to the frame buffer.
       if (format == ColorFormat::kGRAY8)
@@ -577,8 +577,8 @@ std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
 
   if (clean) {
     // Set/Clear the background of the texture attached to the frame buffer.
-    env_->Gles()->ClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
-                             EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
+    env_->Gles()->ClearColor(GST_COLOR_RED(color), GST_COLOR_GREEN(color),
+                             GST_COLOR_BLUE(color), GST_COLOR_ALPHA(color));
     env_->Gles()->Clear(GL_COLOR_BUFFER_BIT);
     RETURN_IF_GL_ERROR(env_, "Failed to clear buffer color bit");
   }
@@ -637,8 +637,8 @@ std::string Engine::RenderStageTexture(GLuint texture, uint32_t color,
                      "frame buffer at color attachment 0 for stage rendering");
 
   // Set/Clear the background of the texture attached to the frame buffer.
-  env_->Gles()->ClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
-                           EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
+  env_->Gles()->ClearColor(GST_COLOR_RED(color), GST_COLOR_GREEN(color),
+                           GST_COLOR_BLUE(color), GST_COLOR_ALPHA(color));
   env_->Gles()->Clear(GL_COLOR_BUFFER_BIT);
   RETURN_IF_GL_ERROR(env_, "Failed to clear buffer color bit");
 

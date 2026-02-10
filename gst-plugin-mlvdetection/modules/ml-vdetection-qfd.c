@@ -198,7 +198,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     // First tensor represents confidence scores.
     scores_idx = 0;
     // TODO: Second tensor represents some kind of confidence scores.
-    hm_pool = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    hm_pool = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
     // Third tensor represents the landmarks (left eye, right ear, etc.).
     landmarks_idx = 2;
     // Fourh tensor represents the coordinates of the bounding boxes.
@@ -229,9 +229,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     }
   }
 
-  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, scores_idx));
-  landmarks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, landmarks_idx));
-  bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, bboxes_idx));
+  scores = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, scores_idx));
+  landmarks = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, landmarks_idx));
+  bboxes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, bboxes_idx));
 
   n_classes = GST_ML_FRAME_DIM (mlframe, scores_idx, 3);
   n_landmarks = GST_ML_FRAME_DIM (mlframe, landmarks_idx, 3) / 2;

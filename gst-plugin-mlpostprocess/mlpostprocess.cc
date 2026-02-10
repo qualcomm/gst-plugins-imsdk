@@ -299,10 +299,10 @@ gst_ml_post_process_objects_affine_correction (GstMLPostProcess * postprocess,
     c = (GstVideoPoint) {object.right, object.top};
     d = (GstVideoPoint) {object.right, object.bottom};
 
-    gst_video_point_affine_correction (&a, matrix);
-    gst_video_point_affine_correction (&b, matrix);
-    gst_video_point_affine_correction (&c, matrix);
-    gst_video_point_affine_correction (&d, matrix);
+    gst_video_point_affine_transform (&a, matrix);
+    gst_video_point_affine_transform (&b, matrix);
+    gst_video_point_affine_transform (&c, matrix);
+    gst_video_point_affine_transform (&d, matrix);
 
     // Adjusted bounding box so that incoporates the new ABCD quadrilateral.
     left = MIN (MIN (a.x, b.x), MIN (c.x, d.x));
@@ -325,7 +325,7 @@ gst_ml_post_process_objects_affine_correction (GstMLPostProcess * postprocess,
     for (auto& landmark : object.landmarks.value()) {
       GstVideoPoint point = {landmark.x, landmark.y};
 
-      gst_video_point_affine_correction (&point, matrix);
+      gst_video_point_affine_transform (&point, matrix);
 
       GST_TRACE_OBJECT (postprocess, "Object %s: Landmark: [%.2f, %.2f] -> [%.2f "
           "%.2f]", object.name.c_str(), landmark.x, landmark.y, point.x, point.y);
@@ -354,7 +354,7 @@ gst_ml_post_process_poses_affine_correction (GstMLPostProcess * postprocess,
     for (auto& keypoint : pose.keypoints) {
       GstVideoPoint point = {keypoint.x, keypoint.y};
 
-      gst_video_point_affine_correction (&point, matrix);
+      gst_video_point_affine_transform (&point, matrix);
 
       GST_TRACE_OBJECT (postprocess, "Pose %s: Keypoint: [%.2f, %.2f] -> [%.2f "
           "%.2f]", pose.name.c_str(), keypoint.x, keypoint.y, point.x, point.y);
@@ -662,9 +662,9 @@ gst_ml_video_detection_fill_video_output (GstMLPostProcess * postprocess,
       color = entry.color.value();
 
       // Set color.
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       // Draw rectangle
       cairo_rectangle (context, x, y, width, height);
@@ -709,14 +709,14 @@ gst_ml_video_detection_fill_video_output (GstMLPostProcess * postprocess,
       cairo_fill (context);
 
       // Choose the best contrasting color to the background.
-      color = EXTRACT_ALPHA_COLOR (color);
-      color += ((EXTRACT_RED_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 8;
-      color += ((EXTRACT_GREEN_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 16;
-      color += ((EXTRACT_BLUE_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 24;
+      color = GST_COLOR_ALPHA (color);
+      color += ((GST_COLOR_RED (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 8;
+      color += ((GST_COLOR_GREEN (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 16;
+      color += ((GST_COLOR_BLUE (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 24;
 
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       // Set the starting position of the label text.
       cairo_move_to (context, x, (y + (fontsize * 4.0F / 5.0F)));
@@ -951,9 +951,9 @@ gst_ml_video_classification_fill_video_output (GstMLPostProcess * postprocess,
       color = entry.color.value();
 
       // Set text background color.
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       width = ceil (entry.name.size() * DEFAULT_FONT_SIZE * 3.0F / 5.0F);
 
@@ -961,14 +961,14 @@ gst_ml_video_classification_fill_video_output (GstMLPostProcess * postprocess,
       cairo_fill (context);
 
       // Choose the best contrasting color to the background.
-      color = EXTRACT_ALPHA_COLOR (color);
-      color += ((EXTRACT_RED_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 8;
-      color += ((EXTRACT_GREEN_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 16;
-      color += ((EXTRACT_BLUE_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 24;
+      color = GST_COLOR_ALPHA (color);
+      color += ((GST_COLOR_RED (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 8;
+      color += ((GST_COLOR_GREEN (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 16;
+      color += ((GST_COLOR_BLUE (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 24;
 
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       // (0,0) is at top left corner of the buffer.
       cairo_move_to (context, 0.0, (DEFAULT_FONT_SIZE * (num + 1) * 4.0F / 5.0F));
@@ -1144,9 +1144,9 @@ gst_ml_audio_classification_fill_video_output (GstMLPostProcess * postprocess,
       color = entry.color.value();
 
       // Set text background color.
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       width = ceil (entry.name.size() * DEFAULT_FONT_SIZE * 3.0F / 5.0F);
 
@@ -1154,14 +1154,14 @@ gst_ml_audio_classification_fill_video_output (GstMLPostProcess * postprocess,
       cairo_fill (context);
 
       // Choose the best contrasting color to the background.
-      color = EXTRACT_ALPHA_COLOR (color);
-      color += ((EXTRACT_RED_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 8;
-      color += ((EXTRACT_GREEN_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 16;
-      color += ((EXTRACT_BLUE_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 24;
+      color = GST_COLOR_ALPHA (color);
+      color += ((GST_COLOR_RED (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 8;
+      color += ((GST_COLOR_GREEN (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 16;
+      color += ((GST_COLOR_BLUE (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 24;
 
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       // (0,0) is at top left corner of the buffer.
       cairo_move_to (context, 0.0, (DEFAULT_FONT_SIZE * (num + 1) * 4.0F / 5.0F));
@@ -1381,10 +1381,10 @@ gst_ml_video_pose_fill_video_output (GstMLPostProcess * postprocess,
 
         // Set color.
         cairo_set_source_rgba (context,
-            EXTRACT_FLOAT_BLUE_COLOR (kp.color.value()),
-            EXTRACT_FLOAT_GREEN_COLOR (kp.color.value()),
-            EXTRACT_FLOAT_RED_COLOR (kp.color.value()),
-            EXTRACT_FLOAT_ALPHA_COLOR (kp.color.value()));
+            GST_FLOAT_COLOR_BLUE (kp.color.value()),
+            GST_FLOAT_COLOR_GREEN (kp.color.value()),
+            GST_FLOAT_COLOR_RED (kp.color.value()),
+            GST_FLOAT_COLOR_ALPHA (kp.color.value()));
 
         cairo_arc (context, kp.x, kp.y, radius, 0, 2 * M_PI);
         cairo_close_path (context);
@@ -1639,9 +1639,9 @@ gst_ml_text_generation_fill_video_output (GstMLPostProcess * postprocess,
       color = entry.color.value();
 
       // Set text background color.
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       width = ceil (entry.contents.size() * DEFAULT_FONT_SIZE * 3.0F / 5.0F);
 
@@ -1649,14 +1649,14 @@ gst_ml_text_generation_fill_video_output (GstMLPostProcess * postprocess,
       cairo_fill (context);
 
       // Choose the best contrasting color to the background.
-      color = EXTRACT_ALPHA_COLOR (color);
-      color += ((EXTRACT_RED_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 8;
-      color += ((EXTRACT_GREEN_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 16;
-      color += ((EXTRACT_BLUE_COLOR (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 24;
+      color = GST_COLOR_ALPHA (color);
+      color += ((GST_COLOR_RED (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 8;
+      color += ((GST_COLOR_GREEN (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 16;
+      color += ((GST_COLOR_BLUE (entry.color.value()) > 0x7F) ? 0x00 : 0xFF) << 24;
 
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-          EXTRACT_FLOAT_ALPHA_COLOR (color));
+      cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (color),
+          GST_FLOAT_COLOR_GREEN (color), GST_FLOAT_COLOR_RED (color),
+          GST_FLOAT_COLOR_ALPHA (color));
 
       // (0,0) is at top left corner of the buffer.
       cairo_move_to (context, 0.0, (DEFAULT_FONT_SIZE * (num + 1) * 4.0F / 5.0F));
@@ -1802,7 +1802,7 @@ gst_ml_post_process_decide_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
-  if (gst_query_get_video_alignment (query, &align)) {
+  if (gst_query_parse_video_alignment (query, &align)) {
     GST_DEBUG_OBJECT (postprocess, "Downstream alignment: padding (top: %u "
         "bottom: %u left: %u right: %u) stride (%u, %u, %u, %u)",
         align.padding_top, align.padding_bottom, align.padding_left,

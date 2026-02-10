@@ -18,7 +18,7 @@ typedef struct _GstFcvVideoConverter GstFcvVideoConverter;
  *
  * Initialize instance of FastCV converter backend.
  *
- * return: Pointer to FastCV converter on success or NULL on failure
+ * Returns: Pointer to FastCV converter on success or NULL on failure
  */
 GST_VIDEO_API GstFcvVideoConverter *
 gst_fcv_video_converter_new (GstStructure * settings);
@@ -28,8 +28,6 @@ gst_fcv_video_converter_new (GstStructure * settings);
  * @convert: Pointer to FastCV converter backend
  *
  * Deinitialise the FastCV converter.
- *
- * return: NONE
  */
 GST_VIDEO_API void
 gst_fcv_video_converter_free (GstFcvVideoConverter * convert);
@@ -43,7 +41,7 @@ gst_fcv_video_converter_free (GstFcvVideoConverter * convert);
  *
  * Submit the a number of video composition which will be executed together.
  *
- * return: Pointer to request on success or NULL on failure
+ * Returns: Pointer to request on success or NULL on failure
  */
 GST_VIDEO_API gboolean
 gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
@@ -57,7 +55,7 @@ gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
  *
  * Wait for the sumbitted to the GPU compositions to finish.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
 gst_fcv_video_converter_wait_fence (GstFcvVideoConverter * convert,
@@ -68,8 +66,6 @@ gst_fcv_video_converter_wait_fence (GstFcvVideoConverter * convert,
  * @convert: Pointer to FastCV converter backend.
  *
  * Wait for compositions sumbitted to the GPU to finish and flush cached data.
- *
- * return: NONE
  */
 GST_VIDEO_API void
 gst_fcv_video_converter_flush (GstFcvVideoConverter * convert);

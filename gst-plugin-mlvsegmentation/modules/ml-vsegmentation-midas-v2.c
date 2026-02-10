@@ -163,7 +163,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   stride = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0);
 
-  indata = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  indata = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
 
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
@@ -221,12 +221,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (id));
       color = (label != NULL) ? label->color : 0x000000FF;
 
-      outdata[outidx] = EXTRACT_RED_COLOR (color);
-      outdata[outidx + 1] = EXTRACT_GREEN_COLOR (color);
-      outdata[outidx + 2] = EXTRACT_BLUE_COLOR (color);
+      outdata[outidx] = GST_COLOR_RED (color);
+      outdata[outidx + 1] = GST_COLOR_GREEN (color);
+      outdata[outidx + 2] = GST_COLOR_BLUE (color);
 
       if (bpp == 4)
-        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR (color);
+        outdata[outidx + 3] = GST_COLOR_ALPHA (color);
     }
   }
 

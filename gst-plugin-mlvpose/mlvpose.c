@@ -372,10 +372,10 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose, GstBuffer * buffer)
             g_quark_to_string (kp->name), kp->x, kp->y, kp->confidence);
 
         // Set color.
-        cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (kp->color),
-            EXTRACT_FLOAT_GREEN_COLOR (kp->color),
-            EXTRACT_FLOAT_RED_COLOR (kp->color),
-            EXTRACT_FLOAT_ALPHA_COLOR (kp->color));
+        cairo_set_source_rgba (context, GST_FLOAT_COLOR_BLUE (kp->color),
+            GST_FLOAT_COLOR_GREEN (kp->color),
+            GST_FLOAT_COLOR_RED (kp->color),
+            GST_FLOAT_COLOR_ALPHA (kp->color));
 
         cairo_arc (context, kp->x, kp->y, radius, 0, 2 * M_PI);
         cairo_close_path (context);
@@ -1134,19 +1134,23 @@ gst_ml_video_pose_set_property (GObject * object, guint prop_id,
       break;
     case PROP_CONSTANTS:
     {
+      const gchar *string = g_value_get_string (value);
       GValue structure = G_VALUE_INIT;
 
       g_value_init (&structure, GST_TYPE_STRUCTURE);
 
-      if (!gst_parse_string_property_value (value, &structure)) {
-        GST_ERROR_OBJECT (vpose, "Failed to parse constants!");
+      if (g_file_test (string, G_FILE_TEST_IS_REGULAR) &&
+          !gst_value_deserialize_file (&structure, string)) {
+        GST_ERROR_OBJECT (vpose, "Failed to deserialize file!");
+        break;
+      } else if (!gst_value_deserialize (&structure, string)) {
+        GST_ERROR_OBJECT (vpose, "Failed to deserialize string!");
         break;
       }
 
-      if (vpose->mlconstants != NULL)
-        gst_structure_free (vpose->mlconstants);
-
+      g_clear_pointer (&vpose->mlconstants, gst_structure_free);
       vpose->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&structure));
+
       g_value_unset (&structure);
       break;
     }

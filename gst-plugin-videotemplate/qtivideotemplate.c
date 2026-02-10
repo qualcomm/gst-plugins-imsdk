@@ -222,25 +222,24 @@ gst_video_template_create_pool (GstVideoTemplate * videotemplate,
   return pool;
 }
 
-gboolean
+static gboolean
 gst_video_template_get_alignment (GstVideoTemplate * videotemplate,
-    GstVideoAlignment * align_rslt, GstCaps * caps)
+    GstVideoAlignment * align, GstCaps * caps)
 {
   GstVideoInfo info;
-  GstVideoAlignment align = { 0, }, ds_align = { 0, };
+  GstVideoAlignment ds_align = { 0, };
   GstQuery *query = NULL;
-  gboolean ret = FALSE;
+  gboolean success = FALSE;
 
-  if (NULL == videotemplate || NULL == align_rslt || NULL == caps) {
+  if (NULL == videotemplate || NULL == align || NULL == caps)
     return FALSE;
-  }
 
   if (!gst_video_info_from_caps (&info, caps)) {
     GST_ERROR_OBJECT (videotemplate, "Invalid src caps %" GST_PTR_FORMAT, caps);
     return FALSE;
   }
 
-  if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+  if (!gst_video_retrieve_gpu_alignment (&info, align)) {
     GST_ERROR_OBJECT (videotemplate, "Failed to get alignment!");
     return FALSE;
   }
@@ -253,30 +252,28 @@ gst_video_template_get_alignment (GstVideoTemplate * videotemplate,
     return FALSE;
   }
 
-  ret = gst_query_get_video_alignment (query, &ds_align);
+  success = gst_query_parse_video_alignment (query, &ds_align);
   gst_query_unref (query);
 
-  if (!ret) {
+  if (!success) {
     GST_ERROR_OBJECT (videotemplate, "failed to get video alignment");
     return FALSE;
   }
 
-  GST_DEBUG_OBJECT (videotemplate,
-      "Downstream alignment: padding (top: %u bottom: "
-      "%u left: %u right: %u) stride (%u, %u, %u, %u)", ds_align.padding_top,
-      ds_align.padding_bottom, ds_align.padding_left, ds_align.padding_right,
-      ds_align.stride_align[0], ds_align.stride_align[1],
+  GST_DEBUG_OBJECT (videotemplate, "Downstream alignment: padding (top: %u "
+      "bottom: %u left: %u right: %u) stride (%u, %u, %u, %u)",
+      ds_align.padding_top, ds_align.padding_bottom, ds_align.padding_left,
+      ds_align.padding_right, ds_align.stride_align[0], ds_align.stride_align[1],
       ds_align.stride_align[2], ds_align.stride_align[3]);
 
   // Find the most the appropriate alignment between us and downstream.
-  *align_rslt = gst_video_calculate_common_alignment (&align, &ds_align);
+  gst_video_alignment_update (align, &ds_align);
 
-  GST_DEBUG_OBJECT (videotemplate,
-      "Common alignment: padding (top: %u bottom: %u "
-      "left: %u right: %u) stride (%u, %u, %u, %u)", align_rslt->padding_top,
-      align_rslt->padding_bottom, align_rslt->padding_left, align_rslt->padding_right,
-      align_rslt->stride_align[0], align_rslt->stride_align[1],
-      align_rslt->stride_align[2], align_rslt->stride_align[3]);
+  GST_DEBUG_OBJECT (videotemplate, "Common alignment: padding (top: %u bottom: "
+      "%u left: %u right: %u) stride (%u, %u, %u, %u)", align->padding_top,
+      align->padding_bottom, align->padding_left, align->padding_right,
+      align->stride_align[0], align->stride_align[1],
+      align->stride_align[2], align->stride_align[3]);
 
   return TRUE;
 }
@@ -286,22 +283,22 @@ gst_video_template_allocate_outbuffer (GstBuffer ** outbuffer, void *priv_data)
 {
   GstVideoTemplate *videotemplate = GST_VIDEO_TEMPLATE_CAST (priv_data);
   GstBufferPool *pool = NULL;
-
   static gsize inited = 0;
-  if (g_once_init_enter (&inited)) {
-    gboolean ret_align = FALSE;
-    GstVideoAlignment align;
-    GstCaps *out_caps =
-        gst_pad_get_current_caps (GST_BASE_TRANSFORM_SRC_PAD (videotemplate));
-    ret_align =
-        gst_video_template_get_alignment (videotemplate, &align, out_caps);
-    videotemplate->outpool =
-        gst_video_template_create_pool (videotemplate,
-        ret_align ? &align : NULL, out_caps);
 
-    if (videotemplate->outpool == NULL) {
+  if (g_once_init_enter (&inited)) {
+    GstCaps *caps = NULL;
+    GstVideoAlignment align = {};
+    gboolean success = FALSE;
+
+    caps = gst_pad_get_current_caps (GST_BASE_TRANSFORM_SRC_PAD (videotemplate));
+    success = gst_video_template_get_alignment (videotemplate, &align, caps);
+
+    videotemplate->outpool = gst_video_template_create_pool (videotemplate,
+        (success ? &align : NULL), caps);
+    gst_caps_unref (caps);
+
+    if (videotemplate->outpool == NULL)
       GST_ERROR_OBJECT (videotemplate, "Failed to create output buffer pool");
-    }
 
     g_once_init_leave (&inited, 1);
   }

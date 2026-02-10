@@ -56,6 +56,10 @@ typedef struct _GstVideoQuadrilateral GstVideoQuadrilateral;
 typedef struct _GstVideoBlit GstVideoBlit;
 typedef struct _GstVideoComposition GstVideoComposition;
 
+#define GST_TYPE_VIDEO_CONVERTER_ENGINE (gst_video_converter_engine_get_type())
+G_DECLARE_FINAL_TYPE (GstVideoConvEngine, gst_video_converter_engine, GST,
+    VIDEO_CONVERTER_ENGINE, GObject)
+
 /**
  * GstFcvOpMode:
  * @GST_FCV_OP_MODE_LOW_POWER: Uses lowest power consuming implementation.
@@ -71,6 +75,9 @@ typedef enum {
   GST_FCV_OP_MODE_CPU_OFFLOAD,
   GST_FCV_OP_MODE_CPU_PERFORMANCE,
 } GstFcvOpMode;
+
+GST_API GType gst_fcv_op_mode_get_type (void);
+#define GST_TYPE_FCV_OP_MODE (gst_fcv_op_mode_get_type())
 
 /**
  * GstVideoConvBackend:
@@ -92,9 +99,6 @@ typedef enum {
 
 GST_VIDEO_API GType gst_video_converter_backend_get_type (void);
 #define GST_TYPE_VCE_BACKEND (gst_video_converter_backend_get_type())
-
-GST_API GType gst_fcv_op_mode_get_type (void);
-#define GST_TYPE_FCV_OP_MODE (gst_fcv_op_mode_get_type())
 
 /**
  * GstVideoConvRotate:
@@ -173,49 +177,50 @@ struct _GstVideoBlit
  */
 struct _GstVideoComposition
 {
-  GstVideoBlit       *blits;
-  guint              n_blits;
+  GstVideoBlit *blits;
+  guint        n_blits;
 
-  GstBuffer          *buffer;
-  GstVideoInfo       *info;
+  GstBuffer    *buffer;
+  GstVideoInfo *info;
 
-  guint32            bgcolor;
-  gboolean           bgfill;
+  guint32      bgcolor;
+  gboolean     bgfill;
 
-  gdouble            offsets[GST_VCE_MAX_CHANNELS];
-  gdouble            scales[GST_VCE_MAX_CHANNELS];
+  gdouble      offsets[GST_VCE_MAX_CHANNELS];
+  gdouble      scales[GST_VCE_MAX_CHANNELS];
 
-  guint64            datatype;
+  guint64      datatype;
 };
 
 /**
  * gst_video_quadrilateral_is_rectangle:
+ * @quadrilateral: A #GstVideoQuadrilateral
  *
- * Helper function for checking whether a #GstVideoQuadrilateral is rectangular.
+ * Helper function for checking whether A #GstVideoQuadrilateral is rectangular.
  *
- * return: NONE
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
 gst_video_quadrilateral_is_rectangle (const GstVideoQuadrilateral * quadrilateral);
 
 /**
- * gst_video_rectangle_to_quadrilateral:
+ * gst_video_quadrilateral_from_rectangle:
+ * @quadrilateral: A #GstVideoQuadrilateral
+ * @rectangle: A #GstVideoRectangle
  *
- * Helper function for converting a rectangle into a #GstVideoQuadrilateral struct.
- *
- * return: NONE
+ * Helper function for converting a rectangle into A #GstVideoQuadrilateral struct.
  */
 GST_VIDEO_API void
-gst_video_rectangle_to_quadrilateral (const GstVideoRectangle * rectangle,
-                                      GstVideoQuadrilateral * quadrilateral);
+gst_video_quadrilateral_from_rectangle (GstVideoQuadrilateral * quadrilateral,
+                                        const GstVideoRectangle * rectangle);
 
 /**
  * gst_video_quadrilateral_to_rectangle:
+ * @quadrilateral: A #GstVideoQuadrilateral
+ * @rectangle: A #GstVideoRectangle
  *
  * Helper function for converting a rectangular quadrilateral into the more
  * convinient #GstVideoRectangle struct.
- *
- * return: NONE
  */
 GST_VIDEO_API void
 gst_video_quadrilateral_to_rectangle (const GstVideoQuadrilateral * quadrilateral,
@@ -223,13 +228,17 @@ gst_video_quadrilateral_to_rectangle (const GstVideoQuadrilateral * quadrilatera
 
 /**
  * gst_video_frame_normalize_ip:
+ * @vframe: A #GstVideoFrame
+ * @datatype: the data type in the video frame
+ * @offsets: component offset factors, used in the normalize operation.
+ * @scales: component scale factors, used in the normalize operation.
  *
  * Helper function for normalizing video frame inplace.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
-gst_video_frame_normalize_ip (GstVideoFrame * vframe, guint64 flags,
+gst_video_frame_normalize_ip (GstVideoFrame * vframe, guint64 datatype,
                               gdouble offsets[GST_VCE_MAX_CHANNELS],
                               gdouble scales[GST_VCE_MAX_CHANNELS]);
 
@@ -238,7 +247,7 @@ gst_video_frame_normalize_ip (GstVideoFrame * vframe, guint64 flags,
  *
  * Retrieve the default vide converter backend.
  *
- * return: #GstVideoConvBackend
+ * Returns: the default #GstVideoConvBackend
  */
 GST_VIDEO_API GstVideoConvBackend
 gst_video_converter_default_backend (void);
@@ -250,7 +259,7 @@ gst_video_converter_default_backend (void);
  *
  * Initialize instance of video converter engine.
  *
- * return: Pointer to video converter on success or NULL on failure
+ * Returns: (transfer full): #GstVideoConvEngine on success or NULL on failure
  */
 GST_VIDEO_API GstVideoConvEngine *
 gst_video_converter_engine_new (GstVideoConvBackend backend,
@@ -261,8 +270,6 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
  * @engine: Pointer to video converter engine.
  *
  * Deinitialise the video converter engine.
- *
- * return: NONE
  */
 GST_VIDEO_API void
 gst_video_converter_engine_free (GstVideoConvEngine * engine);
@@ -280,7 +287,7 @@ gst_video_converter_engine_free (GstVideoConvEngine * engine);
  * case the compsition operations will be performed asynchronously. If the
  * fence object is left NULL then the operation is performed synchronously.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
 gst_video_converter_engine_compose (GstVideoConvEngine * engine,
@@ -294,7 +301,7 @@ gst_video_converter_engine_compose (GstVideoConvEngine * engine,
  *
  * Wait for the sumbitted to the engine compositions to finish.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
 gst_video_converter_engine_wait_fence (GstVideoConvEngine * engine,
@@ -305,8 +312,6 @@ gst_video_converter_engine_wait_fence (GstVideoConvEngine * engine,
  * @engine: Pointer to video converter engine.
  *
  * Wait for compositions sumbitted to the engine to finish and flush cached data.
- *
- * return: NONE
  */
 GST_VIDEO_API void
 gst_video_converter_engine_flush (GstVideoConvEngine * engine);

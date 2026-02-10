@@ -76,36 +76,36 @@ gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint index,
 {
   switch (mltype) {
     case GST_ML_TYPE_INT8:
-      GINT8_PTR_CAST (data)[index] = (gint8) value;
+      GST_INT8_PTR_CAST (data)[index] = (gint8) value;
       break;
     case GST_ML_TYPE_UINT8:
-      GUINT8_PTR_CAST (data)[index] = (guint8) value;
+      GST_UINT8_PTR_CAST (data)[index] = (guint8) value;
       break;
     case GST_ML_TYPE_INT16:
-      GINT16_PTR_CAST (data)[index] = (gint16) value;
+      GST_INT16_PTR_CAST (data)[index] = (gint16) value;
       break;
     case GST_ML_TYPE_UINT16:
-      GUINT16_PTR_CAST (data)[index] = (guint16) value;
+      GST_UINT16_PTR_CAST (data)[index] = (guint16) value;
       break;
     case GST_ML_TYPE_INT32:
-      GINT32_PTR_CAST (data)[index] = (gint32) value;
+      GST_INT32_PTR_CAST (data)[index] = (gint32) value;
       break;
     case GST_ML_TYPE_UINT32:
-      GUINT32_PTR_CAST (data)[index] = (guint32) value;
+      GST_UINT32_PTR_CAST (data)[index] = (guint32) value;
       break;
     case GST_ML_TYPE_INT64:
-      GINT64_PTR_CAST (data)[index] = (gint64) value;
+      GST_INT64_PTR_CAST (data)[index] = (gint64) value;
       break;
     case GST_ML_TYPE_UINT64:
-      GUINT64_PTR_CAST (data)[index] = (guint64) value;
+      GST_UINT64_PTR_CAST (data)[index] = (guint64) value;
       break;
 #if defined(__ARM_FP16_FORMAT_IEEE)
     case GST_ML_TYPE_FLOAT16:
-      GFLOAT16_PTR_CAST (data)[index] = (__fp16) value;
+      GST_FLOAT16_PTR_CAST (data)[index] = (__fp16) value;
       break;
 #endif //__ARM_FP16_FORMAT_IEEE
     case GST_ML_TYPE_FLOAT32:
-      GFLOAT_PTR_CAST (data)[index] = (gfloat) value;
+      GST_FLOAT_PTR_CAST (data)[index] = (gfloat) value;
       break;
     default:
       break;
@@ -118,37 +118,37 @@ gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
 {
   switch (mltype) {
     case GST_ML_TYPE_INT8:
-      return GINT8_PTR_CAST (data)[l_idx] > GINT8_PTR_CAST (data)[r_idx] ? 1 :
-          GINT8_PTR_CAST (data)[l_idx] < GINT8_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_INT8_PTR_CAST (data)[l_idx] > GST_INT8_PTR_CAST (data)[r_idx] ? 1 :
+          GST_INT8_PTR_CAST (data)[l_idx] < GST_INT8_PTR_CAST (data)[r_idx] ? -1 : 0;
     case GST_ML_TYPE_UINT8:
-      return GUINT8_PTR_CAST (data)[l_idx] > GUINT8_PTR_CAST (data)[r_idx] ? 1 :
-          GUINT8_PTR_CAST (data)[l_idx] < GUINT8_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_UINT8_PTR_CAST (data)[l_idx] > GST_UINT8_PTR_CAST (data)[r_idx] ? 1 :
+          GST_UINT8_PTR_CAST (data)[l_idx] < GST_UINT8_PTR_CAST (data)[r_idx] ? -1 : 0;
     case GST_ML_TYPE_INT16:
-      return GINT16_PTR_CAST (data)[l_idx] > GINT16_PTR_CAST (data)[r_idx] ? 1 :
-          GINT16_PTR_CAST (data)[l_idx] < GINT16_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_INT16_PTR_CAST (data)[l_idx] > GST_INT16_PTR_CAST (data)[r_idx] ? 1 :
+          GST_INT16_PTR_CAST (data)[l_idx] < GST_INT16_PTR_CAST (data)[r_idx] ? -1 : 0;
     case GST_ML_TYPE_UINT16:
-      return GUINT16_PTR_CAST (data)[l_idx] > GUINT16_PTR_CAST (data)[r_idx] ? 1 :
-          GUINT16_PTR_CAST (data)[l_idx] < GUINT16_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_UINT16_PTR_CAST (data)[l_idx] > GST_UINT16_PTR_CAST (data)[r_idx] ? 1 :
+          GST_UINT16_PTR_CAST (data)[l_idx] < GST_UINT16_PTR_CAST (data)[r_idx] ? -1 : 0;
     case GST_ML_TYPE_INT32:
-      return GINT32_PTR_CAST (data)[l_idx] > GINT32_PTR_CAST (data)[r_idx] ? 1 :
-          GINT32_PTR_CAST (data)[l_idx] < GINT32_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_INT32_PTR_CAST (data)[l_idx] > GST_INT32_PTR_CAST (data)[r_idx] ? 1 :
+          GST_INT32_PTR_CAST (data)[l_idx] < GST_INT32_PTR_CAST (data)[r_idx] ? -1 : 0;
     case GST_ML_TYPE_UINT32:
-      return GUINT32_PTR_CAST (data)[l_idx] > GUINT32_PTR_CAST (data)[r_idx] ? 1 :
-          GUINT32_PTR_CAST (data)[l_idx] < GUINT32_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_UINT32_PTR_CAST (data)[l_idx] > GST_UINT32_PTR_CAST (data)[r_idx] ? 1 :
+          GST_UINT32_PTR_CAST (data)[l_idx] < GST_UINT32_PTR_CAST (data)[r_idx] ? -1 : 0;
     case GST_ML_TYPE_INT64:
-      return GINT64_PTR_CAST (data)[l_idx] > GINT64_PTR_CAST (data)[r_idx] ? 1 :
-          GINT64_PTR_CAST (data)[l_idx] < GINT64_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_INT64_PTR_CAST (data)[l_idx] > GST_INT64_PTR_CAST (data)[r_idx] ? 1 :
+          GST_INT64_PTR_CAST (data)[l_idx] < GST_INT64_PTR_CAST (data)[r_idx] ? -1 : 0;
     case GST_ML_TYPE_UINT64:
-      return GUINT64_PTR_CAST (data)[l_idx] > GUINT64_PTR_CAST (data)[r_idx] ? 1 :
-          GUINT64_PTR_CAST (data)[l_idx] < GUINT64_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_UINT64_PTR_CAST (data)[l_idx] > GST_UINT64_PTR_CAST (data)[r_idx] ? 1 :
+          GST_UINT64_PTR_CAST (data)[l_idx] < GST_UINT64_PTR_CAST (data)[r_idx] ? -1 : 0;
 #if defined(__ARM_FP16_FORMAT_IEEE)
     case GST_ML_TYPE_FLOAT16:
-      return GFLOAT16_PTR_CAST (data)[l_idx] > GFLOAT16_PTR_CAST (data)[r_idx] ? 1 :
-          GFLOAT16_PTR_CAST (data)[l_idx] < GFLOAT16_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_FLOAT16_PTR_CAST (data)[l_idx] > GST_FLOAT16_PTR_CAST (data)[r_idx] ? 1 :
+          GST_FLOAT16_PTR_CAST (data)[l_idx] < GST_FLOAT16_PTR_CAST (data)[r_idx] ? -1 : 0;
 #endif //__ARM_FP16_FORMAT_IEEE
     case GST_ML_TYPE_FLOAT32:
-      return GFLOAT_PTR_CAST (data)[l_idx] > GFLOAT_PTR_CAST (data)[r_idx] ? 1 :
-          GFLOAT_PTR_CAST (data)[l_idx] < GFLOAT_PTR_CAST (data)[r_idx] ? -1 : 0;
+      return GST_FLOAT_PTR_CAST (data)[l_idx] > GST_FLOAT_PTR_CAST (data)[r_idx] ? 1 :
+          GST_FLOAT_PTR_CAST (data)[l_idx] < GST_FLOAT_PTR_CAST (data)[r_idx] ? -1 : 0;
     default:
       break;
   }

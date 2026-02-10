@@ -158,4 +158,3 @@ gst_buffer_get_cv_optclflow_meta_id (GstBuffer * buffer, guint id)
   }
   return NULL;
 }
-

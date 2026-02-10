@@ -18,7 +18,7 @@ typedef struct _GstOcvVideoConverter GstOcvVideoConverter;
  *
  * Initialize instance of OpenCV converter backend.
  *
- * return: Pointer to OpenCV converter on success or NULL on failure
+ * Returns: Pointer to OpenCV converter on success or NULL on failure
  */
 GST_VIDEO_API GstOcvVideoConverter *
 gst_ocv_video_converter_new (GstStructure * settings);
@@ -28,8 +28,6 @@ gst_ocv_video_converter_new (GstStructure * settings);
  * @convert: Pointer to OpenCV converter backend
  *
  * Deinitialise the OpenCV converter.
- *
- * return: NONE
  */
 GST_VIDEO_API void
 gst_ocv_video_converter_free (GstOcvVideoConverter * convert);
@@ -43,7 +41,7 @@ gst_ocv_video_converter_free (GstOcvVideoConverter * convert);
  *
  * Submit the a number of video composition which will be executed together.
  *
- * return: Pointer to request on success or NULL on failure
+ * Returns: Pointer to request on success or NULL on failure
  */
 GST_VIDEO_API gboolean
 gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
@@ -57,7 +55,7 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
  *
  * Wait for the sumbitted to the GPU compositions to finish.
  *
- * return: TRUE on success or FALSE on failure
+ * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
 gst_ocv_video_converter_wait_fence (GstOcvVideoConverter * convert,
@@ -68,8 +66,6 @@ gst_ocv_video_converter_wait_fence (GstOcvVideoConverter * convert,
  * @convert: Pointer to OpenCV converter backend.
  *
  * Wait for compositions sumbitted to the GPU to finish and flush cached data.
- *
- * return: NONE
  */
 GST_VIDEO_API void
 gst_ocv_video_converter_flush (GstOcvVideoConverter * convert);

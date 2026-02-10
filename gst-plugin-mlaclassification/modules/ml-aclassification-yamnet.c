@@ -166,7 +166,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   prediction->info = pmeta->info;
 
   n_inferences = GST_ML_FRAME_DIM (mlframe, 0, 1);
-  data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  data = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
 
   // Fill the prediction table.
   for (idx = 0; idx < n_inferences; ++idx) {
