@@ -6,6 +6,8 @@ project(gstreamer-qcom-oss-camera-meta-1.0
 
 set(TARGET_NAME gstqticamerabase)
 
+pkg_check_modules(QMMF_CAMERA_METADATA qmmf_camera_metadata)
+
 add_library(${TARGET_NAME} SHARED ${ENABLE_EXCLUDE_FROM_ALL}
   gstcamerameta.cc
 )
@@ -19,6 +21,7 @@ set_target_properties(${TARGET_NAME} PROPERTIES
 target_include_directories(${TARGET_NAME} PUBLIC
   ${GST_INCLUDE_DIRS}
   ${SYSROOT_INCDIR}/camx-api/camx/service
+  $<$<BOOL:${QMMF_CAMERA_METADATA_FOUND}>:${QMMF_CAMERA_METADATA_INCLUDE_DIRS}>
 )
 
 target_include_directories(${TARGET_NAME} INTERFACE
