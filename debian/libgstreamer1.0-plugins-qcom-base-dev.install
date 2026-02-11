@@ -5,6 +5,7 @@ usr/include/gstreamer-1.0/gst/ml/*
 usr/include/gstreamer-1.0/gst/utils/*
 usr/include/gstreamer-1.0/gst/video/*
 usr/include/gstreamer-1.0/gst/gfx/*
+usr/include/gstreamer-1.0/gst/camera/*
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqtiallocatorsbase.so
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqticvbase.so
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqtimemorybase.so
@@ -12,4 +13,5 @@ usr/lib/${DEB_HOST_MULTIARCH}/libgstqtivideobase.so
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqtimlbase.so
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqtiutilsbase.so
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqtigfxbase.so
+usr/lib/${DEB_HOST_MULTIARCH}/libgstqticamerabase.so
 usr/lib/${DEB_HOST_MULTIARCH}/pkgconfig
