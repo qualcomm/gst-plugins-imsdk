@@ -123,7 +123,10 @@ drm_ctx_new (DrmLicense license, gchar * header)
     g_print ("Content can be played with PlayReady as well as Widevine.\n"
       "Enter '1' for PlayReady or '2' for Widevine: " );
 
-    fgets (input_str, 2, stdin);
+    if (NULL == fgets (input_str, 2, stdin)) {
+      g_printerr ("ERROR: fgets failed in creating drm ctx!\n");
+      return NULL;
+    }
     license = (DrmLicense) g_ascii_strtoll ((const gchar *) input_str, &endptr, 0);
   }
 
@@ -800,7 +803,10 @@ decide_dash_or_hls (gchar ** content)
   fseek (f, 0, SEEK_SET);
 
   *content = g_new0 (gchar, fsize + 1);
-  fread (*content, fsize, 1, f);
+  if (1 != fread (*content, fsize, 1, f)) {
+    g_printerr ("ERROR: fread failed in decide dash or hls!\n");
+    return TRUE;
+  }
   fclose (f);
 
   (*content)[fsize] = 0;
@@ -947,7 +953,7 @@ create_pipeline (gchar * pipeline_des, DrmContext * drmctx, DrmLicense license)
 
       if (license == LICENSE_WIDEVINE)
         g_object_set (G_OBJECT (decryptor), "cdm-instance",
-            drmctx->GetCdmInstance(), NULL);
+            static_cast<widevine::Cdm*>(drmctx->GetCdmInstance()), NULL);
 
       g_value_reset (&value);
     }

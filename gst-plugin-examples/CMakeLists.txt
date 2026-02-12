@@ -13,7 +13,7 @@ check_include_file_cxx("media/drm/DrmAPI.h" HAVE_DRM_API_H)
 
 # Check whether CDM libs are present.
 include(CheckIncludeFileCXX)
-check_include_file_cxx("ce_cdm/cdm.h" HAVE_CDM_H)
+check_include_file_cxx("cdm.h" HAVE_CDM_H)
 
 # Check whether Auto-framing libs are present.
 include(CheckIncludeFileCXX)

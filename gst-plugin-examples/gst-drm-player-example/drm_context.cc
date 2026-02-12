@@ -25,10 +25,6 @@
 #define CDM_PROV_URL           ""
 #define CDM_LIC_URL            ""
 
-const std::string kProductName = "DRMPlayer";
-const std::string kCompanyName = "QTI";
-const std::string kModelName   = "QRB5165";
-
 // To store license request and response data
 struct soapbuf {
   gchar   *pdata;
@@ -355,14 +351,10 @@ WidevineContext::InitSession ()
 {
   std::string prov_request, prov_response;
   widevine::Cdm::Status status = widevine::Cdm::kTypeError;
-  widevine::Cdm::ClientInfo client_info;
-  client_info.product_name = kProductName;
-  client_info.company_name = kCompanyName;
-  client_info.model_name = kModelName;
 
   // Initialize the CDM Library.
   if ((status = widevine::Cdm::initialize (widevine::Cdm::kOpaqueHandle,
-      client_info, storage_impl, clock_impl, timer_impl, widevine::Cdm::kErrors))
+      storage_impl, clock_impl, timer_impl, logger_impl, widevine::Cdm::kErrors))
       != widevine::Cdm::kSuccess) {
     g_printerr ("ERROR: Couldn't initialize the CDM Library! \n");
     return status;
@@ -377,7 +369,7 @@ WidevineContext::InitSession ()
   g_print ("Created new CDM instance.\n");
 
   // Provision the device if not provisioned.
-  if (!cdm_->isProvisioned()) {
+  if (cdm_->getProvisioningStatus()) {
     g_print ("Device is not provisioned. Provisioning first...\n");
 
     if ((status = cdm_->getProvisioningRequest (&prov_request))
@@ -485,6 +477,7 @@ WidevineContext::~WidevineContext ()
   delete storage_impl;
   delete clock_impl;
   delete timer_impl;
+  delete logger_impl;
 
   if (cdm_ == nullptr)
     return;
