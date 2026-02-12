@@ -29,229 +29,274 @@
 
 #include "STrack.h"
 
-STrack::STrack(vector<float> tlwh_, float score, int det_id)
-{
-	_tlwh.resize(4);
-	_tlwh.assign(tlwh_.begin(), tlwh_.end());
+STrack::STrack(vector<float> tlwh_, float score, int det_id) {
+    _tlwh.resize(4);
+    _tlwh.assign(tlwh_.begin(), tlwh_.end());
 
-	is_activated = false;
-	track_id = 0;
-	state = TrackState::New;
-	
-	tlwh.resize(4);
-	tlbr.resize(4);    
+    is_activated = false;
+    track_id = 0;
+    state = TrackState::New;
 
-	static_tlwh();
-	static_tlbr();
+    tlwh.resize(4);
+    tlbr.resize(4);
+
+    static_tlwh();
+    static_tlbr();
 
     smoothed_wh.resize(2);
     smoothed_wh[0] = this->tlwh[2];
     smoothed_wh[1] = this->tlwh[3];
 
-	frame_id = 0;
-	tracklet_len = 0;
-	this->score = score;
-	start_frame = 0;
+    frame_id = 0;
+    tracklet_len = 0;
+    this->score = score;
+    start_frame = 0;
 
-    //init the matched detection 
+    //init the matched detection
     this->matched_detection_id = det_id; //no original set yet
     this->iou_with_det = 1.0f;
+    this->current_detection_tlbr.resize(4);
+    this->current_detection_tlbr[0] = tlbr[0];
+    this->current_detection_tlbr[1] = tlbr[1];
+    this->current_detection_tlbr[2] = tlbr[2];
+    this->current_detection_tlbr[3] = tlbr[3];
+
+    this->prev_motion.resize(4);
+    std::fill(this->prev_motion.begin(), this->prev_motion.end(), 0.f);
+
+    // init reid members
+    adjacency_overlap = 0.f;
+    reid_priority = 0;
+    max_reid_capacity = 10;
+    ambiguous_iou = false;
 }
 
-STrack::~STrack()
-{
-}
+STrack::~STrack() {}
 
-void STrack::activate(byte_kalman::KalmanFilter &kalman_filter, int frame_id)
-{
-	this->kalman_filter = kalman_filter;
-	this->track_id = this->next_id();
+void STrack::activate(byte_kalman::KalmanFilter &kalman_filter, int frame_id) {
+    this->kalman_filter = kalman_filter;
+    this->track_id = this->next_id();
 
-	vector<float> _tlwh_tmp(4);
-	_tlwh_tmp[0] = this->_tlwh[0];
-	_tlwh_tmp[1] = this->_tlwh[1];
-	_tlwh_tmp[2] = this->_tlwh[2];
-	_tlwh_tmp[3] = this->_tlwh[3];
-	vector<float> xyah = tlwh_to_xyah(_tlwh_tmp);
-	DETECTBOX xyah_box;
-	xyah_box[0] = xyah[0];
-	xyah_box[1] = xyah[1];
-	xyah_box[2] = xyah[2];
-	xyah_box[3] = xyah[3];
-	auto mc = this->kalman_filter.initiate(xyah_box);
-	this->mean = mc.first;
-	this->covariance = mc.second;
+    vector<float> _tlwh_tmp(4);
+    _tlwh_tmp[0] = this->_tlwh[0];
+    _tlwh_tmp[1] = this->_tlwh[1];
+    _tlwh_tmp[2] = this->_tlwh[2];
+    _tlwh_tmp[3] = this->_tlwh[3];
+    vector<float> xyah = tlwh_to_xyah(_tlwh_tmp);
+    DETECTBOX xyah_box;
+    xyah_box[0] = xyah[0];
+    xyah_box[1] = xyah[1];
+    xyah_box[2] = xyah[2];
+    xyah_box[3] = xyah[3];
+    auto mc = this->kalman_filter.initiate(xyah_box);
+    this->mean = mc.first;
+    this->covariance = mc.second;
 
-	static_tlwh();
-	static_tlbr();
+    static_tlwh();
+    static_tlbr();
 
     this->smoothed_wh[0] = this->tlwh[2];
     this->smoothed_wh[1] = this->tlwh[3];
 
-	this->tracklet_len = 0;
-	this->state = TrackState::Tracked;
-	if (frame_id == 1)
-	{
-		this->is_activated = true;
-	}
-	this->frame_id = frame_id;
-	this->start_frame = frame_id;
+    this->tracklet_len = 0;
+    this->is_activated = true;
+    if (frame_id == 1) {
+        this->state = TrackState::Tracked;
+    }
+    this->frame_id = frame_id;
+    this->start_frame = frame_id;
 
     //activation is only on new unmatched high-conf detection, so iou is to itself, i.e. 1.0
     this->iou_with_det = 1.0f;
-       
+
+    this->prev_motion[0] = 0.f;
+    this->prev_motion[1] = 0.f;
+    this->prev_motion[2] = 0.f;
+    this->prev_motion[3] = 0.f;
 }
 
-void STrack::re_activate(STrack &new_track, int frame_id, bool new_id, float iou_score)
-{
-	vector<float> xyah = tlwh_to_xyah(new_track.tlwh);
-	DETECTBOX xyah_box;
-	xyah_box[0] = xyah[0];
-	xyah_box[1] = xyah[1];
-	xyah_box[2] = xyah[2];
-	xyah_box[3] = xyah[3];
-	auto mc = this->kalman_filter.update(this->mean, this->covariance, xyah_box);
-	this->mean = mc.first;
-	this->covariance = mc.second;
+void STrack::re_activate(STrack &new_track, int frame_id, bool new_id,
+                         float iou_score) {
 
-	static_tlwh();
-	static_tlbr();
+    vector<float> xyah = tlwh_to_xyah(new_track.tlwh);
+    DETECTBOX xyah_box;
+    xyah_box[0] = xyah[0];
+    xyah_box[1] = xyah[1];
+    xyah_box[2] = xyah[2];
+    xyah_box[3] = xyah[3];
+    auto mc = this->kalman_filter.update(this->mean, this->covariance, xyah_box);
+    this->mean = mc.first;
+    this->covariance = mc.second;
+
+    static_tlwh();
+    static_tlbr();
 
     //reset the smoothed width and height
     this->smoothed_wh[0] = this->tlwh[2];
     this->smoothed_wh[1] = this->tlwh[3];
 
-	this->tracklet_len = 0;
-	this->state = TrackState::Tracked;
-	this->is_activated = true;
-	this->frame_id = frame_id;
-	this->score = new_track.score;
-	if (new_id)
-		this->track_id = next_id();
+    this->tracklet_len = 0;
+    this->state = TrackState::Tracked;
+    this->is_activated = true;
+    this->frame_id = frame_id;
+    this->score = new_track.score;
+    if (new_id)
+        this->track_id = next_id();
 
-    //record the matched detection 
+    //record the matched detection
     this->matched_detection_id = new_track.matched_detection_id;
     this->iou_with_det = iou_score;
+    this->current_detection_tlbr[0] = new_track.tlbr[0];
+    this->current_detection_tlbr[1] = new_track.tlbr[1];
+    this->current_detection_tlbr[2] = new_track.tlbr[2];
+    this->current_detection_tlbr[3] = new_track.tlbr[3];
+
+    this->prev_motion[0] = 0.f;
+    this->prev_motion[1] = 0.f;
+    this->prev_motion[2] = 0.f;
+    this->prev_motion[3] = 0.f;
 }
 
-void STrack::update(STrack &new_track, int frame_id, float iou_score, float sz_smooth_factor)
-{
-	this->frame_id = frame_id;
-	this->tracklet_len++;
+void STrack::update(STrack &new_track, int frame_id, float iou_score,
+                    float sz_smooth_factor) {
 
-	vector<float> xyah = tlwh_to_xyah(new_track.tlwh);
-	DETECTBOX xyah_box;
-	xyah_box[0] = xyah[0];
-	xyah_box[1] = xyah[1];
-	xyah_box[2] = xyah[2];
-	xyah_box[3] = xyah[3];
+    this->frame_id = frame_id;
+    this->tracklet_len++;
 
-	auto mc = this->kalman_filter.update(this->mean, this->covariance, xyah_box);
-	this->mean = mc.first;
-	this->covariance = mc.second;
+    vector<float> xyah = tlwh_to_xyah(new_track.tlwh);
+    DETECTBOX xyah_box;
+    xyah_box[0] = xyah[0];
+    xyah_box[1] = xyah[1];
+    xyah_box[2] = xyah[2];
+    xyah_box[3] = xyah[3];
 
-	static_tlwh();
-	static_tlbr();
+    auto mc = this->kalman_filter.update(this->mean, this->covariance, xyah_box);
+    this->mean = mc.first;
+    this->covariance = mc.second;
+
+    static_tlwh();
+    static_tlbr();
 
     //update smoothed width and height
     this->smoothed_wh[0] = this->smoothed_wh[0] * sz_smooth_factor + this->tlwh[2] * (1.0f - sz_smooth_factor);
     this->smoothed_wh[1] = this->smoothed_wh[1] * sz_smooth_factor + this->tlwh[3] * (1.0f - sz_smooth_factor);
 
-	this->state = TrackState::Tracked;
-	this->is_activated = true;
+    this->state = TrackState::Tracked;
+    this->is_activated = true;
 
-	this->score = new_track.score;
+    this->score = new_track.score;
 
-    //record the matched detection 
+    //record the matched detection
     this->matched_detection_id = new_track.matched_detection_id;
     this->iou_with_det = iou_score;
+
+    // update overlap
+    this->adjacency_overlap = new_track.adjacency_overlap;
+
+    // temporal smoothing
+    if (false) {
+        for (int i = 0; i < 4; i++)
+        {
+            float motion = new_track.tlbr[i] - this->current_detection_tlbr[i];
+            float smoothed_motion = 0.9f * this->prev_motion[i] + 0.1f * motion;
+            this->current_detection_tlbr[i] = this->current_detection_tlbr[i] + smoothed_motion;
+            this->prev_motion[i] = smoothed_motion;
+        }
+    }
+    else {
+        this->current_detection_tlbr[0] = new_track.tlbr[0];
+        this->current_detection_tlbr[1] = new_track.tlbr[1];
+        this->current_detection_tlbr[2] = new_track.tlbr[2];
+        this->current_detection_tlbr[3] = new_track.tlbr[3];
+    }
 }
 
-void STrack::static_tlwh()
-{
-	if (this->state == TrackState::New)
-	{
-		tlwh[0] = _tlwh[0];
-		tlwh[1] = _tlwh[1];
-		tlwh[2] = _tlwh[2];
-		tlwh[3] = _tlwh[3];
-		return;
-	}
+void STrack::static_tlwh() {
+    if (this->state == TrackState::New) {
+        tlwh[0] = _tlwh[0];
+        tlwh[1] = _tlwh[1];
+        tlwh[2] = _tlwh[2];
+        tlwh[3] = _tlwh[3];
+        return;
+    }
 
-	tlwh[0] = mean[0];
-	tlwh[1] = mean[1];
-	tlwh[2] = mean[2];
-	tlwh[3] = mean[3];
+    tlwh[0] = mean[0];
+    tlwh[1] = mean[1];
+    tlwh[2] = mean[2];
+    tlwh[3] = mean[3];
 
-	tlwh[2] *= tlwh[3];
-	tlwh[0] -= tlwh[2] / 2;
-	tlwh[1] -= tlwh[3] / 2;
+    tlwh[2] *= tlwh[3];
+    tlwh[0] -= tlwh[2] / 2;
+    tlwh[1] -= tlwh[3] / 2;
 }
 
-void STrack::static_tlbr()
-{
-	tlbr.clear();
-	tlbr.assign(tlwh.begin(), tlwh.end());
-	tlbr[2] += tlbr[0];
-	tlbr[3] += tlbr[1];
+void STrack::static_tlbr() {
+    tlbr.clear();
+    tlbr.assign(tlwh.begin(), tlwh.end());
+    tlbr[2] += tlbr[0];
+    tlbr[3] += tlbr[1];
 }
 
-vector<float> STrack::tlwh_to_xyah(vector<float> tlwh_tmp)
-{
-	vector<float> tlwh_output = tlwh_tmp;
-	tlwh_output[0] += tlwh_output[2] / 2;
-	tlwh_output[1] += tlwh_output[3] / 2;
-	tlwh_output[2] /= tlwh_output[3];
-	return tlwh_output;
+vector<float> STrack::tlwh_to_xyah(vector<float> tlwh_tmp) {
+    vector<float> tlwh_output = tlwh_tmp;
+    tlwh_output[0] += tlwh_output[2] / 2;
+    tlwh_output[1] += tlwh_output[3] / 2;
+    tlwh_output[2] /= tlwh_output[3];
+    return tlwh_output;
 }
 
-vector<float> STrack::to_xyah()
-{
-	return tlwh_to_xyah(tlwh);
+vector<float> STrack::to_xyah() {
+    return tlwh_to_xyah(tlwh);
 }
 
-vector<float> STrack::tlbr_to_tlwh(vector<float> &tlbr)
-{
-	tlbr[2] -= tlbr[0];
-	tlbr[3] -= tlbr[1];
-	return tlbr;
+vector<float> STrack::tlbr_to_tlwh(vector<float> &tlbr) {
+    tlbr[2] -= tlbr[0];
+    tlbr[3] -= tlbr[1];
+    return tlbr;
 }
 
-void STrack::mark_lost()
-{
-	state = TrackState::Lost;
+void STrack::mark_lost() {
+    state = TrackState::Lost;
     this->matched_detection_id = -1; //no detection matched
     this->iou_with_det = 0;
-
 }
 
-void STrack::mark_removed()
-{
-	state = TrackState::Removed;
+void STrack::mark_removed() {
+    state = TrackState::Removed;
     this->matched_detection_id = -1; //no detection matched
     this->iou_with_det = 0;
 }
 
-int STrack::next_id()
-{
-	static int _count = 0;
-	_count++;
-	return _count;
+int STrack::next_id() {
+    static int _count = 0;
+    _count++;
+    return _count;
 }
 
-int STrack::end_frame()
-{
-	return this->frame_id;
+int STrack::end_frame() {
+    return this->frame_id;
 }
 
-void STrack::multi_predict(vector<STrack*> &stracks, byte_kalman::KalmanFilter &kalman_filter)
-{
-	for (int i = 0; i < stracks.size(); i++)
-	{
-		/*if (stracks[i]->state != TrackState::Tracked)
-		{
-			stracks[i]->mean[7] = 0;
-		}*/
-		kalman_filter.predict(stracks[i]->mean, stracks[i]->covariance);
-	}
+void STrack::multi_predict(vector<STrack*> &stracks, byte_kalman::KalmanFilter &kalman_filter) {
+    for (int i = 0; i < stracks.size(); i++) {
+        /*if (stracks[i]->state != TrackState::Tracked)
+        {
+            stracks[i]->mean[7] = 0;
+        }*/
+        kalman_filter.predict(stracks[i]->mean, stracks[i]->covariance);
+    }
+}
+
+void STrack::update_reid(vector<float> &feature, int bbox_size, int frame_id) {
+    if (this->reid_feature_list.size() == this->max_reid_capacity) {
+        this->reid_feature_list.pop_back();
+        this->reid_timestamp_list.pop_back();
+        this->bbox_size_list.pop_back();
+    }
+
+    this->reid_feature_list.push_front(feature);
+    this->reid_timestamp_list.push_front(frame_id);
+    this->bbox_size_list.push_front(bbox_size);
+
+    this->reid_priority = 0;
 }
