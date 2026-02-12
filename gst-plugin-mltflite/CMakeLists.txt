@@ -67,7 +67,9 @@ else()
   # Prefer the prebuilt TFLite package.
   pkg_check_modules(TFLITE tensorflow-lite-prebuilt)
   if(NOT TFLITE_FOUND)
-    pkg_check_modules(TFLITE REQUIRED tensorflow-lite)
+    pkg_check_modules(TFLITE tensorflow-lite)
+  else()
+    pkg_check_modules(TFLITE REQUIRED tensorflowlite_c)
   endif()
 
   include(CheckIncludeFile)
