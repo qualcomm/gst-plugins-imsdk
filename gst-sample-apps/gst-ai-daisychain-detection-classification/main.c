@@ -532,6 +532,21 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       g_printerr ("Failed to create v4l2src_caps\n");
       goto error_clean_elements;
     }
+    if (options.video_format == GST_YUV2_VIDEO_FORMAT) {
+      // 1. Create qtivtransform plugin
+      qtivtransform = gst_element_factory_make ("qtivtransform", "qtivtransform");
+      if (!qtivtransform) {
+        g_printerr ("Failed to create qtivtransform\n");
+        goto error_clean_elements;
+      }
+      //transform filter caps
+      qtivtransform_capsfilter = gst_element_factory_make ("capsfilter",
+          "qtivtransform_capsfilter");
+      if (!qtivtransform_capsfilter) {
+        g_printerr ("Failed to create qtivtransform_capsfilter\n");
+        goto error_clean_elements;
+      }
+    }
     if (options.video_format == GST_MJPEG_VIDEO_FORMAT) {
       // 1. Create qtivtransform plugin
       qtivtransform = gst_element_factory_make ("qtivtransform", "qtivtransform");
@@ -794,6 +809,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
           "framerate", GST_TYPE_FRACTION, options.framerate, 1, NULL);
       g_object_set (G_OBJECT (v4l2src_caps), "caps", filtercaps, NULL);
       gst_caps_unref (filtercaps);
+      filtercaps = gst_caps_new_simple ("video/x-raw",
+          "format", G_TYPE_STRING, "NV12", NULL);
+      g_object_set (G_OBJECT (qtivtransform_capsfilter), "caps", filtercaps, NULL);
+      gst_caps_unref (filtercaps);
     }
   } else {
     g_printerr ("Invalid source type\n");
@@ -1019,6 +1038,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
         rtspsrc, rtph264depay, h264parse, v4l2h264dec, v4l2h264dec_caps, NULL);
   } else if (options.source_type == GST_STREAM_TYPE_USB_CAMERA) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2src, v4l2src_caps, NULL);
+    if (options.video_format == GST_YUV2_VIDEO_FORMAT) {
+      gst_bin_add_many (GST_BIN (appctx->pipeline), qtivtransform,
+          qtivtransform_capsfilter, NULL);
+    }
     if (options.video_format == GST_MJPEG_VIDEO_FORMAT) {
       gst_bin_add_many (GST_BIN (appctx->pipeline), qtivtransform,
           qtivtransform_capsfilter, videoconvert, jpegdec, NULL);
@@ -1133,9 +1156,16 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       goto error_clean_pipeline;
     }
   } else if (options.source_type == GST_STREAM_TYPE_USB_CAMERA) {
-    if (options.video_format == GST_YUV2_VIDEO_FORMAT ||
-        options.video_format == GST_NV12_VIDEO_FORMAT) {
+    if (options.video_format == GST_NV12_VIDEO_FORMAT) {
       ret = gst_element_link_many (v4l2src, v4l2src_caps, tee[0], NULL);
+      if (!ret) {
+        g_printerr ("Pipeline elements cannot be linked for"
+            " usbsource->tee\n");
+        goto error_clean_pipeline;
+      }
+    } else if (options.video_format == GST_YUV2_VIDEO_FORMAT) {
+      ret = gst_element_link_many (v4l2src, v4l2src_caps, qtivtransform,
+          qtivtransform_capsfilter, tee[0], NULL);
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for"
             " usbsource->tee\n");
@@ -1355,9 +1385,12 @@ error_clean_elements:
         &v4l2h264dec_caps, &qtimetamux, NULL);
   } else if (options.source_type == GST_STREAM_TYPE_USB_CAMERA) {
     cleanup_gst (&v4l2src, &v4l2src_caps, NULL);
+    if (options.video_format == GST_YUV2_VIDEO_FORMAT) {
+      cleanup_gst (&qtivtransform, &qtivtransform_capsfilter, NULL);
+    }
     if (options.video_format == GST_MJPEG_VIDEO_FORMAT) {
-    cleanup_gst (&qtivtransform, &qtivtransform_capsfilter,
-        &videoconvert, &jpegdec);
+      cleanup_gst (&qtivtransform, &qtivtransform_capsfilter,
+          &videoconvert, &jpegdec, NULL);
     }
   } else {
     g_printerr ("Invalid Input Source\n");
