@@ -1230,13 +1230,13 @@ qmmfsrc_gst_get_stream_colorimetry (gchar *colorimetry)
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT601) == 0)
     return ::qmmf::recorder::Colorimetry::kBT601;
-  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT2100_HLG_FULL) == 0)
+  else if (g_strcmp0 (colorimetry, "1:6:15:7") == 0)
     return ::qmmf::recorder::Colorimetry::kBT2100HLGFULL;
-  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT2100_PQ_FULL) == 0)
+  else if (g_strcmp0 (colorimetry, "1:6:14:7") == 0)
     return ::qmmf::recorder::Colorimetry::kBT2100PQFULL;
-  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT601_FULL) == 0)
+  else if (g_strcmp0 (colorimetry, "1:4:16:4") == 0)
     return ::qmmf::recorder::Colorimetry::kBT601FULL;
-  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT709_FULL) == 0)
+  else if (g_strcmp0 (colorimetry, "1:3:5:1") == 0)
     return ::qmmf::recorder::Colorimetry::kBT709FULL;
 #endif // (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   else {
@@ -2297,9 +2297,9 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
     tag_id = get_vendor_tag_by_name (
         "org.quic.camera2.streamconfigs", "HDRVideoMode");
-    if (g_strcmp0 (vpad->colorimetry, GST_VIDEO_COLORIMETRY_BT2100_HLG_FULL) == 0)
+    if (g_strcmp0 (vpad->colorimetry, "1:6:15:7") == 0)
       streamhdrmode = 1;
-    else if (g_strcmp0 (vpad->colorimetry, GST_VIDEO_COLORIMETRY_BT2100_PQ_FULL) == 0)
+    else if (g_strcmp0 (vpad->colorimetry, "1:6:14:7") == 0)
       streamhdrmode = 2;
     else
       streamhdrmode = 0;

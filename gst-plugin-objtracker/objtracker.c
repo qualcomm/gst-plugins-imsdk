@@ -5,7 +5,7 @@
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
+#endif /* HAVE_CONFIG_H */
 
 #include "objtracker.h"
 
@@ -154,11 +154,11 @@ gst_objtracker_transform (GstBaseTransform *base, GstBuffer *inbuffer,
     GstBuffer *outbuffer)
 {
   GstObjTracker *objtracker = GST_OBJ_TRACKER (base);
+  GstMemory *mem = NULL;
   GstMapInfo memmap = {};
   gchar *input_text = NULL, *output_text = NULL;
-  guint length = 0;
   GstClockTime time = GST_CLOCK_TIME_NONE;
-  GstMemory *mem = NULL;
+  guint length = 0;
   gboolean success = FALSE;
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
@@ -179,10 +179,9 @@ gst_objtracker_transform (GstBaseTransform *base, GstBuffer *inbuffer,
   // string. This causes data loss when two plugins are modifying the
   // same buffer data.
   input_text = g_strndup ((gchar *) memmap.data, memmap.size);
-
   gst_buffer_unmap (inbuffer, &memmap);
 
-  success = gst_objtracker_algo_execute_text(objtracker->algo, input_text,
+  success = gst_objtracker_algo_execute_text (objtracker->algo, input_text,
       &output_text);
   if (!success) {
     GST_ERROR_OBJECT (objtracker, "Failed to serialize output data!");
@@ -216,14 +215,14 @@ gst_objtracker_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
   GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
 
-  time = gst_util_get_timestamp ();
-
   // GAP buffer, nothing to do. Propagate output buffer downstream.
   if (gst_buffer_get_size (buffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
-  success = gst_objtracker_algo_execute_buffer(objtracker->algo, buffer);
+  time = gst_util_get_timestamp ();
+
+  success = gst_objtracker_algo_execute_buffer (objtracker->algo, buffer);
   if (!success) {
     GST_ERROR_OBJECT (objtracker, "Failed to process object tracker algo!");
     return GST_FLOW_ERROR;

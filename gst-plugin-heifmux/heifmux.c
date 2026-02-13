@@ -136,6 +136,7 @@ gst_heifmux_worker_task (gpointer userdata)
   GstBuffer *mainbuf = NULL, *outbuf = NULL;
   GList *thframes = NULL, *list = NULL;
   GstDataQueueItem *item = NULL;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
   gsize offset[GST_VIDEO_MAX_PLANES] = { 0, 0, 0, 0 };
   gint  stride[GST_VIDEO_MAX_PLANES] = { 0, 0, 0, 0 };
   gboolean success = FALSE;
@@ -143,9 +144,8 @@ gst_heifmux_worker_task (gpointer userdata)
   if (!gst_data_queue_peek (muxer->sinkpad->buffers, &item))
     return;
 
-  // Take the buffer from the queue item and null the object pointer.
+  // Get buffer pointer from the queue item.
   mainbuf = GST_BUFFER (item->object);
-  item->object = NULL;
 
   // Set buffer video metadata.
   gst_buffer_add_video_meta_full (mainbuf, GST_VIDEO_FRAME_FLAG_NONE,
@@ -176,6 +176,8 @@ gst_heifmux_worker_task (gpointer userdata)
       " with %d thumbnail%s.", mainbuf, g_list_length (thframes),
       (g_list_length (thframes) != 1) ? "s" : "");
 
+  time = gst_util_get_timestamp ();
+
   GST_HEIFMUX_LOCK (muxer);
 
   if (!muxer->active) {
@@ -199,6 +201,12 @@ gst_heifmux_worker_task (gpointer userdata)
   success = gst_heif_engine_execute (muxer->engine, mainbuf, thframes, &outbuf);
 
   GST_HEIFMUX_UNLOCK (muxer);
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_INFO_OBJECT (muxer, "Heif muxer took %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   if (!success) {
     GST_ERROR_OBJECT (muxer, "Failed to execute heif muxer!");

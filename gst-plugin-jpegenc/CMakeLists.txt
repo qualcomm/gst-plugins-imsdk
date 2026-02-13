@@ -24,6 +24,7 @@ pkg_check_modules(GST_QCOM_VIDEO
   REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
 pkg_check_modules(GST_QCOM_ALLOC
   REQUIRED gstreamer-qcom-oss-allocators-1.0>=1.0.0)
+pkg_check_modules(QMMF_CAMERA_METADATA qmmf_camera_metadata)
 
 # Generate configuration header file with plugin describing definitions
 configure_file(config.h.in config.h @ONLY)
@@ -49,6 +50,7 @@ target_include_directories(${GST_QTI_JPEG_ENC} PUBLIC
   ${GST_QCOM_UTILS_INCLUDE_DIRS}
   ${GST_QCOM_VIDEO_INCLUDE_DIRS}
   ${GST_QCOM_ALLOC_INCLUDE_DIRS}
+  $<$<BOOL:${QMMF_CAMERA_METADATA_FOUND}>:${QMMF_CAMERA_METADATA_INCLUDE_DIRS}>
 )
 
 target_link_libraries(${GST_QTI_JPEG_ENC} PRIVATE
