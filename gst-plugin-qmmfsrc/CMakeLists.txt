@@ -22,6 +22,7 @@ pkg_check_modules(GST_QCOM_UTILS
   REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
 pkg_check_modules(GST_QCOM_VIDEO
   REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+pkg_check_modules(QMMF_CAMERA_METADATA qmmf_camera_metadata)
 
 # Generate configuration header file with plugin describing definitions
 configure_file(config.h.in config.h @ONLY)
@@ -91,6 +92,7 @@ target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
   ${SYSROOT_INCDIR}/camx-api/camx/service
   ${GST_QCOM_UTILS_INCLUDE_DIRS}
   ${GST_QCOM_VIDEO_INCLUDE_DIRS}
+  $<$<BOOL:${QMMF_CAMERA_METADATA_FOUND}>:${QMMF_CAMERA_METADATA_INCLUDE_DIRS}>
 )
 
 if (ENABLE_RUNTIME_PARSER)
