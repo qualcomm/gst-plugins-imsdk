@@ -1563,10 +1563,6 @@ main (gint argc, gchar * argv[])
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
 
-  // Setting Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   // create the application context
   appctx = gst_app_context_new ();
   if (appctx == NULL) {

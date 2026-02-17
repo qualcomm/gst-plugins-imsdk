@@ -578,10 +578,6 @@ main (gint argc, gchar *argv[])
   }
   appctx->threshold = threshold;
 
-  // Set Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   // Create pipeline using factory-based function
   if (!create_pipeline (appctx)) {
     g_printerr ("ERROR: Failed to create pipeline using factory method\n");
