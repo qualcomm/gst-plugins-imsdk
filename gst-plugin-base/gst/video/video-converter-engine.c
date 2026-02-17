@@ -188,7 +188,7 @@ gst_data_normalization (gpointer data, guint idx, gdouble value,
       break;
     }
     default:
-      GST_ERROR ("Unsupported type: %lX", datatype);
+      GST_ERROR ("Unsupported type: 0x%016" G_GINT64_MODIFIER "X", datatype);
       return FALSE;
   }
 

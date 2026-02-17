@@ -99,7 +99,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
   if (tensors.size() != 4) {
     LOG(logger_, kError, "Postprocess input tensors must be 4! "
-        "4 != %lu", tensors.size());
+        "4 != %zu", tensors.size());
     return false;
   }
 
@@ -113,7 +113,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
   if (output_tensors.size() != 3) {
     LOG(logger_, kError, "Postprocess must output 3 tensors! "
-        "3 != %lu", output_tensors.size());
+        "3 != %zu", output_tensors.size());
     return false;
   }
 

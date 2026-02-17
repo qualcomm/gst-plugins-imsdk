@@ -142,7 +142,7 @@ std::vector<float> Module::LoadBinaryDatabase(const std::string filename,
 bool Module::LoadDatabases(std::map<std::string, std::string> settings){
 
   if (settings.size() != 3) {
-    LOG(logger_, kError, "Expecting 3 values in labels but got %ld",
+    LOG(logger_, kError, "Expecting 3 values in labels but got %zu",
         settings.size());
     return false;
   }
