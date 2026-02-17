@@ -1,4 +1,4 @@
-gst-plugins-qti-oss (1.8.0-qcom0) noble; urgency=medium
+gst-plugins-qti-oss (1.8.0) noble; urgency=medium
 
   [ QCTECMDR Service ]
   * Merge "gst-plugin-qmmfsrc:Don't send an EOS event when in the EOS state."
