@@ -389,7 +389,7 @@ gst_kafka_config (gpointer * kafka, gchar * path)
         goto cleanup;
       }
 
-      GST_INFO ("Publisher timeout set to %ld milliseconds",
+      GST_INFO ("Publisher timeout set to %" G_GINT64_FORMAT " milliseconds",
           self->publish_timeout);
       break;
     case GST_KAFKA_CLIENT_ROLE_SUB:
@@ -571,7 +571,6 @@ gst_kafka_publish (gpointer * kafka, gchar * topic, gpointer payload)
 {
   GstKafka *self = (GstKafka *) kafka;
   rd_kafka_resp_err_t err = RD_KAFKA_CONF_OK;
-  gint64 end_time = 0, current_time = 0;
   gint payload_len = strlen (payload);
 
   g_return_val_if_fail (self != NULL, FALSE);
