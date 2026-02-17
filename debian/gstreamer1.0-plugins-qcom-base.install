@@ -5,3 +5,4 @@ usr/lib/${DEB_HOST_MULTIARCH}/libgstqtivideobase.so.*
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqtimlbase.so.*
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqtiutilsbase.so.*
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqtigfxbase.so.*
+usr/lib/${DEB_HOST_MULTIARCH}/libgstqticamerabase.so.*
