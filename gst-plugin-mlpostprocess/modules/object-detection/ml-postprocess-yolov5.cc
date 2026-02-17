@@ -409,7 +409,7 @@ bool Module::Configure(const std::string& labels_file,
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
-  LOG(logger_, kDebug, "Module Process - %ld", tensors.size());
+  LOG(logger_, kDebug, "Module Process - %zu", tensors.size());
 
   if (tensors.size() == 3) {
     ParseTripleblockFrame(tensors, mlparams, output);

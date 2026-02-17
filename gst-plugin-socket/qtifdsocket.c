@@ -233,7 +233,7 @@ receive_socket_message (gint sock, GstPayloadInfo * pl_info, int msg_flags)
   if (recv_len < 0)
     return recv_len;
 
-  for (uint32_t offset = 0; offset < recv_len; ) {
+  for (ssize_t offset = 0; offset < recv_len; ) {
     gpointer payload;
     gpointer iterator = io_buf + offset;
     gint size = get_payload_size (iterator);
