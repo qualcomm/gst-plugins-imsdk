@@ -23,8 +23,37 @@ pkg_check_modules(GST_QCOM_ML
 pkg_check_modules(GST_QCOM_UTILS
   REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
 
+# Prefer the prebuilt TFLite package.
+pkg_check_modules(TFLITE tensorflow-lite-prebuilt)
+if(NOT TFLITE_FOUND)
+  pkg_check_modules(TFLITE tensorflow-lite)
+endif()
+if(NOT TFLITE_FOUND)
+  pkg_check_modules(TFLITE REQUIRED tensorflowlite_c)
+endif()
+
+# Extract major, minor, and patch versions from TFLITE_VERSION
+message(STATUS "Raw TFLITE_VERSION: '${TFLITE_VERSION}'")
+string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" VERSION_MATCH "${TFLITE_VERSION}")
+
+if(VERSION_MATCH)
+  set(TF_MAJOR_VERSION ${CMAKE_MATCH_1})
+  set(TF_MINOR_VERSION ${CMAKE_MATCH_2})
+  set(TF_PATCH_VERSION ${CMAKE_MATCH_3})
+  message(STATUS "TensorFlow Lite version: ${TFLITE_VERSION} (Major: ${TF_MAJOR_VERSION}, Minor: ${TF_MINOR_VERSION}, Patch: ${TF_PATCH_VERSION})")
+else()
+  message(FATAL_ERROR "Failed to parse TensorFlow Lite version: '${TFLITE_VERSION}' - regex did not match")
+endif()
+
+# Add TensorFlow version definitions for source code compilation
+list(APPEND TARGET_COMPILE_DEFINITIONS
+  TF_MAJOR_VERSION=${TF_MAJOR_VERSION}
+  TF_MINOR_VERSION=${TF_MINOR_VERSION}
+  TF_PATCH_VERSION=${TF_PATCH_VERSION}
+  TF_VERSION_SUFFIX=""
+)
+
 include(CheckIncludeFile)
-include(CheckIncludeFileCXX)
 
 # Check for external delegate header
 check_include_file("tensorflow/lite/delegates/external/external_delegate.h" HAVE_EXTERNAL_DELEGATE_H)
@@ -35,7 +64,18 @@ check_include_file("tensorflow/lite/core/c/c_api_experimental.h" HAVE_CORE_C_API
 check_include_file("tensorflow/lite/c/c_api.h" HAVE_C_API_H)
 
 # Version header not found only when building against TFLITE master branch headers
-check_include_file("tensorflow/lite/version.h" HAVE_TFLITE_VERSION_H)
+# Check for version.h with proper version defines
+include(CMakePushCheckState)
+cmake_push_check_state(RESET)
+  set(CMAKE_REQUIRED_DEFINITIONS
+    -DTF_MAJOR_VERSION=${TF_MAJOR_VERSION}
+    -DTF_MINOR_VERSION=${TF_MINOR_VERSION}
+    -DTF_PATCH_VERSION=${TF_PATCH_VERSION}
+    -DTF_VERSION_SUFFIX=""
+  )
+  check_include_file("tensorflow/lite/version.h" HAVE_TFLITE_VERSION_H)
+  message(STATUS "TensorFlow Lite version.h found: ${HAVE_TFLITE_VERSION_H}")
+cmake_pop_check_state()
 
 # Support for the External delegate appears after the tensorflow lite 2.10.0
 # the reason is to determine if we are on a new or old version of tflite
@@ -63,17 +103,6 @@ else()
   list(APPEND GST_QTI_ML_TFLITE_SRC
     ml-tflite-engine.cc
   )
-
-  # Prefer the prebuilt TFLite package.
-  pkg_check_modules(TFLITE tensorflow-lite-prebuilt)
-  if(NOT TFLITE_FOUND)
-    pkg_check_modules(TFLITE tensorflow-lite)
-  endif()
-  if(NOT TFLITE_FOUND)
-    pkg_check_modules(TFLITE REQUIRED tensorflowlite_c)
-  endif()
-
-  include(CheckIncludeFile)
 
   # Check for hexagon delegate header
   if(${TFLITE_VERSION} VERSION_GREATER 2.2.0)
@@ -123,7 +152,7 @@ target_compile_definitions(${GST_QTI_ML_TFLITE} PRIVATE
   ${TARGET_COMPILE_DEFINITIONS}
 )
 
-target_include_directories(${GST_QTI_ML_TFLITE} PUBLIC
+target_include_directories(${GST_QTI_ML_TFLITE} PRIVATE
   ${GST_INCLUDE_DIRS}
   ${TARGET_INCS}
   ${GST_QCOM_UTILS_INCLUDE_DIRS}
