@@ -2,12 +2,15 @@
 
 include(CheckIncludeFile)
 
+list(APPEND CMAKE_REQUIRED_INCLUDES
+  "${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/SNPE")
 check_include_file("DlContainer/DlContainer.h" HAVE_DL_CONTAINER_H)
 
 if(HAVE_DL_CONTAINER_H)
   add_executable(test-dl-snpe test-dl-snpe.cc)
 
   target_include_directories(test-dl-snpe PUBLIC
+    ${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/SNPE
     ${GST_INCLUDE_DIRS}
   )
 
