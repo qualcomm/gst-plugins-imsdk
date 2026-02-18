@@ -2,6 +2,8 @@
 
 include(CheckIncludeFile)
 
+list(APPEND CMAKE_REQUIRED_INCLUDES
+  "${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/QNN")
 check_include_file("System/QnnSystemInterface.h" HAVE_QNN_SYSTEM_INTERFACE_H)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -15,6 +17,7 @@ if(HAVE_QNN_SYSTEM_INTERFACE_H)
   add_executable(test-dl-qnn test-dl-qnn.cc)
 
   target_include_directories(test-dl-qnn PUBLIC
+    ${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/QNN
     ${GST_INCLUDE_DIRS}
   )
 
