@@ -357,6 +357,9 @@ create_transform_pipeline (GstTransformAppContext * appctx)
   g_object_set (G_OBJECT (scale_filter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
+  gst_element_set_enum_property (encoder, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (encoder, "output-io-mode", "dmabuf-import");
+
   if (appctx->input_file == NULL) {
     // Add elements to the pipeline and link them
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, qmmfsrc_filter,
