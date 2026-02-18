@@ -422,10 +422,6 @@ GST_API gboolean gst_qmmfsrc_check_logical_cam_support ();
 
 GST_API gboolean gst_qmmfsrc_check_format (PixFormat format);
 
-guint gst_qmmfsrc_get_max_width ();
-
-guint gst_qmmfsrc_get_min_width ();
-
 guint gst_qmmfsrc_check_sw_tnr_support ();
 
 void gst_qmmfsrc_get_jpeg_resolution_range (GstQmmfSrcResolutionRange *range);

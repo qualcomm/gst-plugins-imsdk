@@ -46,6 +46,13 @@ G_DEFINE_QUARK(QmmfBufferQDataQuark, qmmf_buffer_qdata);
 
 #define QMMFSRC_PROPERTY_MAP_SIZE(MAP) (sizeof(MAP)/sizeof(MAP[0]))
 
+// Default values when static metadata is not available
+#define DEFAULT_MAX_FPS 120
+#define DEFAULT_MAX_WIDTH 8192
+#define DEFAULT_MAX_HEIGHT 5440
+#define DEFAULT_MIN_WIDTH 16
+#define DEFAULT_MIN_HEIGHT 16
+
 typedef struct _PropAndroidEnum PropAndroidEnum;
 
 struct _PropAndroidEnum
@@ -1062,6 +1069,12 @@ gst_qmmfsrc_get_max_fps ()
 
   GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
 
+  // If keys are NULL, return default max fps
+  if (!keys) {
+    GST_WARNING ("No static metadata available, using default max fps: %d", DEFAULT_MAX_FPS);
+    return DEFAULT_MAX_FPS;
+  }
+
   for (GList *key = keys; key; key = key->next) {
     ::qmmf::CameraMetadata *meta =
       static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
@@ -1117,6 +1130,17 @@ gst_qmmfsrc_get_jpeg_resolution_range (GstQmmfSrcResolutionRange *range)
   range->min_height = G_MAXUINT;
 
   GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
+
+  // If keys are NULL, set default resolution values
+  if (!keys) {
+    GST_WARNING ("No static metadata available, using default resolution: %dx%d to %dx%d",
+                 DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
+    range->max_width = DEFAULT_MAX_WIDTH;
+    range->max_height = DEFAULT_MAX_HEIGHT;
+    range->min_width = DEFAULT_MIN_WIDTH;
+    range->min_height = DEFAULT_MIN_HEIGHT;
+    return;
+  }
 
   for (GList *key = keys; key; key = key->next) {
     ::qmmf::CameraMetadata *meta =
@@ -1204,6 +1228,17 @@ gst_qmmfsrc_get_bayer_resolution_range (GstQmmfSrcResolutionRange *range)
   range->min_height = G_MAXUINT;
 
   GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
+
+  // If keys are NULL, set default resolution values
+  if (!keys) {
+    GST_WARNING ("No static metadata available, using default resolution: %dx%d to %dx%d",
+                 DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
+    range->max_width = DEFAULT_MAX_WIDTH;
+    range->max_height = DEFAULT_MAX_HEIGHT;
+    range->min_width = DEFAULT_MIN_WIDTH;
+    range->min_height = DEFAULT_MIN_HEIGHT;
+    return;
+  }
 
   for (GList *key = keys; key; key = key->next) {
     ::qmmf::CameraMetadata *meta =
@@ -1304,6 +1339,17 @@ gst_qmmfsrc_get_raw_resolution_range (GstQmmfSrcResolutionRange *range)
 
   GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
 
+  // If keys are NULL, set default resolution values
+  if (!keys) {
+    GST_WARNING ("No static metadata available, using default resolution: %dx%d to %dx%d",
+                 DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
+    range->max_width = DEFAULT_MAX_WIDTH;
+    range->max_height = DEFAULT_MAX_HEIGHT;
+    range->min_width = DEFAULT_MIN_WIDTH;
+    range->min_height = DEFAULT_MIN_HEIGHT;
+    return;
+  }
+
   for (GList *key = keys; key; key = key->next) {
     ::qmmf::CameraMetadata *meta =
       static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
@@ -1384,6 +1430,12 @@ gboolean
 gst_qmmfsrc_check_format (PixFormat format) {
   GList *keys = g_hash_table_get_keys (gst_qmmf_get_static_metas ());
 
+  // If keys are NULL, return TRUE to support all formats
+  if (!keys) {
+    GST_WARNING ("No static metadata available, supporting all formats");
+    return TRUE;
+  }
+
   for (GList *key = keys; key; key = key->next) {
     ::qmmf::CameraMetadata *meta =
       static_cast<::qmmf::CameraMetadata *> (g_hash_table_lookup (gst_qmmf_get_static_metas (),
@@ -1433,6 +1485,14 @@ gst_qmmfsrc_check_logical_cam_support () {
 
   if (g_once_init_enter (&catonce)) {
     GList *keys = g_hash_table_get_keys (gst_qmmf_get_static_metas ());
+
+    // If keys are NULL, return FALSE
+    if (!keys) {
+      GST_WARNING ("No static metadata available, logical camera not supported");
+      g_once_init_leave (&catonce, 1);
+      return FALSE;
+    }
+
     for (GList *key = keys; key; key = key->next) {
       ::qmmf::CameraMetadata *meta =
         static_cast<::qmmf::CameraMetadata *> (g_hash_table_lookup (gst_qmmf_get_static_metas (),
