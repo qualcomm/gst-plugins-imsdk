@@ -38,7 +38,7 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-pose.h>
+#include <gst/ml/ml-module-pose.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -66,10 +66,8 @@ struct _GstMLSubModule {
 
   // List of keypoint labels.
   GHashTable *labels;
-  // Chain/Tree comprised of keypoint pairs that describe the skeleton.
-  GArray     *links;
   // List of keypoint pairs that are connected together.
-  GArray     *connections;
+  GPtrArray  *connections;
 
   // Confidence threshold value.
   gfloat     threshold;
@@ -95,10 +93,7 @@ gst_ml_module_close (gpointer instance)
     return;
 
   if (submodule->connections != NULL)
-    g_array_free (submodule->connections, TRUE);
-
-  if (submodule->links != NULL)
-    g_array_free (submodule->links, TRUE);
+    g_ptr_array_free (submodule->connections, TRUE);
 
   if (submodule->labels != NULL)
     g_hash_table_destroy (submodule->labels);
@@ -177,17 +172,11 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   }
 
   // Fill the keypoints chain/tree.
-  submodule->links = g_array_new (FALSE, FALSE, sizeof (GstMLKeypointsLink));
-  submodule->connections = g_array_new (FALSE, FALSE, sizeof (GstMLKeypointsLink));
-
-  // Recursiveli fill the skeleton chain/tree starting from label 0 as seed.
-  if (!(success = gst_ml_load_links (&list, 0, submodule->links))) {
-    GST_ERROR ("Failed to load the skeleton chain/tree!");
-    goto cleanup;
-  }
+  submodule->connections = g_ptr_array_new ();
+  g_ptr_array_set_free_func (submodule->connections, (GDestroyNotify) g_array_unref);
 
   // Recursiveli fill the keypoint connections starting from label 0 as seed.
-  if (!(success = gst_ml_load_connections (&list, submodule->connections))) {
+  if (!(success = gst_ml_load_connections (submodule->connections, &list))) {
     GST_ERROR ("Failed to load the keypoint interconnections!");
     goto cleanup;
   }
@@ -215,10 +204,10 @@ gboolean
 gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
-  GArray *predictions = ((GArray *) output);
+  GPtrArray *predictions = (GPtrArray *) output;
   GstProtectionMeta *pmeta = NULL;
-  GstMLPosePrediction *prediction = NULL;
-  GstMLPoseEntry *entry = NULL;
+  GstMLPoses *poses = NULL;
+  GstMLPose *entry = NULL;
   gfloat *heatmap = NULL;
   GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
@@ -233,8 +222,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
 
-  prediction = &(g_array_index (predictions, GstMLPosePrediction, 0));
-  prediction->info = pmeta->info;
+  poses = g_ptr_array_index (predictions, 0);
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -260,8 +248,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   n_blocks = width * height * n_keypoints;
 
   // Allocate only single prediction result.
-  g_array_set_size (prediction->entries, 1);
-  entry = &(g_array_index (prediction->entries, GstMLPoseEntry, 0));
+  gst_ml_poses_resize (poses, 1);
+  entry = gst_ml_poses_entry (poses, 0);
 
   // Allocate memory for the keypoiints.
   entry->keypoints = g_array_sized_new (FALSE, TRUE,
@@ -322,22 +310,30 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     kp->confidence = confidence * 100;
     entry->confidence += kp->confidence;
 
-    gst_ml_keypoint_transform_coordinates (kp, &region);
-
-    // clamp key-point to avoid point going out of region
-    kp->x = MIN (MAX (kp->x, 0.0f), 1.0f);
-    kp->y = MIN (MAX (kp->y, 0.0f), 1.0f);
-
+    gst_ml_keypoint_relative_transform (kp, &region, TRUE);
   }
 
   // The final confidence score for the whole prediction entry.
   entry->confidence /= n_keypoints;
 
-  // TODO: For now set the same connections.
-  entry->connections = submodule->connections;
+  entry->links = g_array_new (FALSE, FALSE, sizeof (GstMLKeypointLink));
+
+  for (num = 0; num < submodule->connections->len; num++) {
+    GArray *connection = g_ptr_array_index (submodule->connections, num);
+    GstMLKeypointLink link = {};
+    guint l_kp_id = 0, r_kp_id = 0;
+
+    l_kp_id = g_array_index (connection, guint, 0);
+    r_kp_id = g_array_index (connection, guint, 1);
+
+    link.l_kp = g_array_index (entry->keypoints, GstMLKeypoint, l_kp_id);
+    link.r_kp = g_array_index (entry->keypoints, GstMLKeypoint, r_kp_id);
+
+    g_array_append_val (entry->links, link);
+  }
 
   if (entry->confidence < submodule->threshold)
-    prediction->entries = g_array_remove_index (prediction->entries, 0);
+    gst_ml_poses_remove (poses, 0);
 
   return TRUE;
 }

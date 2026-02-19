@@ -93,7 +93,7 @@ G_DEFINE_TYPE (GstMLVideoClassification, gst_ml_video_classification,
 #define DEFAULT_PROP_NUM_RESULTS      5
 #define DEFAULT_PROP_THRESHOLD        10.0F
 #define DEFAULT_PROP_CONSTANTS        NULL
-#define DEFAULT_PROP_EXTRA_OPERATION  GST_VIDEO_CLASSIFICATION_OPERATION_NONE
+#define DEFAULT_PROP_EXTRA_OPERATION  GST_ML_CLASSIFICATION_OPERATION_NONE
 
 #define DEFAULT_MIN_BUFFERS        2
 #define DEFAULT_MAX_BUFFERS        10
@@ -190,17 +190,17 @@ gst_ml_video_classification_xtra_opration_get_type (void)
 {
   static GType gtype = 0;
   static const GEnumValue methods[] = {
-    { GST_VIDEO_CLASSIFICATION_OPERATION_NONE,
+    { GST_ML_CLASSIFICATION_OPERATION_NONE,
         "No extra operation", "none"
     },
-    { GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX,
+    { GST_ML_CLASSIFICATION_OPERATION_SOFTMAX,
         "SoftMax operation", "softmax"
     },
     {0, NULL, NULL},
   };
 
   if (!gtype)
-    gtype = g_enum_register_static ("GstVideoClassificationOperation", methods);
+    gtype = g_enum_register_static ("GstMLClassificationOperation", methods);
 
   return gtype;
 }
@@ -361,17 +361,16 @@ gst_ml_video_classification_fill_video_output (
   height = DEFAULT_FONT_SIZE;
 
   for (idx = 0; idx < classification->predictions->len; idx++) {
-    GstMLClassPrediction *prediction = NULL;
-    GstMLClassEntry *entry = NULL;
+    GstMLClassifications *classifications = NULL;
+    GstMLClassification *entry = NULL;
 
-    prediction =
-        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+    classifications = g_ptr_array_index (classification->predictions, idx);
 
-    n_entries = (prediction->entries->len < classification->n_results) ?
-        prediction->entries->len : classification->n_results;
+    n_entries = MIN (
+        gst_ml_classifications_size (classifications), classification->n_results);
 
     for (num = 0; num < n_entries; num++) {
-      entry = &(g_array_index (prediction->entries, GstMLClassEntry, num));
+      entry = gst_ml_classifications_entry (classifications, num);
 
       // Check whether there is enough pixel space for this label entry.
       if (((num + 1) * height) > vmeta->height)
@@ -440,7 +439,7 @@ static gboolean
 gst_ml_video_classification_fill_text_output (
     GstMLVideoClassification * classification, GstBuffer *buffer)
 {
-  GstStructure *structure = NULL;
+  GstStructure *structure = NULL, *mlparam = NULL;
   GstMemory *mem = NULL;
   gchar *string = NULL, *name = NULL;
   GValue list = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
@@ -452,22 +451,22 @@ gst_ml_video_classification_fill_text_output (
   g_value_init (&value, GST_TYPE_STRUCTURE);
 
   for (idx = 0; idx < classification->predictions->len; idx++) {
-    GstMLClassPrediction *prediction = NULL;
-    GstMLClassEntry *entry = NULL;
+    GstMLClassifications *classifications = NULL;
+    GstMLClassification *entry = NULL;
     const GValue *val = NULL;
 
-    prediction =
-        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+    classifications = g_ptr_array_index (classification->predictions, idx);
 
-    n_entries = (prediction->entries->len < classification->n_results) ?
-        prediction->entries->len : classification->n_results;
+    n_entries = MIN (
+        gst_ml_classifications_size (classifications), classification->n_results);
 
-    gst_structure_get_uint (prediction->info, "sequence-index", &sequence_idx);
+    mlparam = g_ptr_array_index (classification->mlparams, idx);
+    gst_structure_get_uint (mlparam, "sequence-index", &sequence_idx);
 
     id = GST_META_ID (classification->stage_id, sequence_idx, 0);
 
     for (num = 0; num < n_entries; num++) {
-      entry = &(g_array_index (prediction->entries, GstMLClassEntry, num));
+      entry = gst_ml_classifications_entry (classifications, num);
 
       GST_TRACE_OBJECT (classification, "Batch: %u, ID: %X, Label: %s, "
           "Confidence: %.1f%%", idx, id, g_quark_to_string (entry->name),
@@ -501,22 +500,22 @@ gst_ml_video_classification_fill_text_output (
     gst_structure_set_value (structure, "labels", &labels);
     g_value_reset (&labels);
 
-    val = gst_structure_get_value (prediction->info, "timestamp");
+    val = gst_structure_get_value (mlparam, "timestamp");
     gst_structure_set_value (structure, "timestamp", val);
 
-    val = gst_structure_get_value (prediction->info, "sequence-index");
+    val = gst_structure_get_value (mlparam, "sequence-index");
     gst_structure_set_value (structure, "sequence-index", val);
 
-    val = gst_structure_get_value (prediction->info, "sequence-num-entries");
+    val = gst_structure_get_value (mlparam, "sequence-num-entries");
     gst_structure_set_value (structure, "sequence-num-entries", val);
 
-    if ((val = gst_structure_get_value (prediction->info, "stream-id")))
+    if ((val = gst_structure_get_value (mlparam, "stream-id")))
       gst_structure_set_value (structure, "stream-id", val);
 
-    if ((val = gst_structure_get_value (prediction->info, "stream-timestamp")))
+    if ((val = gst_structure_get_value (mlparam, "stream-timestamp")))
       gst_structure_set_value (structure, "stream-timestamp", val);
 
-    if ((val = gst_structure_get_value (prediction->info, "parent-id")))
+    if ((val = gst_structure_get_value (mlparam, "parent-id")))
       gst_structure_set_value (structure, "parent-id", val);
 
     g_value_take_boxed (&value, structure);
@@ -623,25 +622,25 @@ gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
   if (gst_base_transform_is_passthrough (base))
     return ret;
 
+  GST_TRACE_OBJECT (classification, "Received %" GST_PTR_FORMAT, buffer);
+
+  // Clear previously stored values and get the ML params structure from buffer.
+  for (idx = 0; idx < classification->predictions->len; ++idx) {
+    GstMLClassifications *classifications = NULL;
+    GstProtectionMeta *pmeta = NULL;
+
+    classifications = g_ptr_array_index (classification->predictions, idx);
+    gst_ml_classifications_resize (classifications, 0);
+
+    pmeta = gst_buffer_get_protection_meta_id (buffer,
+        gst_batch_channel_name (idx));
+    g_ptr_array_index (classification->mlparams, idx) = pmeta->info;
+  }
+
   // GAP input buffer, cleanup the entries and set the protection meta info.
   if (gst_buffer_get_size (buffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
-    GstProtectionMeta *pmeta = NULL;
-    GstMLClassPrediction *prediction = NULL;
-
-    for (idx = 0; idx < classification->predictions->len; ++idx) {
-      prediction =
-          &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
-
-      pmeta = gst_buffer_get_protection_meta_id (buffer,
-          gst_batch_channel_name (idx));
-
-      g_array_remove_range (prediction->entries, 0, prediction->entries->len);
-      prediction->info = pmeta->info;
-    }
-
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
-  }
 
   // Perform pre-processing on the input buffer.
   time = gst_util_get_timestamp ();
@@ -651,17 +650,8 @@ gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-  // Clear previously stored values.
-  for (idx = 0; idx < classification->predictions->len; ++idx) {
-    GstMLClassPrediction *prediction =
-        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
-
-    g_array_remove_range (prediction->entries, 0, prediction->entries->len);
-    prediction->info = NULL;
-  }
-
   // Call the submodule process funtion.
-  success = gst_ml_module_video_classification_execute (classification->module,
+  success = gst_ml_module_classification_execute (classification->module,
       &mlframe, classification->predictions);
 
   gst_ml_frame_unmap (&mlframe);
@@ -949,15 +939,16 @@ gst_ml_video_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   // Allocate the maximum number of predictions based on the batch size.
-  g_array_set_size (classification->predictions,
+  g_ptr_array_set_size (classification->predictions,
       GST_ML_INFO_TENSOR_DIM (classification->mlinfo, 0, 0));
 
   for (idx = 0; idx < classification->predictions->len; ++idx) {
-    GstMLClassPrediction *prediction =
-        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
-
-    prediction->entries = g_array_new (FALSE, TRUE, sizeof (GstMLClassEntry));
+    g_ptr_array_index (classification->predictions, idx) =
+        gst_ml_classifications_new ();
   }
+
+  g_ptr_array_set_size (classification->mlparams,
+      GST_ML_INFO_TENSOR_DIM (classification->mlinfo, 0, 0));
 
   GST_DEBUG_OBJECT (classification, "Input caps: %" GST_PTR_FORMAT, incaps);
   GST_DEBUG_OBJECT (classification, "Output caps: %" GST_PTR_FORMAT, outcaps);
@@ -1167,7 +1158,8 @@ gst_ml_video_classification_finalize (GObject * object)
 {
   GstMLVideoClassification *classification = GST_ML_VIDEO_CLASSIFICATION (object);
 
-  g_array_free (classification->predictions, TRUE);
+  g_ptr_array_free (classification->predictions, TRUE);
+  g_ptr_array_free (classification->mlparams, TRUE);
   gst_ml_module_free (classification->module);
 
   if (classification->mlinfo != NULL)
@@ -1224,7 +1216,7 @@ gst_ml_video_classification_class_init (GstMLVideoClassificationClass * klass)
       g_param_spec_enum ("extra-operation", "Extra Operation",
           "Extra operation to perform on the inference data",
           GST_TYPE_VIDEO_CLASSIFICATION_OPERATION,
-          GST_VIDEO_CLASSIFICATION_OPERATION_NONE,
+          GST_ML_CLASSIFICATION_OPERATION_NONE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element,
@@ -1263,12 +1255,14 @@ gst_ml_video_classification_init (GstMLVideoClassification * classification)
 
   classification->stage_id = 0;
 
-  classification->predictions =
-      g_array_new (FALSE, FALSE, sizeof (GstMLClassPrediction));
+  classification->predictions = g_ptr_array_new ();
   g_return_if_fail (classification->predictions != NULL);
 
-  g_array_set_clear_func (classification->predictions,
-      (GDestroyNotify) gst_ml_class_prediction_cleanup);
+  g_ptr_array_set_free_func (classification->predictions,
+      (GDestroyNotify) gst_ml_classifications_unref);
+
+  classification->mlparams = g_ptr_array_new ();
+  g_return_if_fail (classification->predictions != NULL);
 
   classification->mdlenum = DEFAULT_PROP_MODULE;
   classification->labels = DEFAULT_PROP_LABELS;

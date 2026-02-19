@@ -32,35 +32,11 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#ifndef __GST_QTI_ML_MODULE_VIDEO_SEGMENTATION_H__
-#define __GST_QTI_ML_MODULE_VIDEO_SEGMENTATION_H__
+#include "ml-module-super-resolution.h"
 
-#include <gst/gst.h>
-#include <gst/video/video.h>
-#include <gst/ml/gstmlmodule.h>
-
-G_BEGIN_DECLS
-
-/**
- * gst_ml_module_video_segmentation_execute:
- * @module: Pointer to ML post-processing module.
- * @mlframe: Frame containing mapped tensor memory blocks that need processing.
- * @vframe: Frame containing mask/image.
- *
- * Convenient wrapper function used on plugin level to call the module
- * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
- * to process input tensors.
- *
- * Post-processing module must define the 3rd argument of the implemented
- * 'gst_ml_module_process' API as 'GstVideoFrame *'.
- *
- * Returns: TRUE on success or FALSE on failure
- */
 GST_API gboolean
-gst_ml_module_video_segmentation_execute (GstMLModule * module,
-                                          GstMLFrame * mlframe,
-                                          GstVideoFrame * vframe);
-
-G_END_DECLS
-
-#endif // __GST_QTI_ML_MODULE_VIDEO_SEGMENTATION_H__
+gst_ml_module_super_resolution_execute (GstMLModule * module,
+    GstMLFrame * mlframe, GstVideoFrame * vframe)
+{
+  return gst_ml_module_execute (module, mlframe, (gpointer) vframe);
+}

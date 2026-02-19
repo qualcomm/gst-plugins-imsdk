@@ -9,13 +9,13 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-classification.h>
+#include <gst/ml/ml-module-classification.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define GST_ML_OP_IS_SOFTMAX(op) \
-    (op == GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX)
+    (op == GST_ML_CLASSIFICATION_OPERATION_SOFTMAX)
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
@@ -333,7 +333,7 @@ gst_ml_module_accessory_tensor_score (GstMLSubModule * submodule,
   score = data[1];
 
   // Apply softmax function on the confidence result.
-  if (submodule->operation == GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX)
+  if (submodule->operation == GST_ML_CLASSIFICATION_OPERATION_SOFTMAX)
     score = (exp (score) / sum);
 
   return score;
@@ -480,12 +480,11 @@ gboolean
 gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
-  GArray *predictions = (GArray *) output;
-  GstMLClassPrediction *prediction = NULL;
-  GstProtectionMeta *pmeta = NULL;
+  GPtrArray *predictions = (GPtrArray *) output;
+  GstMLClassifications *classifications = NULL;
   GstMLLabel *label = NULL;
   GstFaceTemplate *face = NULL;
-  GstMLClassEntry *entry = NULL;
+  GstMLClassification *entry = NULL;
   gint pid = -1;
   gdouble confidence = 0.0, score = 0.0;
   gboolean has_lvns = FALSE, has_mask = FALSE, has_glasses = FALSE;
@@ -495,15 +494,11 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
-      gst_batch_channel_name (0));
-
-  prediction = &(g_array_index (predictions, GstMLClassPrediction, 0));
-  prediction->info = pmeta->info;
+  classifications = g_ptr_array_index (predictions, 0);
 
   // Allocate only single prediction entry result.
-  g_array_set_size (prediction->entries, 1);
-  entry = &(g_array_index (prediction->entries, GstMLClassEntry, 0));
+  gst_ml_classifications_resize (classifications, 1);
+  entry = gst_ml_classifications_entry (classifications, 0);
 
   entry->name = g_quark_from_string ("UNKNOWN");
   entry->color = 0xFF0000FF;

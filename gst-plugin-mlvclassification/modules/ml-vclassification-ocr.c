@@ -35,7 +35,7 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-classification.h>
+#include <gst/ml/ml-module-classification.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -179,9 +179,8 @@ gboolean
 gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
-  GArray *predictions = (GArray *) output;
-  GstMLClassPrediction *prediction = NULL;
-  GstProtectionMeta *pmeta = NULL;
+  GPtrArray *predictions = (GPtrArray *) output;
+  GstMLClassifications *classifications = NULL;
   gfloat *data = NULL, *pclass = NULL;
   guint n_characters = 0, n_rows = 0, idx = 0;
   GString *result = NULL;
@@ -190,11 +189,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
-      gst_batch_channel_name (0));
-
-  prediction = &(g_array_index (predictions, GstMLClassPrediction, 0));
-  prediction->info = pmeta->info;
+  classifications = g_ptr_array_index (predictions, 0);
 
   data = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   n_characters = GST_ML_FRAME_DIM (mlframe, 0, 2);
@@ -223,13 +218,13 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   }
 
   if (result->len > 0) {
-    GstMLClassEntry entry = { 0, };
+    GstMLClassification entry = { 0, };
 
     entry.confidence = 100;
     entry.name = g_quark_from_string (result->str);
     entry.color = 0x00FF00FF;
 
-    prediction->entries = g_array_append_val (prediction->entries, entry);
+    gst_ml_classifications_append (classifications, &entry);
   }
 
   g_string_free (result, TRUE);

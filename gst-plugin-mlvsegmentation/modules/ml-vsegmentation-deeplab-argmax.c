@@ -35,7 +35,7 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-segmentation.h>
+#include <gst/ml/ml-module-segmentation.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug

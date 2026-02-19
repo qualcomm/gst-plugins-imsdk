@@ -185,55 +185,39 @@ gst_ml_modules_get_type (void)
 }
 
 static void
-gst_ml_box_displacement_correction (GstMLBoxEntry * l_box, GArray * boxes)
+gst_ml_detection_displacement_correction (GstMLDetection * l_detection,
+    GstMLDetections * detections)
 {
-  GstMLBoxEntry *r_box = NULL;
+  GstMLDetection *r_detection = NULL;
   gdouble score = 0.0;
   guint idx = 0;
 
-  if (boxes == NULL)
+  if (detections == NULL)
     return;
 
-  for (idx = 0; idx < boxes->len;  idx++) {
-    r_box = &(g_array_index (boxes, GstMLBoxEntry, idx));
+  for (idx = 0; idx < gst_ml_detections_size (detections);  idx++) {
+    r_detection = gst_ml_detections_entry (detections, idx);
 
     // If labels do not match, continue with next list entry.
-    if (l_box->name != r_box->name)
+    if (l_detection->name != r_detection->name)
       continue;
 
-    score = gst_ml_boxes_intersection_score (l_box, r_box);
+    score = gst_ml_detection_intersection_score (l_detection, r_detection);
 
     // If the score is below the threshold, continue with next list entry.
     if (score <= DISPLACEMENT_THRESHOLD)
       continue;
 
     // Previously detected box overlaps at ~95 % with current one, use it.
-    l_box->top = r_box->top;
-    l_box->left = r_box->left;
-    l_box->bottom = r_box->bottom;
-    l_box->right = r_box->right;
+    l_detection->top = r_detection->top;
+    l_detection->left = r_detection->left;
+    l_detection->bottom = r_detection->bottom;
+    l_detection->right = r_detection->right;
 
     break;
   }
 
   return;
-}
-
-static gint
-gst_ml_box_compare_entries_by_position (const GstMLBoxEntry * l_entry,
-    const GstMLBoxEntry * r_entry)
-{
-  gfloat delta = l_entry->left - r_entry->left;
-
-  if (fabs (delta) > POSITION_THRESHOLD)
-    return (delta > 0) ? 1 : (-1);
-
-  delta = l_entry->top - r_entry->top;
-
-  if (fabs (delta) > POSITION_THRESHOLD)
-    return (delta > 0) ? 1 : (-1);
-
-  return 0;
 }
 
 static GstBufferPool *
@@ -305,43 +289,33 @@ static void
 gst_ml_video_detection_stabilization (GstMLVideoDetection * detection)
 {
   guint idx = 0, num = 0;
-  GstMLBoxEntry *entry = NULL;
-  GArray *mlboxes = NULL;
-  GstMLBoxPrediction *prediction = NULL;
+  GstMLDetection *entry = NULL;
+  GstMLDetections *detections = NULL, *mlboxes = NULL;
 
   for (idx = 0; idx < detection->predictions->len; idx++) {
-    prediction =
-        &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
+    detections = g_ptr_array_index (detection->predictions, idx);
     mlboxes = g_list_nth_data (detection->stashedmlboxes, idx);
 
-    for (num = 0; num < prediction->entries->len; num++) {
-      entry = &(g_array_index (prediction->entries, GstMLBoxEntry, num));
+    for (num = 0; num < gst_ml_detections_size (detections); num++) {
+      entry = gst_ml_detections_entry (detections, num);
 
       // Overwrite current box with previously detected one if required.
-      gst_ml_box_displacement_correction (entry, mlboxes);
+      gst_ml_detection_displacement_correction (entry, mlboxes);
     }
 
-    // Stash the previous prediction results.
+    // Stash the previous detections results.
     if (mlboxes != NULL) {
       detection->stashedmlboxes =
           g_list_remove (detection->stashedmlboxes, mlboxes);
-      g_array_free (mlboxes, TRUE);
+      gst_ml_detections_unref (mlboxes);
     }
 
     detection->stashedmlboxes = g_list_append (detection->stashedmlboxes,
-        g_array_copy (prediction->entries));
+        gst_ml_detections_copy (detections));
 
     // Clear lower confidence results before position sort.
-    if (prediction->entries->len > detection->n_results) {
-      guint index = detection->n_results;
-      guint length = prediction->entries->len - detection->n_results;
-
-      g_array_remove_range (prediction->entries, index, length);
-    }
-
-    // Sort bboxes by possition.
-    g_array_sort (prediction->entries,
-        (GCompareFunc) gst_ml_box_compare_entries_by_position);
+    if (gst_ml_detections_size (detections) > detection->n_results)
+      gst_ml_detections_resize (detections, detection->n_results);
   }
 }
 
@@ -436,21 +410,21 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
   cairo_set_font_size (context, fontsize);
 
   for (idx = 0; idx < detection->predictions->len; idx++) {
-    GstMLBoxPrediction *prediction = NULL;
-    GstMLBoxEntry *entry = NULL;
+    GstMLDetections *detections = NULL;
+    GstMLDetection *entry = NULL;
+    GstStructure *mlparam = NULL;
     GstVideoRectangle region = { 0, };
 
-    prediction = &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
-
-    n_entries = (prediction->entries->len < detection->n_results) ?
-        prediction->entries->len : detection->n_results;
+    detections = g_ptr_array_index (detection->predictions, idx);
+    n_entries = MIN (gst_ml_detections_size (detections), detection->n_results);
 
     // No decoded poses, nothing to do.
     if (n_entries == 0)
       continue;
 
     // Get the source tensor region with actual data.
-    gst_ml_structure_get_source_region (prediction->info, &region);
+    mlparam = g_ptr_array_index (detection->mlparams, idx);
+    gst_ml_structure_get_source_region (mlparam, &region);
 
     // Recalculate the region dimensions depending on the ratios.
     if ((region.w * vmeta->height) > (region.h * vmeta->width)) {
@@ -469,7 +443,7 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     region.y = (vmeta->height - region.h) / 2;
 
     for (num = 0; num < n_entries; num++) {
-      entry = &(g_array_index (prediction->entries, GstMLBoxEntry, num));
+      entry = gst_ml_detections_entry (detections, num);
 
       // Set the bounding box parameters based on the output buffer dimensions.
       x = region.x + (ABS (entry->left) * region.w);
@@ -497,8 +471,8 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
 
       // Draw landmarks if present.
       for (mrk = 0; mrk < length; mrk++) {
-        GstMLBoxLandmark *kp =
-            &(g_array_index (entry->landmarks, GstMLBoxLandmark, mrk));
+        GstMLKeypoint *kp =
+            &(g_array_index (entry->landmarks, GstMLKeypoint, mrk));
 
         GST_TRACE_OBJECT (detection, "Landmark [%.2f x %.2f]", kp->x, kp->y);
 
@@ -579,7 +553,7 @@ static gboolean
 gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     GstBuffer * buffer)
 {
-  GstStructure *structure = NULL;
+  GstStructure *structure = NULL, *mlparam = NULL;
   GstMemory *mem = NULL;
   gchar *string = NULL, *name = NULL;
   GValue list = G_VALUE_INIT, bboxes = G_VALUE_INIT;
@@ -593,19 +567,18 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
   g_value_init (&array, GST_TYPE_ARRAY);
 
   for (idx = 0; idx < detection->predictions->len; idx++) {
-    GstMLBoxPrediction *prediction = NULL;
-    GstMLBoxEntry *entry = NULL;
+    GstMLDetections *detections = NULL;
+    GstMLDetection *entry = NULL;
     const GValue *val = NULL;
 
-    prediction = &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
+    detections = g_ptr_array_index (detection->predictions, idx);
+    n_entries = MIN (gst_ml_detections_size (detections), detection->n_results);
 
-    n_entries = (prediction->entries->len < detection->n_results) ?
-        prediction->entries->len : detection->n_results;
-
-    gst_structure_get_uint (prediction->info, "sequence-index", &sequence_idx);
+    mlparam = g_ptr_array_index (detection->mlparams, idx);
+    gst_structure_get_uint (mlparam, "sequence-index", &sequence_idx);
 
     for (num = 0; num < n_entries; num++) {
-      entry = &(g_array_index (prediction->entries, GstMLBoxEntry, num));
+      entry = gst_ml_detections_entry (detections, num);
 
       id = GST_META_ID (detection->stage_id, sequence_idx, num);
 
@@ -648,11 +621,11 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
       g_value_init (&value, GST_TYPE_STRUCTURE);
 
       if ((entry->landmarks != NULL) && (entry->landmarks->len != 0)) {
-        GstMLBoxLandmark *lndmark = NULL;
+        GstMLKeypoint *lndmark = NULL;
         GstStructure *substructure = NULL;
 
         for (mrk = 0; mrk < entry->landmarks->len; mrk++) {
-          lndmark = &(g_array_index (entry->landmarks, GstMLBoxLandmark, mrk));
+          lndmark = &(g_array_index (entry->landmarks, GstMLKeypoint, mrk));
 
           GST_TRACE_OBJECT (detection, "Landmark %s [%.2f x %.2f]",
               g_quark_to_string (lndmark->name), lndmark->x, lndmark->y);
@@ -693,22 +666,22 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     gst_structure_set_value (structure, "bounding-boxes", &bboxes);
     g_value_reset (&bboxes);
 
-    val = gst_structure_get_value (prediction->info, "timestamp");
+    val = gst_structure_get_value (mlparam, "timestamp");
     gst_structure_set_value (structure, "timestamp", val);
 
-    val = gst_structure_get_value (prediction->info, "sequence-index");
+    val = gst_structure_get_value (mlparam, "sequence-index");
     gst_structure_set_value (structure, "sequence-index", val);
 
-    val = gst_structure_get_value (prediction->info, "sequence-num-entries");
+    val = gst_structure_get_value (mlparam, "sequence-num-entries");
     gst_structure_set_value (structure, "sequence-num-entries", val);
 
-    if ((val = gst_structure_get_value (prediction->info, "stream-id")))
+    if ((val = gst_structure_get_value (mlparam, "stream-id")))
       gst_structure_set_value (structure, "stream-id", val);
 
-    if ((val = gst_structure_get_value (prediction->info, "stream-timestamp")))
+    if ((val = gst_structure_get_value (mlparam, "stream-timestamp")))
       gst_structure_set_value (structure, "stream-timestamp", val);
 
-    if ((val = gst_structure_get_value (prediction->info, "parent-id")))
+    if ((val = gst_structure_get_value (mlparam, "parent-id")))
       gst_structure_set_value (structure, "parent-id", val);
 
     g_value_init (&value, GST_TYPE_STRUCTURE);
@@ -818,25 +791,23 @@ gst_ml_video_detection_submit_input_buffer (GstBaseTransform * base,
 
   GST_TRACE_OBJECT (detection, "Received %" GST_PTR_FORMAT, buffer);
 
+  // Clear previously stored values and get the ML params structure from buffer.
+  for (idx = 0; idx < detection->predictions->len; ++idx) {
+    GstMLDetections *detections = NULL;
+    GstProtectionMeta *pmeta = NULL;
+
+    detections = g_ptr_array_index (detection->predictions, idx);
+    gst_ml_detections_resize (detections, 0);
+
+    pmeta = gst_buffer_get_protection_meta_id (buffer,
+        gst_batch_channel_name (idx));
+    g_ptr_array_index (detection->mlparams, idx) = pmeta->info;
+  }
+
   // GAP input buffer, cleanup the entries and set the protection meta info.
   if (gst_buffer_get_size (buffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
-    GstProtectionMeta *pmeta = NULL;
-    GstMLBoxPrediction *prediction = NULL;
-
-    for (idx = 0; idx < detection->predictions->len; ++idx) {
-      prediction =
-          &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
-
-      pmeta = gst_buffer_get_protection_meta_id (buffer,
-          gst_batch_channel_name (idx));
-
-      g_array_remove_range (prediction->entries, 0, prediction->entries->len);
-      prediction->info = pmeta->info;
-    }
-
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
-  }
 
   // Perform pre-processing on the input buffer.
   time = gst_util_get_timestamp ();
@@ -846,17 +817,8 @@ gst_ml_video_detection_submit_input_buffer (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-  // Clear previously stored values.
-  for (idx = 0; idx < detection->predictions->len; ++idx) {
-    GstMLBoxPrediction *prediction =
-        &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
-
-    g_array_remove_range (prediction->entries, 0, prediction->entries->len);
-    prediction->info = NULL;
-  }
-
   // Call the submodule process funtion.
-  success = gst_ml_module_video_detection_execute (detection->module, &mlframe,
+  success = gst_ml_module_detection_execute (detection->module, &mlframe,
       detection->predictions);
 
   gst_ml_frame_unmap (&mlframe);
@@ -1191,18 +1153,14 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   // Allocate the maximum number of predictions based on the batch size.
-  g_array_set_size (detection->predictions,
+  g_ptr_array_set_size (detection->predictions,
       GST_ML_INFO_TENSOR_DIM (detection->mlinfo, 0, 0));
 
-  for (idx = 0; idx < detection->predictions->len; ++idx) {
-    GstMLBoxPrediction *prediction =
-        &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
+  for (idx = 0; idx < detection->predictions->len; ++idx)
+    g_ptr_array_index (detection->predictions, idx) = gst_ml_detections_new ();
 
-    prediction->entries = g_array_new (FALSE, TRUE, sizeof (GstMLBoxEntry));
-
-    g_array_set_clear_func (prediction->entries,
-        (GDestroyNotify) gst_ml_box_entry_cleanup);
-  }
+  g_ptr_array_set_size (detection->mlparams,
+      GST_ML_INFO_TENSOR_DIM (detection->mlinfo, 0, 0));
 
   GST_DEBUG_OBJECT (detection, "Input caps: %" GST_PTR_FORMAT, incaps);
   GST_DEBUG_OBJECT (detection, "Output caps: %" GST_PTR_FORMAT, outcaps);
@@ -1412,7 +1370,8 @@ gst_ml_video_detection_finalize (GObject * object)
 {
   GstMLVideoDetection *detection = GST_ML_VIDEO_DETECTION (object);
 
-  g_array_free (detection->predictions, TRUE);
+  g_ptr_array_free (detection->predictions, TRUE);
+  g_ptr_array_free (detection->mlparams, TRUE);
   gst_ml_module_free (detection->module);
 
   if (detection->mlinfo != NULL)
@@ -1510,11 +1469,14 @@ gst_ml_video_detection_init (GstMLVideoDetection * detection)
   detection->stashedmlboxes = NULL;
   detection->stage_id = 0;
 
-  detection->predictions = g_array_new (FALSE, TRUE, sizeof (GstMLBoxPrediction));
+  detection->predictions = g_ptr_array_new ();
   g_return_if_fail (detection->predictions != NULL);
 
-  g_array_set_clear_func (detection->predictions,
-      (GDestroyNotify) gst_ml_box_prediction_cleanup);
+  g_ptr_array_set_free_func (detection->predictions,
+      (GDestroyNotify) gst_ml_detections_unref);
+
+  detection->mlparams = g_ptr_array_new ();
+  g_return_if_fail (detection->predictions != NULL);
 
   detection->mdlenum = DEFAULT_PROP_MODULE;
   detection->labels = DEFAULT_PROP_LABELS;

@@ -39,7 +39,7 @@
 #include <gst/base/gstbasetransform.h>
 #include <gst/video/video.h>
 #include <gst/ml/ml-info.h>
-#include <gst/ml/ml-module-video-super-resolution.h>
+#include <gst/ml/ml-module-super-resolution.h>
 
 G_BEGIN_DECLS
 

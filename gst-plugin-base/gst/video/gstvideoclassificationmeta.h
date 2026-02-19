@@ -26,7 +26,7 @@ typedef struct _GstVideoClassificationMeta GstVideoClassificationMeta;
  * @meta: Parent #GstMeta
  * @id: ID corresponding to the memory index inside GstBuffer.
  * @parent_id: Identifier of its parent ROI, used when this meta was derived.
- * @labels: A #GArray of #GstClassLabel
+ * @labels: (element-type GstClassLabel): A #GArray of #GstClassLabel
  *
  * Extra buffer metadata describing the video frame content.
  */

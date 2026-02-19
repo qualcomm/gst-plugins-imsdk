@@ -7,6 +7,9 @@
 
 #define CAT_PERFORMANCE gst_ml_frame_get_category()
 
+G_DEFINE_BOXED_TYPE (GstMLFrame, gst_ml_frame,
+    (GBoxedCopyFunc) gst_ml_frame_ref, (GBoxedFreeFunc) gst_ml_frame_unref);
+
 static inline GstDebugCategory *
 gst_ml_frame_get_category (void)
 {
@@ -19,6 +22,40 @@ gst_ml_frame_get_category (void)
     g_once_init_leave (&category, cat);
   }
   return category;
+}
+
+GstMLFrame *
+gst_ml_frame_new (void)
+{
+  GstMLFrame *frame = g_slice_new (GstMLFrame);
+  guint idx = 0;
+
+  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++)
+    memset (&(frame->mapinfo[idx]), 0, sizeof (frame->mapinfo[idx]));
+
+  gst_ml_info_init (&frame->info);
+  g_atomic_ref_count_init (&frame->refcount);
+  return frame;
+}
+
+GstMLFrame*
+gst_ml_frame_ref (GstMLFrame * frame)
+{
+  g_return_val_if_fail (frame != NULL, NULL);
+  g_atomic_ref_count_inc (&frame->refcount);
+
+  return frame;
+}
+
+void
+gst_ml_frame_unref (GstMLFrame * frame)
+{
+  g_return_if_fail (frame != NULL);
+
+  if (g_atomic_ref_count_dec (&frame->refcount)) {
+    gst_buffer_unref (frame->buffer);
+    g_slice_free (GstMLFrame, frame);
+  }
 }
 
 gboolean
@@ -44,6 +81,8 @@ gst_ml_frame_map (GstMLFrame * frame, const GstMLInfo * info,
         info->n_tensors, n_memory);
     return FALSE;
   }
+
+  g_atomic_ref_count_init (&frame->refcount);
 
   // Copy the ML info into the frame.
   frame->info = *info;
@@ -93,4 +132,22 @@ gst_ml_frame_unmap (GstMLFrame * frame)
     gst_buffer_unmap (frame->buffer, &(frame)->mapinfo[idx]);
 
   frame->buffer = NULL;
+}
+
+GstMLTensor
+gst_ml_frame_get_tensor (GstMLFrame * frame, guint index)
+{
+  GstMLTensor tensor = { 0, };
+  guint num = 0;
+
+  tensor.data = frame->mapinfo[index].data;
+  tensor.size = frame->mapinfo[index].size;
+
+  tensor.type = frame->info.type;
+  tensor.n_dimensions = frame->info.n_dimensions[index];
+
+  for (num = 0; num < tensor.n_dimensions; num++)
+    tensor.dimensions[num] = frame->info.tensors[index][num];
+
+  return tensor;
 }

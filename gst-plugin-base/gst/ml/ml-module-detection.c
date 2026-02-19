@@ -32,11 +32,12 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include "ml-module-video-super-resolution.h"
+#include "ml-module-detection.h"
 
-GST_API gboolean
-gst_ml_module_video_super_resolution_execute (GstMLModule * module,
-    GstMLFrame * mlframe, GstVideoFrame * vframe)
+
+gboolean
+gst_ml_module_detection_execute (GstMLModule * module, GstMLFrame * mlframe,
+    GPtrArray * predictions)
 {
-  return gst_ml_module_execute (module, mlframe, (gpointer) vframe);
+  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
 }

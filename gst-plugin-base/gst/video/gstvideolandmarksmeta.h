@@ -59,8 +59,9 @@ struct _GstVideoKeypointLink {
  * @id: ID corresponding to the memory index inside GstBuffer.
  * @parent_id: Identifier of its parent ROI, used when this meta was derived.
  * @confidence: Confidence score for the landmarks group as a whole.
- * @keypoints: A #GArray of #GstVideoKeypoint
- * @links: A #GArray of #GstVideoKeypointLink
+ * @keypoints: (element-type GstVideoKeypoint): A #GArray of #GstVideoKeypoint
+ * @links: (optional) (element-type GstVideoKeypointLink):
+ *         A #GArray of #GstVideoKeypointLink
  * @xtraparams: (optional): A #GstStructure containing additional parameters.
  *
  * Extra buffer metadata describing multiple video keypoints and their linkages.

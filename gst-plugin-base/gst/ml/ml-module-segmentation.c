@@ -32,57 +32,11 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#ifndef __GST_QTI_ML_VIDEO_SEGMENTATION_H__
-#define __GST_QTI_ML_VIDEO_SEGMENTATION_H__
+#include "ml-module-segmentation.h"
 
-#include <gst/gst.h>
-#include <gst/base/gstbasetransform.h>
-#include <gst/video/video.h>
-#include <gst/ml/ml-info.h>
-#include <gst/ml/ml-module-segmentation.h>
-
-G_BEGIN_DECLS
-
-#define GST_TYPE_ML_VIDEO_SEGMENTATION (gst_ml_video_segmentation_get_type())
-#define GST_ML_VIDEO_SEGMENTATION(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_ML_VIDEO_SEGMENTATION, \
-                              GstMLVideoSegmentation))
-#define GST_ML_VIDEO_SEGMENTATION_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_ML_VIDEO_SEGMENTATION, \
-                           GstMLVideoSegmentationClass))
-#define GST_IS_ML_VIDEO_SEGMENTATION(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_ML_VIDEO_SEGMENTATION))
-#define GST_IS_ML_VIDEO_SEGMENTATION_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_VIDEO_SEGMENTATION))
-#define GST_ML_VIDEO_SEGMENTATION_CAST(obj) ((GstMLVideoSegmentation *)(obj))
-
-typedef struct _GstMLVideoSegmentation GstMLVideoSegmentation;
-typedef struct _GstMLVideoSegmentationClass GstMLVideoSegmentationClass;
-
-struct _GstMLVideoSegmentation {
-  GstBaseTransform  parent;
-
-  GstMLInfo         *mlinfo;
-  GstVideoInfo      *vinfo;
-
-  /// Buffer pools.
-  GstBufferPool     *outpool;
-
-  /// Tensor deciphering module.
-  GstMLModule       *module;
-
-  /// Properties.
-  gint              mdlenum;
-  gchar             *labels;
-  GstStructure      *mlconstants;
-};
-
-struct _GstMLVideoSegmentationClass {
-  GstBaseTransformClass parent;
-};
-
-G_GNUC_INTERNAL GType gst_ml_video_segmentation_get_type (void);
-
-G_END_DECLS
-
-#endif // __GST_QTI_ML_VIDEO_SEGMENTATION_H__
+gboolean
+gst_ml_module_segmentation_execute (GstMLModule * module, GstMLFrame * mlframe,
+    GstVideoFrame * vframe)
+{
+  return gst_ml_module_execute (module, mlframe, (gpointer) vframe);
+}

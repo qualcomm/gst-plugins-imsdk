@@ -9,7 +9,7 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-detection.h>
+#include <gst/ml/ml-module-detection.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -216,9 +216,9 @@ gboolean
 gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
-  GArray *predictions = (GArray *)output;
+  GPtrArray *predictions = (GPtrArray *) output;
   GstProtectionMeta *pmeta = NULL;
-  GstMLBoxPrediction *prediction = NULL;
+  GstMLDetections *detections = NULL;
   gfloat *scores = NULL, *landmarks = NULL, *bboxes = NULL, *lmkscores = NULL;
   GstVideoRectangle region = { 0, };
   gfloat confidence = 0.0;
@@ -233,8 +233,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
 
-  prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
-  prediction->info = pmeta->info;
+  detections = g_ptr_array_index (predictions, 0);
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -266,7 +265,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   for (idx = 0; idx < (n_paxels * n_classes); idx++) {
     GstMLLabel *label = NULL;
-    GstMLBoxEntry entry = { 0, };
+    GstMLDetection entry = { 0, };
     gfloat bbox[4] = { 0, }, x = 0.0, y = 0.0;
     guint lmk_idx = 0;
 
@@ -306,44 +305,23 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     if (size < BBOX_SIZE_THRESHOLD)
       continue;
 
-    // Keep dimensions within the region.
-    entry.left = MAX (entry.left, (gfloat) region.x);
-    entry.top = MAX (entry.top, (gfloat) region.y);
-    entry.right = MIN (entry.right, (gfloat) (region.x + region.w));
-    entry.bottom = MIN (entry.bottom, (gfloat) (region.y + region.h));
-
     GST_TRACE ("Class: %u Confidence: %.2f Box[%f, %f, %f, %f]", class_idx,
         confidence, entry.top, entry.left, entry.bottom, entry.right);
 
     // Adjust bounding box dimensions with SAR and input tensor resolution.
-    gst_ml_box_transform_dimensions (&entry, &region);
+    gst_ml_detection_relative_transform (&entry, &region, TRUE);
 
     entry.confidence = confidence * 100.0;
     entry.name = g_quark_from_string (label->name);
     entry.color = label->color;
 
-    // Non-Max Suppression (NMS) algorithm.
-    nms = gst_ml_box_non_max_suppression (&entry, prediction->entries);
-
-    // If the NMS result is -2 don't add the prediction to the list.
-    if (nms == (-2))
-      continue;
-
-    GST_LOG ("Label: %s Confidence: %.2f Box[%f, %f, %f, %f]",
-        g_quark_to_string (entry.name), entry.confidence, entry.top, entry.left,
-        entry.bottom, entry.right);
-
-    // If the NMS result is above -1 remove the entry with the nms index.
-    if (nms >= 0)
-      predictions = g_array_remove_index (prediction->entries, nms);
-
-    entry.landmarks = g_array_sized_new (FALSE, FALSE,
-        sizeof (GstMLBoxLandmark), n_landmarks);
+    entry.landmarks =
+        g_array_sized_new (FALSE, FALSE, sizeof (GstMLKeypoint), n_landmarks);
     g_array_set_size (entry.landmarks, n_landmarks);
 
     // Process the landmarks for this bounding box entry.
     for (num = 0; num < n_landmarks; ++num) {
-      GstMLBoxLandmark *lmk = NULL;
+      GstMLKeypoint *lmk = NULL;
       GHashTable *names = NULL;
       const gchar *name = NULL;
 
@@ -368,7 +346,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       if (name == NULL)
         continue;
 
-      lmk = &(g_array_index (entry.landmarks, GstMLBoxLandmark, lmk_idx++));
+      lmk = &(g_array_index (entry.landmarks, GstMLKeypoint, lmk_idx++));
       lmk->name = g_quark_from_string (name);
 
       id = (idx / n_classes) * (n_landmarks * 2) + num;
@@ -397,9 +375,20 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     // Resize the landmarks array to the actual number filled.
     g_array_set_size (entry.landmarks, lmk_idx);
 
-    prediction->entries = g_array_append_val (prediction->entries, entry);
+    // Non-Max Suppression (NMS) algorithm.
+    nms = gst_ml_detections_non_max_suppression (detections, &entry,
+        GST_ML_DETECTION_NMS_THRESHOLD);
+
+    // If the NMS result is -1 then the entry was not added to the list.
+    if (nms == (-1))
+      continue;
+
+    GST_TRACE ("Label: %s Confidence: %.2f Box[%f, %f, %f, %f]",
+        g_quark_to_string (entry.name), entry.confidence, entry.top, entry.left,
+        entry.bottom, entry.right);
   }
 
-  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
+  gst_ml_detections_sort (detections);
+
   return TRUE;
 }

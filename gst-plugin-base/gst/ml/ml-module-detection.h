@@ -32,11 +32,35 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include "ml-module-video-segmentation.h"
+#ifndef __GST_QTI_ML_MODULE_DETECTION_H__
+#define __GST_QTI_ML_MODULE_DETECTION_H__
 
-gboolean
-gst_ml_module_video_segmentation_execute (GstMLModule * module, GstMLFrame * mlframe,
-    GstVideoFrame * vframe)
-{
-  return gst_ml_module_execute (module, mlframe, (gpointer) vframe);
-}
+#include <gst/gst.h>
+#include <gst/video/video.h>
+#include <gst/ml/gstmlmodule.h>
+#include <gst/ml/ml-post-process-detection.h>
+
+G_BEGIN_DECLS
+
+/**
+ * gst_ml_module_detection_execute:
+ * @module: Pointer to ML post-processing module.
+ * @mlframe: Frame containing mapped tensor memory blocks that need processing.
+ * @predictions: A #GPtrArray of #GstMLDetections.
+ *
+ * Convenient wrapper function used on plugin level to call the module
+ * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
+ * to process input tensors.
+ *
+ * Post-processing module must define the 3rd argument of the implemented
+ * 'gst_ml_module_process' API as 'GArray *'.
+ *
+ * Returns: TRUE on success or FALSE on failure
+ */
+GST_API gboolean
+gst_ml_module_detection_execute (GstMLModule * module, GstMLFrame * mlframe,
+                                 GPtrArray * predictions);
+
+G_END_DECLS
+
+#endif // __GST_QTI_ML_MODULE_DETECTION_H__

@@ -14,12 +14,16 @@ add_library(${TARGET_NAME} SHARED
   gstmlmodule.c
   gstmlpool.c
   ml-module-utils.c
-  ml-module-video-classification.c
-  ml-module-video-detection.c
-  ml-module-video-pose.c
-  ml-module-video-segmentation.c
-  ml-module-video-super-resolution.c
-  ml-module-audio-classification.c
+  ml-module-classification.c
+  ml-module-detection.c
+  ml-module-pose.c
+  ml-module-segmentation.c
+  ml-module-super-resolution.c
+  ml-module-classification.c
+  ml-post-process-classification.c
+  ml-post-process-keypoint.c
+  ml-post-process-detection.c
+  ml-post-process-pose.c
 )
 
 set(TARGET_HEADERS
@@ -30,12 +34,16 @@ set(TARGET_HEADERS
   gstmlmodule.h
   gstmlpool.h
   ml-module-utils.h
-  ml-module-video-classification.h
-  ml-module-video-detection.h
-  ml-module-video-pose.h
-  ml-module-video-segmentation.h
-  ml-module-video-super-resolution.h
-  ml-module-audio-classification.h
+  ml-module-classification.h
+  ml-module-detection.h
+  ml-module-pose.h
+  ml-module-segmentation.h
+  ml-module-super-resolution.h
+  ml-module-classification.h
+  ml-post-process-classification.h
+  ml-post-process-keypoint.h
+  ml-post-process-detection.h
+  ml-post-process-pose.h
 )
 
 set_target_properties(${TARGET_NAME} PROPERTIES
@@ -62,6 +70,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
+  gstqtivideobase
 )
 
 install(
@@ -106,6 +115,11 @@ if(GIR_SCANNER AND GIR_COMPILER AND PYTHON_SITEPACKAGES_DIR)
             --output=${GIR_TARGET_NAME}
             --include=Gst-1.0
             --include=GstVideo-1.0
+            --include=GstQtiVideo-1.0
+            --add-include-path=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/utils
+            --add-include-path=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/allocators
+            --add-include-path=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/gfx
+            --add-include-path=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/video
             --cflags-begin -I${QTI_PLUGINS_BASE_SOURCE_DIR} --cflags-end
     ${CMAKE_CURRENT_SOURCE_DIR}/ml-type.h
     ${CMAKE_CURRENT_SOURCE_DIR}/ml-type.c
@@ -117,14 +131,28 @@ if(GIR_SCANNER AND GIR_COMPILER AND PYTHON_SITEPACKAGES_DIR)
     ${CMAKE_CURRENT_SOURCE_DIR}/gstmlmeta.c
     ${CMAKE_CURRENT_SOURCE_DIR}/gstmlpool.h
     ${CMAKE_CURRENT_SOURCE_DIR}/gstmlpool.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-classification.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-classification.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-keypoint.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-keypoint.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-detection.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-detection.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-pose.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-pose.c
     DEPENDS ${TARGET_NAME}
+            GstQtiVideo-1.0
   )
 
   set(TYPELIB_TARGET_NAME "GstQtiML-1.0.typelib")
 
   add_custom_command(
     OUTPUT ${TYPELIB_TARGET_NAME}
-    COMMAND ${GIR_COMPILER} ${GIR_TARGET_NAME} --output=${TYPELIB_TARGET_NAME}
+    COMMAND ${GIR_COMPILER} ${GIR_TARGET_NAME}
+            --includedir=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/utils
+            --includedir=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/allocators
+            --includedir=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/gfx
+            --includedir=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/video
+            --output=${TYPELIB_TARGET_NAME}
     DEPENDS ${GIR_TARGET_NAME}
   )
 

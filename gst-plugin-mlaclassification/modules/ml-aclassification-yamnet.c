@@ -8,7 +8,7 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-audio-classification.h>
+#include <gst/ml/ml-module-classification.h>
 
 
 // Set the default debug category.
@@ -148,9 +148,8 @@ gboolean
 gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
-  GArray *predictions = (GArray *) output;
-  GstProtectionMeta *pmeta = NULL;
-  GstMLClassPrediction *prediction = NULL;
+  GPtrArray *predictions = (GPtrArray *) output;
+  GstMLClassifications *classifications = NULL;
   gfloat *data = NULL;
   guint idx = 0, n_inferences = 0;
   gdouble confidence = 0.0;
@@ -159,11 +158,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
-      gst_batch_channel_name (0));
-
-  prediction = &(g_array_index (predictions, GstMLClassPrediction, 0));
-  prediction->info = pmeta->info;
+  classifications = g_ptr_array_index (predictions, 0);
 
   n_inferences = GST_ML_FRAME_DIM (mlframe, 0, 1);
   data = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
@@ -171,7 +166,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // Fill the prediction table.
   for (idx = 0; idx < n_inferences; ++idx) {
     GstMLLabel *label = NULL;
-    GstMLClassEntry entry = { 0 };
+    GstMLClassification entry = { 0 };
 
     confidence = data[idx];
     confidence *= 100;
@@ -186,11 +181,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     entry.name = g_quark_from_string (label ? label->name : "unknown");
     entry.color = label ? label->color : 0x000000FF;
 
-    prediction->entries = g_array_append_val (prediction->entries, entry);
+    gst_ml_classifications_append (classifications, &entry);
   }
 
-  g_array_sort (prediction->entries,
-      (GCompareFunc) gst_ml_class_audio_compare_entries);
+  gst_ml_classifications_sort (classifications);
 
   return TRUE;
 }

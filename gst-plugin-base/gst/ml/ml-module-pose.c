@@ -32,50 +32,16 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include "ml-module-video-pose.h"
-
-void
-gst_ml_pose_entry_cleanup (GstMLPoseEntry * entry)
-{
-  if (entry->keypoints != NULL)
-    g_array_free (entry->keypoints, TRUE);
-
-  // if (entry->connections != NULL)
-  //   g_array_free (entry->connections, TRUE);
-
-  if (entry->xtraparams != NULL)
-    gst_structure_free (entry->xtraparams);
-}
-
-void
-gst_ml_pose_prediction_cleanup (GstMLPosePrediction * prediction)
-{
-  g_array_set_clear_func (prediction->entries,
-      (GDestroyNotify) gst_ml_pose_entry_cleanup);
-
-  if (prediction->entries != NULL)
-    g_array_free (prediction->entries, TRUE);
-}
-
-gint
-gst_ml_pose_compare_entries (const GstMLPoseEntry * l_entry,
-    const GstMLPoseEntry * r_entry)
-{
-  if (l_entry->confidence > r_entry->confidence)
-    return -1;
-  else if (l_entry->confidence < r_entry->confidence)
-    return 1;
-
-  return 0;
-}
+#include "ml-module-pose.h"
 
 gboolean
-gst_ml_load_links (const GValue * list, const guint idx, GArray * links)
+gst_ml_load_skeleton_links (GPtrArray * links, const GValue * list,
+                            const guint idx)
 {
   GstStructure *structure = NULL;
   const GValue *array = NULL, *value = NULL;
-  GstMLKeypointsLink link = { 0, };
-  guint id = 0, num = 0, size = 0;
+  GArray *link = NULL;
+  guint num = 0, size = 0, s_kp_id = 0, d_kp_id = 0;
 
   structure = GST_STRUCTURE (
       g_value_get_boxed (gst_value_list_get_value (list, idx)));
@@ -89,8 +55,7 @@ gst_ml_load_links (const GValue * list, const guint idx, GArray * links)
     return TRUE;
 
   // Initial ID of the source keypoint.
-  gst_structure_get_uint (structure, "id", &id);
-  link.s_kp_id = id;
+  gst_structure_get_uint (structure, "id", &s_kp_id);
 
   array = gst_structure_get_value (structure, "links");
   g_return_val_if_fail (GST_VALUE_HOLDS_ARRAY (array), FALSE);
@@ -99,14 +64,19 @@ gst_ml_load_links (const GValue * list, const guint idx, GArray * links)
   g_return_val_if_fail (size != 0, FALSE);
 
   for (num = 0; num < size; num++) {
+    link = g_array_sized_new (FALSE, FALSE, sizeof (guint), 2);
+    g_array_set_size (link, 2);
+
     value = gst_value_array_get_value (array, num);
     g_return_val_if_fail (G_VALUE_HOLDS_UINT (value), FALSE);
 
-    link.d_kp_id = id = g_value_get_uint (value);
-    g_array_append_val (links, link);
+    g_array_index (link, guint, 0) = s_kp_id;
+    g_array_index (link, guint, 1) = d_kp_id = g_value_get_uint (value);
+
+    g_ptr_array_add (links, link);
 
     // Recursively check and load the next link in teh chain/tree.
-    if (!gst_ml_load_links (list, id, links))
+    if (!gst_ml_load_skeleton_links (links, list, d_kp_id))
       return FALSE;
   }
 
@@ -114,11 +84,11 @@ gst_ml_load_links (const GValue * list, const guint idx, GArray * links)
 }
 
 gboolean
-gst_ml_load_connections (const GValue * list, GArray * connections)
+gst_ml_load_connections (GPtrArray * connections, const GValue * list)
 {
   GstStructure *structure = NULL;
-  GstMLKeypointsLink connection = { 0, };
-  guint idx = 0, size = 0;
+  GArray *connection = NULL;
+  guint idx = 0, size = 0, s_kp_id = 0, d_kp_id = 0;
 
   size = gst_value_list_get_size (list);
 
@@ -134,26 +104,24 @@ gst_ml_load_connections (const GValue * list, GArray * connections)
     if (!gst_structure_has_field (structure, "connection"))
       continue;
 
-    gst_structure_get_uint (structure, "id", &(connection.s_kp_id));
-    gst_structure_get_uint (structure, "connection", &(connection.d_kp_id));
+    connection = g_array_sized_new (FALSE, FALSE, sizeof (guint), 2);
+    g_array_set_size (connection, 2);
 
-    g_array_append_val (connections, connection);
+    gst_structure_get_uint (structure, "id", &s_kp_id);
+    gst_structure_get_uint (structure, "connection", &d_kp_id);
+
+    g_array_index (connection, guint, 0) = s_kp_id;
+    g_array_index (connection, guint, 1) = d_kp_id;
+
+    g_ptr_array_add (connections, connection);
   }
 
   return TRUE;
 }
 
-void
-gst_ml_keypoint_transform_coordinates (GstMLKeypoint * keypoint,
-    GstVideoRectangle * region)
-{
-  keypoint->x = (keypoint->x - region->x) / region->w;
-  keypoint->y = (keypoint->y - region->y) / region->h;
-}
-
 gboolean
-gst_ml_module_video_pose_execute (GstMLModule * module, GstMLFrame * mlframe,
-    GArray * predictions)
+gst_ml_module_pose_execute (GstMLModule * module, GstMLFrame * mlframe,
+    GPtrArray * predictions)
 {
   return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
 }

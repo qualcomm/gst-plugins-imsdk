@@ -32,35 +32,64 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#ifndef __GST_QTI_ML_MODULE_VIDEO_SUPER_RESOLUTION_H__
-#define __GST_QTI_ML_MODULE_VIDEO_SUPER_RESOLUTION_H__
+#ifndef __GST_QTI_ML_MODULE_POSE_H__
+#define __GST_QTI_ML_MODULE_POSE_H__
 
 #include <gst/gst.h>
-#include <gst/ml/gstmlmodule.h>
 #include <gst/video/video.h>
+#include <gst/ml/gstmlmodule.h>
+#include <gst/ml/ml-post-process-pose.h>
 
 G_BEGIN_DECLS
 
 /**
- * gst_ml_video_super_resolution_module_execute:
+ * gst_ml_load_skeleton_links:
+ * @links: Array to be filled.
+ * @list: GValue list containing link information.
+ * @idx: Seed index from which to start.
+ *
+ * Helper recursive function to load the skeleton chain/tree starting from
+ * GValue list with seed index provided by user into array comprised by
+ * #GstMLKeypointLink.
+ *
+ * Returns: TRUE on success or FALSE on failure
+ */
+GST_API gboolean
+gst_ml_load_skeleton_links (GPtrArray * links, const GValue * list,
+                            const guint idx);
+
+/**
+ * gst_ml_load_connections:
+ * @connections: Array to be filled.
+ * @list: GValue list containing label information.
+ *
+ * Helper function to load the keypoint pairs/links from GValue list into
+ * array comprised by #GstMLKeypointLink.
+ *
+ * Returns: TRUE on success or FALSE on failure
+ */
+GST_API gboolean
+gst_ml_load_connections (GPtrArray * connections, const GValue * list);
+
+/**
+ * gst_ml_module_pose_execute:
  * @module: Pointer to ML post-processing module.
  * @mlframe: Frame containing mapped tensor memory blocks that need processing.
- * @vframe: Frame containing image.
+ * @predictions: A #GPtrArray of #GstMLPoses.
  *
  * Convenient wrapper function used on plugin level to call the module
  * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
  * to process input tensors.
  *
  * Post-processing module must define the 3rd argument of the implemented
- * 'gst_ml_module_process' API as 'GstVideoFrame *'.
+ * 'gst_ml_module_process' API as 'GArray *'.
  *
  * Returns: TRUE on success or FALSE on failure
  */
 GST_API gboolean
-gst_ml_module_video_super_resolution_execute (GstMLModule * module,
-                                              GstMLFrame * mlframe,
-                                              GstVideoFrame * vframe);
+gst_ml_module_pose_execute (GstMLModule * module, GstMLFrame * mlframe,
+                            GPtrArray * predictions);
 
 G_END_DECLS
 
-#endif // __GST_QTI_ML_MODULE_VIDEO_SUPER_RESOLUTION_H__
+#endif // __GST_QTI_ML_MODULE_VIDEO_POSE_H__

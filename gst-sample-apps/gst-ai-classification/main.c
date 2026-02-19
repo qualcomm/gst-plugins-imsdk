@@ -96,7 +96,7 @@
 /**
  * To enable softmax operation for post processing
  */
-#define GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX 1
+#define GST_ML_CLASSIFICATION_OPERATION_SOFTMAX 1
 
 /**
  * Number of Queues used for buffer caching between elements

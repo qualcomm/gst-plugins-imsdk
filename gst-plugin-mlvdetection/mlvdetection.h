@@ -39,7 +39,7 @@
 #include <gst/base/gstbasetransform.h>
 #include <gst/video/video.h>
 #include <gst/ml/ml-info.h>
-#include <gst/ml/ml-module-video-detection.h>
+#include <gst/ml/ml-module-detection.h>
 
 G_BEGIN_DECLS
 
@@ -76,7 +76,9 @@ struct _GstMLVideoDetection {
   /// Tensor deciphering module.
   GstMLModule       *module;
   /// Array with predictions from the module post-processing.
-  GArray            *predictions;
+  GPtrArray         *predictions;
+  /// Array with ML params from input tensor buffer for module post-processing.
+  GPtrArray         *mlparams;
 
   /// Cairo surfaces and contexts mapped for each buffer.
   GHashTable        *surfaces;

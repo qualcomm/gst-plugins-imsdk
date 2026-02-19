@@ -9,7 +9,7 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-detection.h>
+#include <gst/ml/ml-module-detection.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -164,10 +164,10 @@ cleanup:
 
 static void
 gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
-    GArray * predictions, GstMLFrame * mlframe)
+    GPtrArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstMLBoxPrediction *prediction = NULL;
+  GstMLDetections *detections = NULL;
   GstMLLabel *label = NULL;
   gfloat *bboxes = NULL, *scores = NULL, *classes = NULL;
   GstVideoRectangle region = { 0, };
@@ -178,8 +178,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
 
-  prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
-  prediction->info = pmeta->info;
+  detections = g_ptr_array_index (predictions, 0);
 
   // Extract the source tensor region with actual data.
   gst_ml_structure_get_source_region (pmeta->info, &region);
@@ -191,7 +190,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
   classes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
 
   for (idx = 0; idx < n_paxels; idx++) {
-    GstMLBoxEntry entry = { 0, };
+    GstMLDetection entry = { 0, };
 
     confidence = scores[idx];
     class_idx = classes[idx];
@@ -208,49 +207,37 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     GST_LOG ("Class: %u Confidence: %.2f Box[%.2f, %.2f, %.2f, %.2f]",
         class_idx, confidence, entry.top, entry.left, entry.bottom, entry.right);
 
-    // Keep dimensions within the region.
-    entry.left = MAX (entry.left, (gfloat) region.x);
-    entry.top = MAX (entry.top, (gfloat) region.y);
-    entry.right = MIN (entry.right, (gfloat) (region.x + region.w));
-    entry.bottom = MIN (entry.bottom, (gfloat) (region.y + region.h));
-
     // Adjust bounding box dimensions with extracted source tensor region.
-    gst_ml_box_transform_dimensions (&entry, &region);
+    gst_ml_detection_relative_transform (&entry, &region, TRUE);
 
-    label = g_hash_table_lookup (
-        submodule->labels, GUINT_TO_POINTER (class_idx));
+    label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (class_idx));
 
     entry.confidence = confidence * 100.0F;
     entry.name = g_quark_from_string (label ? label->name : "unknown");
     entry.color = label ? label->color : 0x000000F;
 
     // Non-Max Suppression (NMS) algorithm.
-    nms = gst_ml_box_non_max_suppression (&entry, prediction->entries);
+    nms = gst_ml_detections_non_max_suppression (detections, &entry,
+        GST_ML_DETECTION_NMS_THRESHOLD);
 
-    // If the NMS result is -2 don't add the prediction to the list.
-    if (nms == (-2))
+    // If the NMS result is -1 then the entry was not added to the list.
+    if (nms == (-1))
       continue;
 
     GST_TRACE ("Label: %s Confidence: %.2f Box[%.2f, %.2f, %.2f, %.2f]",
         g_quark_to_string (entry.name), entry.confidence, entry.top, entry.left,
         entry.bottom, entry.right);
-
-    // If the NMS result is above -1 remove the entry with the nms index.
-    if (nms >= 0)
-      prediction->entries = g_array_remove_index (prediction->entries, nms);
-
-    prediction->entries = g_array_append_val (prediction->entries, entry);
   }
 
-  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
+  gst_ml_detections_sort (detections);
 }
 
 static void
 gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
-    GArray * predictions, GstMLFrame * mlframe)
+    GPtrArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstMLBoxPrediction *prediction = NULL;
+  GstMLDetections *detections = NULL;
   GstMLLabel *label = NULL;
   gfloat *bboxes = NULL, *scores = NULL;
   GstVideoRectangle region = { 0, };
@@ -262,8 +249,7 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
 
-  prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
-  prediction->info = pmeta->info;
+  detections = g_ptr_array_index (predictions, 0);
 
   // Extract the source tensor region with actual data.
   gst_ml_structure_get_source_region (pmeta->info, &region);
@@ -285,7 +271,7 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
   }
 
   for (idx = 0; idx < n_paxels; idx++) {
-    GstMLBoxEntry entry = { 0, };
+    GstMLDetection entry = { 0, };
 
     // Initial position ID of the class index.
     id = idx * n_classes;
@@ -311,14 +297,8 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
     GST_LOG ("Class: %u Confidence: %.2f Box[%.2f, %.2f, %.2f, %.2f]",
         class_idx, confidence, entry.top, entry.left, entry.bottom, entry.right);
 
-    // Keep dimensions within the region.
-    entry.left = MAX (entry.left, (gfloat) region.x);
-    entry.top = MAX (entry.top, (gfloat) region.y);
-    entry.right = MIN (entry.right, (gfloat) (region.x + region.w));
-    entry.bottom = MIN (entry.bottom, (gfloat) (region.y + region.h));
-
     // Adjust bounding box dimensions with extracted source tensor region.
-    gst_ml_box_transform_dimensions (&entry, &region);
+    gst_ml_detection_relative_transform (&entry, &region, TRUE);
 
     label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (class_idx));
 
@@ -327,27 +307,26 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
     entry.color = label ? label->color : 0x000000F;
 
     // Non-Max Suppression (NMS) algorithm.
-    nms = gst_ml_box_non_max_suppression (&entry, prediction->entries);
+    nms = gst_ml_detections_non_max_suppression (detections, &entry,
+        GST_ML_DETECTION_NMS_THRESHOLD);
 
-    // If the NMS result is -2 don't add the prediction to the list.
-    if (nms == (-2))
+    // If the NMS result is -1 then the entry was not added to the list.
+    if (nms == (-1))
       continue;
 
-    // If the NMS result is above -1 remove the entry with the nms index.
-    if (nms >= 0)
-      prediction->entries = g_array_remove_index (prediction->entries, nms);
-
-    prediction->entries = g_array_append_val (prediction->entries, entry);
+    GST_TRACE ("Label: %s Confidence: %.2f Box[%.2f, %.2f, %.2f, %.2f]",
+        g_quark_to_string (entry.name), entry.confidence, entry.top, entry.left,
+        entry.bottom, entry.right);
   }
 
-  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
+  gst_ml_detections_sort (detections);
 }
 
 gboolean
 gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
-  GArray *predictions = (GArray *) output;
+  GPtrArray *predictions = (GPtrArray *) output;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);

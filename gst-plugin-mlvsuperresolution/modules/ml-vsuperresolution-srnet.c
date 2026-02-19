@@ -35,7 +35,7 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-super-resolution.h>
+#include <gst/ml/ml-module-super-resolution.h>
 
 
 // Set the default debug category.

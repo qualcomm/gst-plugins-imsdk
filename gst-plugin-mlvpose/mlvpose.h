@@ -39,7 +39,7 @@
 #include <gst/base/gstbasetransform.h>
 #include <gst/video/video.h>
 #include <gst/ml/ml-info.h>
-#include <gst/ml/ml-module-video-pose.h>
+#include <gst/ml/ml-module-pose.h>
 
 G_BEGIN_DECLS
 
@@ -76,14 +76,16 @@ struct _GstMLVideoPose {
   /// Tensor deciphering module.
   GstMLModule      *module;
   /// Array with predictions from the module post-processing.
-  GArray           *predictions;
+  GPtrArray        *predictions;
+  /// Array with ML params from input tensor buffer for module post-processing.
+  GPtrArray        *mlparams;
 
   /// Properties.
-  gint              mdlenum;
-  gchar             *labels;
-  guint             n_results;
-  gdouble           threshold;
-  GstStructure      *mlconstants;
+  gint             mdlenum;
+  gchar            *labels;
+  guint            n_results;
+  gdouble          threshold;
+  GstStructure     *mlconstants;
 };
 
 struct _GstMLVideoPoseClass {

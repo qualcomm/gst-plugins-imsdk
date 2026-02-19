@@ -319,18 +319,17 @@ gst_ml_audio_classification_fill_video_output (
   }
 
   for (idx = 0; idx < classification->predictions->len; idx++) {
-    GstMLClassPrediction *prediction = NULL;
-    GstMLClassEntry *entry = NULL;
+    GstMLClassifications *classifications = NULL;
+    GstMLClassification *entry = NULL;
     gchar *string = NULL;
 
-    prediction =
-        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+    classifications = g_ptr_array_index (classification->predictions, idx);
 
-    n_entries = (prediction->entries->len < classification->n_results) ?
-        prediction->entries->len : classification->n_results;
+    n_entries = MIN (
+        gst_ml_classifications_size (classifications), classification->n_results);
 
     for (num = 0; num < n_entries; num++) {
-      entry = &(g_array_index (prediction->entries, GstMLClassEntry, num));
+      entry = gst_ml_classifications_entry (classifications, num);
 
       // Concat the prediction data to the output string.
       string = g_strdup_printf ("%s: %.1f%%",
@@ -385,7 +384,7 @@ static gboolean
 gst_ml_audio_classification_fill_text_output (
     GstMLAudioClassification * classification, GstBuffer *buffer)
 {
-  GstStructure *structure = NULL;
+  GstStructure *structure = NULL, *mlparam = NULL;
   gchar *string = NULL, *name = NULL;
   GstMapInfo memmap = {};
   GValue list = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
@@ -397,18 +396,18 @@ gst_ml_audio_classification_fill_text_output (
   g_value_init (&value, GST_TYPE_STRUCTURE);
 
   for (idx = 0; idx < classification->predictions->len; idx++) {
-    GstMLClassPrediction *prediction = NULL;
-    GstMLClassEntry *entry = NULL;
+    GstMLClassifications *classifications = NULL;
+    GstMLClassification *entry = NULL;
     const GValue *val = NULL;
 
-    prediction =
-        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+    classifications = g_ptr_array_index (classification->predictions, idx);
+    mlparam = g_ptr_array_index (classification->mlparams, idx);
 
-    n_entries = (prediction->entries->len < classification->n_results) ?
-        prediction->entries->len : classification->n_results;
+    n_entries = MIN (
+        gst_ml_classifications_size (classifications), classification->n_results);
 
     for (num = 0; num < n_entries; num++) {
-      entry = &(g_array_index (prediction->entries, GstMLClassEntry, num));
+      entry = gst_ml_classifications_entry (classifications, num);
 
       id = GST_META_ID (classification->stage_id, sequence_idx, num);
 
@@ -431,13 +430,13 @@ gst_ml_audio_classification_fill_text_output (
 
     structure = gst_structure_new_empty ("AudioClassification");
 
-    val = gst_structure_get_value (prediction->info, "timestamp");
+    val = gst_structure_get_value (mlparam, "timestamp");
     gst_structure_set_value (structure, "timestamp", val);
 
-    val = gst_structure_get_value (prediction->info, "sequence-index");
+    val = gst_structure_get_value (mlparam, "sequence-index");
     gst_structure_set_value (structure, "sequence-index", val);
 
-    val = gst_structure_get_value (prediction->info, "sequence-num-entries");
+    val = gst_structure_get_value (mlparam, "sequence-num-entries");
     gst_structure_set_value (structure, "sequence-num-entries", val);
 
     gst_structure_set_value (structure, "labels", &labels);
@@ -568,25 +567,25 @@ gst_ml_audio_classification_submit_input_buffer (GstBaseTransform * base,
   if (gst_base_transform_is_passthrough (base))
     return ret;
 
+  GST_TRACE_OBJECT (classification, "Received %" GST_PTR_FORMAT, buffer);
+
+  // Clear previously stored values and get the ML params structure from buffer.
+  for (idx = 0; idx < classification->predictions->len; ++idx) {
+    GstMLClassifications *classifications = NULL;
+    GstProtectionMeta *pmeta = NULL;
+
+    classifications = g_ptr_array_index (classification->predictions, idx);
+    gst_ml_classifications_resize (classifications, 0);
+
+    pmeta = gst_buffer_get_protection_meta_id (buffer,
+        gst_batch_channel_name (idx));
+    g_ptr_array_index (classification->mlparams, idx) = pmeta->info;
+  }
+
   // GAP input buffer, cleanup the entries and set the protection meta info.
   if (gst_buffer_get_size (buffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
-    GstProtectionMeta *pmeta = NULL;
-    GstMLClassPrediction *prediction = NULL;
-
-    for (idx = 0; idx < classification->predictions->len; ++idx) {
-      prediction =
-          &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
-
-      pmeta = gst_buffer_get_protection_meta_id (buffer,
-          gst_batch_channel_name (idx));
-
-      g_array_remove_range (prediction->entries, 0, prediction->entries->len);
-      prediction->info = pmeta->info;
-    }
-
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
-  }
 
   // Perform pre-processing on the input buffer.
   time = gst_util_get_timestamp ();
@@ -596,17 +595,8 @@ gst_ml_audio_classification_submit_input_buffer (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-  // Clear previously stored values.
-  for (idx = 0; idx < classification->predictions->len; ++idx) {
-    GstMLClassPrediction *prediction =
-        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
-
-    g_array_remove_range (prediction->entries, 0, prediction->entries->len);
-    prediction->info = NULL;
-  }
-
   // Call the submodule process funtion.
-  success = gst_ml_module_audio_classification_execute (classification->module,
+  success = gst_ml_module_classification_execute (classification->module,
       &mlframe, classification->predictions);
 
   gst_ml_frame_unmap (&mlframe);
@@ -872,15 +862,16 @@ gst_ml_audio_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   // Allocate the maximum number of predictions based on the batch size.
-  g_array_set_size (classification->predictions,
+  g_ptr_array_set_size (classification->predictions,
       GST_ML_INFO_TENSOR_DIM (classification->mlinfo, 0, 0));
 
   for (idx = 0; idx < classification->predictions->len; ++idx) {
-    GstMLClassPrediction *prediction =
-        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
-
-    prediction->entries = g_array_new (FALSE, FALSE, sizeof (GstMLClassEntry));
+    g_ptr_array_index (classification->predictions, idx) =
+        gst_ml_classifications_new ();
   }
+
+  g_ptr_array_set_size (classification->mlparams,
+      GST_ML_INFO_TENSOR_DIM (classification->mlinfo, 0, 0));
 
   GST_DEBUG_OBJECT (classification, "Input caps: %" GST_PTR_FORMAT, incaps);
   GST_DEBUG_OBJECT (classification, "Output caps: %" GST_PTR_FORMAT, outcaps);
@@ -1051,7 +1042,8 @@ gst_ml_audio_classification_finalize (GObject * object)
 {
   GstMLAudioClassification *classification = GST_ML_AUDIO_CLASSIFICATION (object);
 
-  g_array_free (classification->predictions, TRUE);
+  g_ptr_array_free (classification->predictions, TRUE);
+  g_ptr_array_free (classification->mlparams, TRUE);
   gst_ml_module_free (classification->module);
 
   if (classification->mlinfo != NULL)
@@ -1130,12 +1122,14 @@ gst_ml_audio_classification_init (GstMLAudioClassification * classification)
   classification->outpool = NULL;
   classification->module = NULL;
 
-  classification->predictions =
-      g_array_new (FALSE, FALSE, sizeof (GstMLClassPrediction));
+  classification->predictions = g_ptr_array_new ();
   g_return_if_fail (classification->predictions != NULL);
 
-  g_array_set_clear_func (classification->predictions,
-      (GDestroyNotify) gst_ml_class_audio_prediction_cleanup);
+  g_ptr_array_set_free_func (classification->predictions,
+      (GDestroyNotify) gst_ml_classifications_unref);
+
+  classification->mlparams = g_ptr_array_new ();
+  g_return_if_fail (classification->predictions != NULL);
 
   classification->mdlenum = DEFAULT_PROP_MODULE;
   classification->labels = DEFAULT_PROP_LABELS;

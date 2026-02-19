@@ -9,8 +9,8 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-segmentation.h>
-#include <gst/ml/ml-module-video-detection.h>
+#include <gst/ml/ml-module-segmentation.h>
+#include <gst/ml/ml-module-detection.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -44,7 +44,7 @@ struct _GstMLSubModule {
 
 static void
 gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
-    GstMLFrame * mlframe, GArray * bboxes, GArray * mask_matrix_indices)
+    GstMLFrame * mlframe, GstMLDetections * detections, GArray * mask_matrix_indices)
 {
   GstMLLabel *label = NULL;
   gfloat  *mlboxes = NULL, *scores = NULL, *classes = NULL;
@@ -59,7 +59,7 @@ gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
   classes = GST_FLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
 
   for (idx = 0; idx < n_paxels; idx++) {
-    GstMLBoxEntry bbox = { 0, };
+    GstMLDetection bbox = { 0, };
 
     confidence = scores[idx];
     class_idx = classes[idx];
@@ -77,7 +77,10 @@ gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
         bbox.top, bbox.left, bbox.bottom, bbox.right, confidence);
 
     // Translate absolute dimensions to relative.
-    gst_ml_box_relative_translation (&bbox, submodule->inwidth, submodule->inheight);
+    bbox.top /= submodule->inheight;
+    bbox.bottom /= submodule->inheight;
+    bbox.left /= submodule->inwidth;
+    bbox.right /= submodule->inwidth;
 
     label = g_hash_table_lookup (
         submodule->labels, GUINT_TO_POINTER (class_idx));
@@ -87,33 +90,30 @@ gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
     bbox.color = label ? label->color : 0x000000FF;
 
     // Non-Max Suppression (NMS) algorithm.
-    nms = gst_ml_box_non_max_suppression (&bbox, bboxes);
+    nms = gst_ml_detections_non_max_suppression (detections, &bbox,
+        GST_ML_DETECTION_NMS_THRESHOLD);
 
-    // If the NMS result is -2 don't add the bbox to the list.
-    if (nms == (-2))
+    // If the NMS result is -1 then the entry was not added to the list.
+    if (nms == (-1))
       continue;
 
     GST_LOG ("Label: %s  Box[%f, %f, %f, %f] Confidence: %f",
         g_quark_to_string (bbox.name), bbox.top, bbox.left, bbox.bottom,
         bbox.right, bbox.confidence);
 
-    // If the NMS result is above -1 remove the entry with the nms index.
-    if (nms >= 0) {
-      bboxes = g_array_remove_index (bboxes, nms);
-      mask_matrix_indices = g_array_remove_index (mask_matrix_indices, nms);
-    }
-
-    bboxes = g_array_append_val (bboxes, bbox);
-
-    // Save the index to the corresponding mask matrix.
+    // If the NMS result is above -1 save the index to the corresponding mask.
     num = idx * GST_ML_FRAME_DIM (mlframe, 2, 2);
-    mask_matrix_indices = g_array_append_val (mask_matrix_indices, num);
+
+    if (nms >= (gint) mask_matrix_indices->len)
+      mask_matrix_indices = g_array_append_val (mask_matrix_indices, num);
+    else // nms >= 0 && nms < mask_matrix_indices->len
+      g_array_index (mask_matrix_indices, guint, nms) = num;
   }
 }
 
 static guint32*
 gst_ml_module_colormask_parse_monoblock_tensor (GstMLSubModule * submodule,
-    GstMLFrame * mlframe, GArray * bboxes, GArray * mask_matrix_indices)
+    GstMLFrame * mlframe, GstMLDetections * detections, GArray * mask_matrix_indices)
 {
   guint32 *colormask = NULL;
   gfloat *masks = NULL, *protos = NULL;
@@ -130,13 +130,13 @@ gst_ml_module_colormask_parse_monoblock_tensor (GstMLSubModule * submodule,
   // Allocate memory for the resulted segmentation mask.
   colormask = g_new0 (guint32, n_blocks);
 
-  // Process the segmentation data only the in recognized box bboxes.
-  for (idx = 0; idx < bboxes->len; idx++) {
-    GstMLBoxEntry *bbox = NULL;
+  // Process the segmentation data only the in recognized detections.
+  for (idx = 0; idx < gst_ml_detections_size (detections); idx++) {
+    GstMLDetection *bbox = NULL;
     gdouble m_value = 0.0, p_value = 0.0;
     guint m_idx = 0, b_idx= 0;
 
-    bbox = &(g_array_index (bboxes, GstMLBoxEntry, idx));
+    bbox = gst_ml_detections_entry (detections, idx);
     m_idx = g_array_index (mask_matrix_indices, guint, idx);
 
     // Transform to dimensions in the color mask.
@@ -278,7 +278,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GstVideoFrame *vframe = (GstVideoFrame *) output;
   GstProtectionMeta *pmeta = NULL;
-  GArray *bboxes = NULL, *mask_matrix_indices = NULL;
+  GstMLDetections *detections = NULL;
+  GArray *mask_matrix_indices = NULL;
   guint32 *colormask = NULL;
   guint8 *outdata = NULL;
   GstVideoRectangle region = { 0, };
@@ -308,17 +309,17 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   stride = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0);
 
   // Initialize the array with bounding box predictions.
-  bboxes = g_array_new (FALSE, FALSE, sizeof (GstMLBoxEntry));
+  detections = gst_ml_detections_new ();
 
   // Initialize the array with indices to mask matrices for the bouding boxes.
   mask_matrix_indices = g_array_new (FALSE, FALSE, sizeof (guint));
 
   // First find the boxes in which there are recognized objects.
-  gst_ml_module_bbox_parse_tripleblock_tensors (submodule, mlframe, bboxes,
+  gst_ml_module_bbox_parse_tripleblock_tensors (submodule, mlframe, detections,
       mask_matrix_indices);
 
   // If no objects are recognized return immediately, nothing further to do.
-  if (bboxes->len == 0)
+  if (gst_ml_detections_size (detections) == 0)
     goto cleanup;
 
   // Extract the source tensor region for color mask extraction.
@@ -330,9 +331,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   region.w *= (GST_ML_FRAME_DIM (mlframe, 4, 3) / (gfloat) submodule->inwidth);
   region.h *= (GST_ML_FRAME_DIM (mlframe, 4, 2) / (gfloat) submodule->inheight);
 
-  // Process the segmentation data only the in recognized box bboxes.
+  // Process the segmentation data only the in recognized detections.
   colormask = gst_ml_module_colormask_parse_monoblock_tensor (submodule,
-      mlframe, bboxes, mask_matrix_indices);
+      mlframe, detections, mask_matrix_indices);
 
   // Convinient pointer to the data in the output video frame.
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -359,7 +360,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
 cleanup:
   g_array_free (mask_matrix_indices, TRUE);
-  g_array_free (bboxes, TRUE);
+  gst_ml_detections_unref (detections);
   g_free (colormask);
 
   return TRUE;

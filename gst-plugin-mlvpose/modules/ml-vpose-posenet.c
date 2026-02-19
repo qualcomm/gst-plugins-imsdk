@@ -38,7 +38,7 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-pose.h>
+#include <gst/ml/ml-module-pose.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -82,9 +82,9 @@ struct _GstMLSubModule {
   // List of keypoint labels.
   GHashTable *labels;
   // Chain/Tree comprised of keypoint pairs that describe the skeleton.
-  GArray     *links;
+  GPtrArray  *links;
   // List of keypoint pairs that are connected together.
-  GArray     *connections;
+  GPtrArray  *connections;
 
   // Confidence threshold value.
   gfloat     threshold;
@@ -107,25 +107,25 @@ gst_ml_compare_rootpoints (gconstpointer a, gconstpointer b)
 }
 
 static inline gint
-gst_ml_pose_non_max_suppression (GstMLPoseEntry * l_entry, GArray * entries)
+gst_ml_poses_non_max_suppression (GstMLPoses * poses, GstMLPose * l_pose)
 {
-  GstMLPoseEntry *r_entry = NULL;
+  GstMLPose *r_pose = NULL;
   GstMLKeypoint *l_kp = NULL, *r_kp = NULL;
   guint idx = 0, num = 0, n_keypoints = 0, n_overlaps = 0;
   gdouble distance = 0.0, threshold = 0.0;
 
-  n_keypoints = l_entry->keypoints->len;
+  n_keypoints = l_pose->keypoints->len;
 
   // The threhold distance between 2 keypoints.
   threshold = NMS_THRESHOLD_RADIUS * NMS_THRESHOLD_RADIUS;
 
-  for (idx = 0; idx < entries->len;  idx++, n_overlaps = 0) {
-    r_entry = &(g_array_index (entries, GstMLPoseEntry, idx));
+  for (idx = 0; idx < gst_ml_poses_size (poses);  idx++, n_overlaps = 0) {
+    r_pose = gst_ml_poses_entry (poses, idx);
 
     // Find out how much overlap is between the keypoints of the predictons.
     for (num = 0; num < n_keypoints; num++) {
-      l_kp = &(g_array_index (l_entry->keypoints, GstMLKeypoint, num));
-      r_kp = &(g_array_index (r_entry->keypoints, GstMLKeypoint, num));
+      l_kp = &(g_array_index (l_pose->keypoints, GstMLKeypoint, num));
+      r_kp = &(g_array_index (r_pose->keypoints, GstMLKeypoint, num));
 
       distance = pow (l_kp->x - r_kp->x, 2) + pow (l_kp->y - r_kp->y, 2);
 
@@ -139,11 +139,11 @@ gst_ml_pose_non_max_suppression (GstMLPoseEntry * l_entry, GArray * entries)
       continue;
 
     // If confidence of current prediction is higher, remove the old entry.
-    if (l_entry->confidence > r_entry->confidence)
+    if (l_pose->confidence > r_pose->confidence)
       return idx;
 
     // If confidence of current prediction is lower, don't add it to the list.
-    if (l_entry->confidence <= r_entry->confidence)
+    if (l_pose->confidence <= r_pose->confidence)
       return -2;
   }
 
@@ -253,9 +253,9 @@ gst_ml_module_extract_rootpoints (GstMLSubModule * submodule,
 
 static void
 gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
-    GstMLFrame * mlframe, GstMLPoseEntry * entry, gboolean backwards)
+    GstMLFrame * mlframe, GstMLPose * entry, gboolean backwards)
 {
-  GstMLKeypointsLink *link =NULL;
+  GArray *link = NULL;
   GstMLKeypoint *s_kp = NULL, *d_kp = NULL;
   GstMLLabel *label = NULL;
   gfloat *heatmap = NULL, *offsets = NULL, *displacements = NULL;
@@ -290,10 +290,10 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
 
   for (edge = 0; edge < n_edges; edge++, num = 0) {
     id = ABS (base - edge);
-    link = &(g_array_index (submodule->links, GstMLKeypointsLink, id));
+    link = g_ptr_array_index (submodule->links, id);
 
-    s_kp_id = backwards ? link->d_kp_id : link->s_kp_id;
-    d_kp_id = backwards ? link->s_kp_id : link->d_kp_id;
+    s_kp_id = g_array_index (link, guint, (backwards ? 1 : 0));
+    d_kp_id = g_array_index (link, guint, (backwards ? 0 : 1));
 
     s_kp = &(g_array_index (entry->keypoints, GstMLKeypoint, s_kp_id));
     d_kp = &(g_array_index (entry->keypoints, GstMLKeypoint, d_kp_id));
@@ -390,10 +390,10 @@ gst_ml_module_close (gpointer instance)
     return;
 
   if (submodule->connections != NULL)
-    g_array_free (submodule->connections, TRUE);
+    g_ptr_array_free (submodule->connections, TRUE);
 
   if (submodule->links != NULL)
-    g_array_free (submodule->links, TRUE);
+    g_ptr_array_free (submodule->links, TRUE);
 
   if (submodule->labels != NULL)
     g_hash_table_destroy (submodule->labels);
@@ -472,17 +472,19 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   }
 
   // Fill the keypoints chain/tree.
-  submodule->links = g_array_new (FALSE, FALSE, sizeof (GstMLKeypointsLink));
-  submodule->connections = g_array_new (FALSE, FALSE, sizeof (GstMLKeypointsLink));
+  submodule->links = g_ptr_array_new ();
+  g_ptr_array_set_free_func (submodule->links, (GDestroyNotify) g_array_unref);
 
   // Recursiveli fill the skeleton chain/tree starting from label 0 as seed.
-  if (!(success = gst_ml_load_links (&list, 0, submodule->links))) {
+  if (!(success = gst_ml_load_skeleton_links (submodule->links, &list, 0))) {
     GST_ERROR ("Failed to load the skeleton chain/tree!");
     goto cleanup;
   }
 
-  // Recursiveli fill the keypoint connections starting from label 0 as seed.
-  if (!(success = gst_ml_load_connections (&list, submodule->connections))) {
+  submodule->connections = g_ptr_array_new ();
+  g_ptr_array_set_free_func (submodule->connections, (GDestroyNotify) g_array_unref);
+
+  if (!(success = gst_ml_load_connections (submodule->connections, &list))) {
     GST_ERROR ("Failed to load the keypoint interconnections!");
     goto cleanup;
   }
@@ -518,9 +520,10 @@ gboolean
 gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
-  GArray *predictions = ((GArray *) output), *rootpoints = NULL;
+  GPtrArray *predictions = (GPtrArray *) output;
+  GArray *rootpoints = NULL;
   GstProtectionMeta *pmeta = NULL;
-  GstMLPosePrediction *prediction = NULL;
+  GstMLPoses *poses = NULL;
   GstMLLabel *label = NULL;
   GstVideoRectangle region = { 0, };
   guint idx = 0, num = 0, n_parts = 0;
@@ -533,8 +536,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
 
-  prediction = &(g_array_index (predictions, GstMLPosePrediction, 0));
-  prediction->info = pmeta->info;
+  poses = g_ptr_array_index (predictions, 0);
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -555,7 +557,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   for (idx = 0; idx < rootpoints->len; idx++) {
     GstRootPoint *rootpoint = NULL;
     GstMLKeypoint keypoint = { 0, }, *kp = NULL;
-    GstMLPoseEntry entry = { 0, };
+    GstMLPose entry = { 0, };
 
     rootpoint = &(g_array_index (rootpoints, GstRootPoint, idx));
 
@@ -590,7 +592,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
     // Non-Max Suppression (NMS) algorithm.
     // If the NMS result is below 0 don't create new pose prediction.
-    nms = gst_ml_pose_non_max_suppression (&entry, prediction->entries);
+    nms = gst_ml_poses_non_max_suppression (poses, &entry);
 
     // If the NMS result is -2 don't add the prediction to the list.
     if (nms == (-2)) {
@@ -598,32 +600,39 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       continue;
     }
 
-    // TODO: For now set the same connections.
-    entry.connections = submodule->connections;
+    entry.links = g_array_new (FALSE, FALSE, sizeof (GstMLKeypointLink));
+
+    for (num = 0; num < submodule->connections->len; num++) {
+      GArray *connection = g_ptr_array_index (submodule->connections, num);
+      GstMLKeypointLink link = {};
+      guint l_kp_id = 0, r_kp_id = 0;
+
+      l_kp_id = g_array_index (connection, guint, 0);
+      r_kp_id = g_array_index (connection, guint, 1);
+
+      link.l_kp = g_array_index (entry.keypoints, GstMLKeypoint, l_kp_id);
+      link.r_kp = g_array_index (entry.keypoints, GstMLKeypoint, r_kp_id);
+
+      g_array_append_val (entry.links, link);
+    }
 
     // If the NMS result is above -1 remove the entry with the nms index.
     if (nms >= 0)
-      prediction->entries = g_array_remove_index (prediction->entries, nms);
+      gst_ml_poses_remove (poses, nms);
 
-    prediction->entries = g_array_append_val (prediction->entries, entry);
+    gst_ml_poses_append (poses, &entry);
   }
 
   g_array_free (rootpoints, TRUE);
-  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_pose_compare_entries);
 
   // TODO Optimize?
   // Transform coordinates to relative with extracted source aspect ratio.
-  for (idx = 0; idx < prediction->entries->len; idx++) {
-    GstMLPoseEntry *entry =
-        &(g_array_index (prediction->entries, GstMLPoseEntry, idx));
-
-    for (num = 0; num < entry->keypoints->len; num++) {
-      GstMLKeypoint *keypoint =
-          &(g_array_index (entry->keypoints, GstMLKeypoint, num));
-
-      gst_ml_keypoint_transform_coordinates (keypoint, &region);
-    }
+  for (idx = 0; idx < gst_ml_poses_size (poses); idx++) {
+    GstMLPose *entry = gst_ml_poses_entry (poses, idx);
+    gst_ml_pose_relative_transform (entry, &region, TRUE);
   }
+
+  gst_ml_poses_sort (poses);
 
   return TRUE;
 }

@@ -32,57 +32,46 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#ifndef __GST_QTI_ML_VIDEO_SEGMENTATION_H__
-#define __GST_QTI_ML_VIDEO_SEGMENTATION_H__
+#ifndef __GST_QTI_ML_MODULE_CLASSIFICATION_H__
+#define __GST_QTI_ML_MODULE_CLASSIFICATION_H__
 
 #include <gst/gst.h>
-#include <gst/base/gstbasetransform.h>
-#include <gst/video/video.h>
-#include <gst/ml/ml-info.h>
-#include <gst/ml/ml-module-segmentation.h>
+#include <gst/ml/gstmlmodule.h>
+#include <gst/ml/ml-post-process-classification.h>
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_ML_VIDEO_SEGMENTATION (gst_ml_video_segmentation_get_type())
-#define GST_ML_VIDEO_SEGMENTATION(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_ML_VIDEO_SEGMENTATION, \
-                              GstMLVideoSegmentation))
-#define GST_ML_VIDEO_SEGMENTATION_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_ML_VIDEO_SEGMENTATION, \
-                           GstMLVideoSegmentationClass))
-#define GST_IS_ML_VIDEO_SEGMENTATION(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_ML_VIDEO_SEGMENTATION))
-#define GST_IS_ML_VIDEO_SEGMENTATION_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_VIDEO_SEGMENTATION))
-#define GST_ML_VIDEO_SEGMENTATION_CAST(obj) ((GstMLVideoSegmentation *)(obj))
+/**
+ * GstMLClassificationOperation:
+ * @GST_ML_CLASSIFICATION_OPERATION_NONE: No operation
+ * @GST_ML_CLASSIFICATION_OPERATION_SOFTMAX: SoftMax operation is applied
+ *
+ * Defines extra operations applied on data
+ */
+typedef enum {
+  GST_ML_CLASSIFICATION_OPERATION_NONE,
+  GST_ML_CLASSIFICATION_OPERATION_SOFTMAX,
+} GstMLClassificationOperation;
 
-typedef struct _GstMLVideoSegmentation GstMLVideoSegmentation;
-typedef struct _GstMLVideoSegmentationClass GstMLVideoSegmentationClass;
-
-struct _GstMLVideoSegmentation {
-  GstBaseTransform  parent;
-
-  GstMLInfo         *mlinfo;
-  GstVideoInfo      *vinfo;
-
-  /// Buffer pools.
-  GstBufferPool     *outpool;
-
-  /// Tensor deciphering module.
-  GstMLModule       *module;
-
-  /// Properties.
-  gint              mdlenum;
-  gchar             *labels;
-  GstStructure      *mlconstants;
-};
-
-struct _GstMLVideoSegmentationClass {
-  GstBaseTransformClass parent;
-};
-
-G_GNUC_INTERNAL GType gst_ml_video_segmentation_get_type (void);
+/**
+ * gst_ml_module_classification_execute:
+ * @module: Pointer to ML post-processing module.
+ * @mlframe: Frame containing mapped tensor memory blocks that need processing.
+ * @predictions: A #GPtrArray of #GstMLClassifications.
+ *
+ * Convenient wrapper function used on plugin level to call the module
+ * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
+ * to process input tensors.
+ *
+ * Post-processing module must define the 3rd argument of the implemented
+ * 'gst_ml_module_process' API as 'GArray *'.
+ *
+ * Returns: TRUE on success or FALSE on failure
+ */
+GST_API gboolean
+gst_ml_module_classification_execute (GstMLModule * module, GstMLFrame * mlframe,
+                                      GPtrArray * predictions);
 
 G_END_DECLS
 
-#endif // __GST_QTI_ML_VIDEO_SEGMENTATION_H__
+#endif // __GST_QTI_ML_MODULE_CLASSIFICATION_H__

@@ -129,8 +129,9 @@ gst_buffer_has_valid_parent_meta (GstBuffer * buffer, gint parent_id);
 
 /**
  * gst_video_point_affine_transform:
- * @point: #GstVideoPoint to which the affine matrix will be applied.
- * @matrix: Affine transformation matrix.
+ * @point: A #GstVideoPoint to which the affine matrix will be applied.
+ * @matrix: (array fixed-size=9) (element-type gdouble):
+ *          A 3x3 affine transformation matrix.
  *
  * Helper function for adjusting coordinates of a 2D point with affine matrix.
  */

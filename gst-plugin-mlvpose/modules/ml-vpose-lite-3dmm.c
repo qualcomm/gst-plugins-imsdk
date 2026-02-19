@@ -9,7 +9,7 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/ml/ml-module-video-pose.h>
+#include <gst/ml/ml-module-pose.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -336,10 +336,10 @@ gboolean
 gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
-  GArray *predictions = (GArray *)output;
+  GPtrArray *predictions = (GPtrArray *) output;
   GstProtectionMeta *pmeta = NULL;
-  GstMLPosePrediction *prediction = NULL;
-  GstMLPoseEntry *entry = NULL;
+  GstMLPoses *poses = NULL;
+  GstMLPose *entry = NULL;
   GstVideoRectangle region = { 0, };
   gfloat *vertices = NULL;
   gfloat matrix[9] = { 0, };
@@ -356,8 +356,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
 
-  prediction = &(g_array_index (predictions, GstMLPosePrediction, 0));
-  prediction->info = pmeta->info;
+  poses = g_ptr_array_index (predictions, 0);
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -433,8 +432,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       submodule->yaw_matrix, 3, 3, matrix, 3, 3);
 
   // Allocate only single prediction result.
-  g_array_set_size (prediction->entries, 1);
-  entry = &(g_array_index (prediction->entries, GstMLPoseEntry, 0));
+  gst_ml_poses_resize (poses, 1);
+  entry = gst_ml_poses_entry (poses, 0);
 
   // Allocate memory for the keypoints.
   entry->keypoints = g_array_sized_new (FALSE, TRUE, sizeof (GstMLKeypoint),
@@ -442,7 +441,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_array_set_size (entry->keypoints, G_N_ELEMENTS (lmk_idx) / 2);
 
   entry->confidence = confidence * 100.0;
-  entry->connections = NULL;
+  entry->links = NULL;
 
   for (idx = 0; idx < G_N_ELEMENTS (lmk_idx); idx += 2) {
     GstMLKeypoint *kp = &(g_array_index (entry->keypoints, GstMLKeypoint, idx / 2));
@@ -493,7 +492,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     kp->x = (x * tf / 500.0F) + (submodule->inwidth / 2);
     kp->y = (y * tf / 500.0F) + (submodule->inheight / 2);
 
-    gst_ml_keypoint_transform_coordinates (kp, &region);
+    gst_ml_keypoint_relative_transform (kp, &region, TRUE);
 
     kp->name = g_quark_from_static_string ("unknown");
     kp->color = 0xFF0000FF;
