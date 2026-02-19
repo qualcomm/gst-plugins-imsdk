@@ -32,7 +32,6 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <glib-unix.h>
 #include <sys/resource.h>
 #include <gst/gst.h>
@@ -1504,10 +1503,6 @@ main (gint argc, gchar * argv[])
   if (getrlimit (RLIMIT_NOFILE, &rl) != 0) {
     g_printerr ("Failed to get getrlimit\n");
   }
-
-  // Set Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   //Set default IP and Port
   options.ip_address = DEFAULT_IP;

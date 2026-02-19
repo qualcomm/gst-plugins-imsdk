@@ -652,16 +652,16 @@ qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
           "Set Orientation Angle for Image Stream",
           GST_TYPE_QMMFSRC_ROTATE, DEFAULT_PROP_ROTATE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-#ifdef FEATURE_LOGICAL_CAMERA_SUPPORT
-  g_object_class_install_property (gobject, PROP_IMAGE_LOGICAL_STREAM_TYPE,
-      g_param_spec_enum ("logical-stream-type", "Stream type for logical camera",
-          "Type of stream to select specific physical camera or layout to "
-          "stitch images.",
-          GST_TYPE_QMMFSRC_PAD_LOGICAL_STREAM_TYPE,
-          DEFAULT_PROP_LOGICAL_STREAM_TYPE,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_PAUSED));
-#endif // FEATURE_LOGICAL_CAMERA_SUPPORT
+  if (gst_qmmfsrc_check_logical_cam_support ()) {
+    g_object_class_install_property (gobject, PROP_IMAGE_LOGICAL_STREAM_TYPE,
+        g_param_spec_enum ("logical-stream-type", "Stream type for logical camera",
+            "Type of stream to select specific physical camera or layout to "
+            "stitch images.",
+            GST_TYPE_QMMFSRC_PAD_LOGICAL_STREAM_TYPE,
+            DEFAULT_PROP_LOGICAL_STREAM_TYPE,
+            G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+            GST_PARAM_MUTABLE_PAUSED));
+  }
 
   signals[SIGNAL_PAD_RECONFIGURE] =
       g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),

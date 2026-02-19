@@ -357,6 +357,9 @@ create_transform_pipeline (GstTransformAppContext * appctx)
   g_object_set (G_OBJECT (scale_filter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
+  gst_element_set_enum_property (encoder, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (encoder, "output-io-mode", "dmabuf-import");
+
   if (appctx->input_file == NULL) {
     // Add elements to the pipeline and link them
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, qmmfsrc_filter,
@@ -445,10 +448,6 @@ main (gint argc, gchar ** argv)
   guint intrpt_watch_id = 0;
   GstStateChangeReturn change_ret = GST_STATE_CHANGE_FAILURE;
   gint ret = -1;
-
-  // Setting Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Create the application context
   app_ctx = gst_app_context_new ();

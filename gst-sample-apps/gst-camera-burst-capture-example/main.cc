@@ -712,10 +712,6 @@ main (int argc, char * * argv)
   g_cond_init (&app_ctx.cond_quit);
   g_mutex_init (&app_ctx.mutex);
 
-  // Setting Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
-  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-
   ctx = g_option_context_new (NULL);
   if (!ctx) {
     g_printerr ("failed to create options context.\n");
