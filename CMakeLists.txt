@@ -42,7 +42,7 @@ option(ENABLE_GST_PLUGIN_MLPOSTPROCESS "Enable gst-plugin-mlpostprocess" ${ENABL
 option(ENABLE_GST_PLUGIN_MLQNN "Enable gst-plugin-mlqnn" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLSNPE "Enable gst-plugin-mlsnpe" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLTFLITE "Enable gst-plugin-mltflite" OFF) # not enabled in opensource mainline
-option(ENABLE_GST_PLUGIN_MLONNX "Enable gst-plugin-mlonnx" ${ENABLE_GST_ML_PLUGINS})
+option(ENABLE_GST_PLUGIN_MLONNX "Enable gst-plugin-mlonnx" OFF)
 option(ENABLE_GST_PLUGIN_MLTOOLS "Enable gst-plugin-mltools" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLVCONVERTER "Enable gst-plugin-mlvconverter" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_OBJTRACKER "Enable gst-plugin-objtracker" ${ENABLE_GST_ML_PLUGINS})
