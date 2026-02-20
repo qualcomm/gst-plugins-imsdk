@@ -1,6 +1,6 @@
 project(gstreamer-qcom-oss-utils-1.0
   VERSION 1.0.0
-  LANGUAGES C CXX
+  LANGUAGES C
   DESCRIPTION "GStreamer QTI Utils base library"
 )
 
@@ -10,26 +10,18 @@ set(TARGET_HEADERS
   common-utils.h
   batch-utils.h
   gsttextmeta.h
-  $<$<BOOL:${ENABLE_RUNTIME_PARSER}>:${CMAKE_CURRENT_SOURCE_DIR}/runtime-flags-parser.h>
-  $<$<BOOL:${ENABLE_RUNTIME_PARSER}>:${CMAKE_CURRENT_SOURCE_DIR}/runtime-flags-parser-c-api.h>
 )
 
 add_library(${TARGET_NAME} SHARED
   common-utils.c
   batch-utils.c
   gsttextmeta.c
-  $<$<BOOL:${ENABLE_RUNTIME_PARSER}>:runtime-flags-parser.cc>
-  $<$<BOOL:${ENABLE_RUNTIME_PARSER}>:runtime-flags-parser-c-api.cc>
 )
 
 set_target_properties(${TARGET_NAME} PROPERTIES
   PUBLIC_HEADER "${TARGET_HEADERS}"
   VERSION ${PROJECT_VERSION}
   SOVERSION ${PROJECT_VERSION_MAJOR}
-)
-
-target_compile_definitions(${TARGET_NAME} PRIVATE
-  $<$<BOOL:${ENABLE_RUNTIME_PARSER}>:ENABLE_RUNTIME_PARSER>
 )
 
 target_include_directories(${TARGET_NAME} PUBLIC
