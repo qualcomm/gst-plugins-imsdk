@@ -116,7 +116,7 @@ gst_structure_extract_restricted_zones (GQuark field_id, const GValue * value,
 
   if (zone.size() < 3) {
     GST_ERROR ("Invalid number of coordinates for '%s'. Expecting at least 3, "
-        "but filled only %lu!", g_quark_to_string (field_id), zone.size());
+        "but filled only %zu!", g_quark_to_string (field_id), zone.size());
     return FALSE;
   }
 

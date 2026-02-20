@@ -210,7 +210,8 @@ gst_video_template_create_pool (GstVideoTemplate * videotemplate,
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
 
-  GST_DEBUG_OBJECT (videotemplate, "allocator configured size %lu", info.size);
+  GST_DEBUG_OBJECT (videotemplate, "allocator configured size %" G_GSIZE_FORMAT,
+      info.size);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (videotemplate, "Failed to set pool configuration!");
