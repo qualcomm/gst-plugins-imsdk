@@ -75,6 +75,7 @@
 #define DEFAULT_YOLOV7_LABELS "/etc/labels/yolov7.json"
 #define DEFAULT_TFLITE_YOLOV7_MODEL "/etc/models/yolov7_quantized.tflite"
 #define DEFAULT_QNN_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.bin"
+#define DEFAULT_ONNX_YOLOX_MODEL "/etc/models/yolox.onnx"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -188,6 +189,7 @@ static void
       options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLONAS_MODEL) &&
       options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLOV7_MODEL) &&
       options->model_path != (gchar *) (&DEFAULT_QNN_YOLOV8_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_ONNX_YOLOX_MODEL) &&
       options->model_path != NULL) {
     g_free ((gpointer) options->model_path);
   }
@@ -206,11 +208,6 @@ static void
       g_free ((gpointer)options->snpe_tensors[i]);
     }
     g_free ((gpointer) options->snpe_tensors);
-  }
-
-  if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
-    g_free ((gpointer) config_file);
-    config_file = NULL;
   }
 
   if (appctx->ip_address != (gchar *) (&DEFAULT_IP) &&
@@ -376,9 +373,11 @@ parse_json (gchar * file, GstAppOptions * options, GstCameraAppContext * appctx)
       options->model_type = GST_MODEL_TYPE_TFLITE;
     else if (g_strcmp0 (framework, "qnn") == 0) {
       options->model_type = GST_MODEL_TYPE_QNN;
+    } else if (g_strcmp0 (framework, "onnx") == 0) {
+      options->model_type = GST_MODEL_TYPE_ONNX;
     } else {
       gst_printerr ("ml-framework can only be one of "
-          "\"snpe\", \"tflite\" or \"qnn\"\n");
+          "\"snpe\", \"tflite\", \"onnx\" or \"qnn\"\n");
       g_object_unref (parser);
       return -1;
     }
@@ -1014,15 +1013,17 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtimlvconverter\n");
     goto error_clean_elements;
   }
-  // Create the ML inferencing plugin SNPE/TFLITE
+  // Create the ML inferencing plugin SNPE/TFLITE/ONNX
   if (options->model_type == GST_MODEL_TYPE_SNPE) {
     qtimlelement = gst_element_factory_make ("qtimlsnpe", "qtimlelement");
   } else if (options->model_type == GST_MODEL_TYPE_TFLITE) {
     qtimlelement = gst_element_factory_make ("qtimltflite", "qtimlelement");
   } else if (options->model_type == GST_MODEL_TYPE_QNN) {
     qtimlelement = gst_element_factory_make ("qtimlqnn", "qtimlelement");
+  } else if (options->model_type == GST_MODEL_TYPE_ONNX) {
+    qtimlelement = gst_element_factory_make ("qtimlonnx", "qtimlelement");
   } else {
-    g_printerr ("Invalid model type for plugin SNPE/TFLITE/QNN \n");
+    g_printerr ("Invalid model type for plugin SNPE/TFLITE/QNN/ONNX \n");
     goto error_clean_elements;
   }
   if (!qtimlelement) {
@@ -1229,6 +1230,24 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
     g_print ("Using DSP delegate with QNN\n");
     g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
         "backend", "/usr/lib/libQnnHtp.so", NULL);
+  } else if (options->model_type == GST_MODEL_TYPE_ONNX) {
+    GstMLOnnxExecutionProvider onnx_delegate = GST_ML_ONNX_EXECUTION_PROVIDER_QNN;
+    g_object_set (G_OBJECT (qtimlelement), "execution-provider",
+        onnx_delegate, NULL);
+    g_object_set (G_OBJECT (qtimlelement), "model", options->model_path, NULL);
+    if (options->use_cpu) {
+      g_object_set (G_OBJECT (qtimlelement), "backend-path",
+          "/usr/lib/libQnnCpu.so", NULL);
+    } else if (options->use_gpu) {
+      g_object_set (G_OBJECT (qtimlelement), "backend-path",
+          "/usr/lib/libQnnGpu.so", NULL);
+    } else if (options->use_dsp) {
+      g_object_set (G_OBJECT (qtimlelement), "backend-path",
+          "/usr/lib/libQnnHtp.so", NULL);
+    } else {
+      g_printerr ("Invalid Runtime Selected\n");
+      goto error_clean_elements;
+    }
   } else {
     g_printerr ("Invalid model type for inferencing \n");
     goto error_clean_elements;
@@ -1427,6 +1446,27 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         g_printerr ("Unsupported QNN model, use YoloV8 QNN model\n");
         goto error_clean_elements;
     }
+  } else if (options->model_type == GST_MODEL_TYPE_ONNX) {
+    switch (options->yolo_model_type) {
+      case GST_YOLO_TYPE_X:
+        // set qtimlvdetection properties
+        g_object_set (G_OBJECT (qtimlvdetection), "labels",
+            options->labels_path, NULL);
+        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
+        if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
+          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+        } else {
+          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
+          goto error_clean_elements;
+        }
+        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
+        break;
+      default:
+        g_printerr ("Unsupported ONNX model, use Yolox ONNX model\n");
+        goto error_clean_elements;
+    }
   } else {
     g_printerr ("Invalid model_type or yolo_model_type\n");
     goto error_clean_elements;
@@ -1615,8 +1655,8 @@ main (gint argc, gchar * argv[])
       "  yolo-model-type: \"yolov5\" or \"yolov8\" or \"yolox\" or \"yolonas\"\n"
       "      Yolo Model version to Execute: Yolov5, Yolov8 or YoloNas or Yolox\n"
       "      Yolov7 Tflite Model works with yolov8 yolo-model-type\n"
-      "  ml-framework: \"snpe\" or \"tflite\" or \"qnn\"\n"
-      "      Execute Model in SNPE DLC or TFlite [Default] or QNN format\n"
+      "  ml-framework: \"snpe\" or \"tflite\" or \"onnx\" or \"qnn\"\n"
+      "      Execute Model in SNPE DLC or TFlite [Default] or onnx or QNN format\n"
       "  model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default model path for YOLOV5 DLC: " DEFAULT_SNPE_YOLOV5_MODEL "\n"
@@ -1632,6 +1672,8 @@ main (gint argc, gchar * argv[])
       "      Default model path for YOLOX TFLITE: " DEFAULT_TFLITE_YOLOX_MODEL
       "\n"
       "      Default model path for YOLOV8 QNN: " DEFAULT_QNN_YOLOV8_MODEL "\n"
+      "      Default model path for YOLOX ONNX: "
+      DEFAULT_ONNX_YOLOX_MODEL"\n"
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path for YOLOV5: " DEFAULT_YOLOV5_LABELS "\n"
@@ -1722,13 +1764,15 @@ main (gint argc, gchar * argv[])
   if (g_strcmp0 (appctx->enable_ml, "TRUE") == 0) {
     // check file config param
     if (options.model_type < GST_MODEL_TYPE_SNPE ||
-        options.model_type > GST_MODEL_TYPE_QNN) {
+        options.model_type > GST_MODEL_TYPE_ONNX) {
       g_printerr ("Invalid ml-framework option selected\n"
           "Available options:\n"
           "    SNPE: %d\n"
           "    TFLite: %d\n"
-          "    QNN: %d\n",
-          GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE, GST_MODEL_TYPE_QNN);
+          "    QNN: %d\n"
+          "    ONNX: %d\n",
+          GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE, GST_MODEL_TYPE_QNN,
+          GST_MODEL_TYPE_ONNX);
       gst_app_context_free (appctx, &options, config_file);
       return -EINVAL;
     }
@@ -1791,6 +1835,14 @@ main (gint argc, gchar * argv[])
           options.model_path = DEFAULT_QNN_YOLOV8_MODEL;
         } else {
           g_printerr ("Only YOLOV8 model is supported with QNN runtime\n");
+          gst_app_context_free (appctx, &options, config_file);
+          return -EINVAL;
+        }
+      } else if (options.model_type == GST_MODEL_TYPE_ONNX) {
+        if (options.yolo_model_type == GST_YOLO_TYPE_X) {
+          options.model_path = DEFAULT_ONNX_YOLOX_MODEL;
+        } else {
+          g_printerr ("Only YOLOX model is supported with ONNX runtime\n");
           gst_app_context_free (appctx, &options, config_file);
           return -EINVAL;
         }

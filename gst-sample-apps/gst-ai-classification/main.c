@@ -9,8 +9,8 @@
  *
  * Description:
  * The application takes live video stream from camera/file/rtsp/USB Camera and gives
- * same to Classification TensorFlow Lite or SNPE DLC Model or QNN Model for
- * classifying objects and display preview with overlayed AI Model
+ * same to Classification TensorFlow Lite or SNPE DLC Model or ONNX Model or QNN
+ * Model for classifying objects and display preview with overlayed AI Model
  * output/classification labels.
  *
  * Pipeline for Gstreamer with Camera:
@@ -34,7 +34,7 @@
  *
  *     qtivcomposer (COMPOSITION) -> fpsdisplaysink (Display)
  *     Pre process: qtimlvconverter
- *     ML Framework: qtimlsnpe/qtimltflite/qtimlqnn
+ *     ML Framework: qtimlsnpe/qtimltflite/qtimlqnn/qtimlonnx
  *     Post process: qtimlvclassification -> classification_filter
  */
 
@@ -56,6 +56,7 @@
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
     "/etc/models/inception_v3_quantized.tflite"
 #define DEFAULT_QNN_CLASSIFICATION_MODEL "/etc/models/inception_v3_quantized.bin"
+#define DEFAULT_ONNX_CLASSIFICATION_MODEL "/etc/models/inceptionv3.onnx"
 #define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.json"
 
 /**
@@ -167,6 +168,7 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
   if (options->model_path != (gchar *)(&DEFAULT_SNPE_CLASSIFICATION_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_TFLITE_CLASSIFICATION_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_QNN_CLASSIFICATION_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_ONNX_CLASSIFICATION_MODEL) &&
       options->model_path != NULL) {
     g_free ((gpointer)options->model_path);
   }
@@ -506,13 +508,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtimlvconverter\n");
     goto error_clean_elements;
   }
-  // Create the ML inferencing plugin SNPE/TFLITE
+  // Create the ML inferencing plugin SNPE/TFLITE/ONNX
   if (options->model_type == GST_MODEL_TYPE_SNPE) {
     qtimlelement = gst_element_factory_make ("qtimlsnpe", "qtimlsnpe");
   } else if (options->model_type == GST_MODEL_TYPE_TFLITE) {
     qtimlelement = gst_element_factory_make ("qtimltflite", "qtimltflite");
   } else if (options->model_type == GST_MODEL_TYPE_QNN) {
     qtimlelement = gst_element_factory_make ("qtimlqnn", "qtimlqnn");
+  } else if (options->model_type == GST_MODEL_TYPE_ONNX) {
+    qtimlelement = gst_element_factory_make ("qtimlonnx", "qtimlelement");
   } else {
     g_printerr ("Invalid Model Type\n");
     goto error_clean_elements;
@@ -746,6 +750,24 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_print ("Using DSP Delegate\n");
     g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
         "backend", "/usr/lib/libQnnHtp.so", NULL);
+  } else if (options->model_type == GST_MODEL_TYPE_ONNX) {
+    GstMLOnnxExecutionProvider onnx_delegate = GST_ML_ONNX_EXECUTION_PROVIDER_QNN;
+    g_object_set (G_OBJECT (qtimlelement), "execution-provider",
+        onnx_delegate, NULL);
+    g_object_set (G_OBJECT (qtimlelement), "model", options->model_path, NULL);
+    if (options->use_cpu) {
+      g_object_set (G_OBJECT (qtimlelement), "backend-path",
+          "/usr/lib/libQnnCpu.so", NULL);
+    } else if (options->use_gpu) {
+      g_object_set (G_OBJECT (qtimlelement), "backend-path",
+          "/usr/lib/libQnnGpu.so", NULL);
+    } else if (options->use_dsp) {
+      g_object_set (G_OBJECT (qtimlelement), "backend-path",
+          "/usr/lib/libQnnHtp.so", NULL);
+    } else {
+      g_printerr ("Invalid Runtime Selected\n");
+      goto error_clean_elements;
+    }
   } else {
     g_printerr ("Invalid Model Type\n");
     goto error_clean_elements;
@@ -1125,9 +1147,11 @@ parse_json(gchar * config_file, GstAppOptions * options)
       options->model_type = GST_MODEL_TYPE_TFLITE;
     else if (g_strcmp0 (framework, "qnn") == 0)
       options->model_type = GST_MODEL_TYPE_QNN;
-    else {
+    else if (g_strcmp0 (framework, "onnx") == 0) {
+      options->model_type = GST_MODEL_TYPE_ONNX;
+    } else {
       gst_printerr ("ml-framework can only be one of "
-          "\"snpe\", \"tflite\" or \"qnn\"\n");
+          "\"snpe\", \"tflite\", \"onnx\" or \"qnn\"\n");
       g_object_unref (parser);
       return -1;
     }
@@ -1310,8 +1334,8 @@ main (gint argc, gchar * argv[])
       "      eg: rtsp://192.168.1.110:8554/live.mkv\n"
       "  enable-usb-camera: Use this Parameter to enable-usb-camera\n"
       "      It can take TRUE or FALSE as input\n"
-      "  ml-framework: \"snpe\" or \"tflite\" or \"qnn\"\n"
-      "      Execute Model in SNPE DLC or TFlite or QNN format\n"
+      "  ml-framework: \"snpe\" or \"tflite\" or \"onnx\" or \"qnn\"\n"
+      "      Execute Model in SNPE DLC or ONNX or TFlite or QNN format\n"
       "      Default model format: SNPE DLC\n"
       "  model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
@@ -1321,6 +1345,8 @@ main (gint argc, gchar * argv[])
              DEFAULT_TFLITE_CLASSIFICATION_MODEL"\n"
       "      Default model path for QNN Model: "
              DEFAULT_QNN_CLASSIFICATION_MODEL"\n"
+      "      Default model path for ONNX Model: "
+             DEFAULT_ONNX_CLASSIFICATION_MODEL"\n"
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path: "DEFAULT_CLASSIFICATION_LABELS"\n"
@@ -1453,13 +1479,15 @@ main (gint argc, gchar * argv[])
   }
 
   if (options.model_type < GST_MODEL_TYPE_SNPE ||
-      options.model_type > GST_MODEL_TYPE_QNN) {
+      options.model_type > GST_MODEL_TYPE_ONNX) {
     g_printerr ("Invalid ml-framework option selected\n"
         "Available options:\n"
         "    SNPE: %d\n"
         "    TFLite: %d\n"
-        "    QNN: %d\n",
-        GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE, GST_MODEL_TYPE_QNN);
+        "    QNN: %d\n"
+        "    ONNX: %d\n",
+        GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE, GST_MODEL_TYPE_QNN,
+        GST_MODEL_TYPE_ONNX);
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
@@ -1497,9 +1525,10 @@ main (gint argc, gchar * argv[])
   if (options.model_path == NULL) {
     if (options.model_type == GST_MODEL_TYPE_SNPE) {
       options.model_path = DEFAULT_SNPE_CLASSIFICATION_MODEL;
-    }
-    else if (options.model_type == GST_MODEL_TYPE_QNN) {
+    } else if (options.model_type == GST_MODEL_TYPE_QNN) {
       options.model_path = DEFAULT_QNN_CLASSIFICATION_MODEL;
+    } else if (options.model_type == GST_MODEL_TYPE_ONNX) {
+      options.model_path = DEFAULT_ONNX_CLASSIFICATION_MODEL;
     } else {
       options.model_path = DEFAULT_TFLITE_CLASSIFICATION_MODEL;
     }
