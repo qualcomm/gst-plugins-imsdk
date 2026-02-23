@@ -48,6 +48,7 @@ typedef struct
  * @GST_MODEL_TYPE_SNPE  : SNPE DLC Container.
  * @GST_MODEL_TYPE_TFLITE: TFLITE Container.
  * @GST_MODEL_TYPE_QNN   : QNN Container.
+ * @GST_MODEL_TYPE_ONNX  : ONNX Container.
  *
  * Type of Model container for the Runtime.
  */
@@ -55,7 +56,8 @@ typedef enum {
   GST_MODEL_TYPE_NONE,
   GST_MODEL_TYPE_SNPE,
   GST_MODEL_TYPE_TFLITE,
-  GST_MODEL_TYPE_QNN
+  GST_MODEL_TYPE_QNN,
+  GST_MODEL_TYPE_ONNX
 } GstModelType;
 
 /**
@@ -193,6 +195,18 @@ typedef enum {
   GST_ML_TFLITE_DELEGATE_XNNPACK,
   GST_ML_TFLITE_DELEGATE_EXTERNAL,
 } GstMLTFLiteDelegate;
+
+/**
+ * GstMLOnnxExecutionProvider:
+ * @GST_ML_ONNX_EXECUTION_PROVIDER_CPU     : CPU execution provider
+ * @GST_ML_ONNX_EXECUTION_PROVIDER_QNN     : Qualcomm QNN execution provider
+ *
+ * Different execution providers for ONNX Runtime.
+ */
+typedef enum {
+  GST_ML_ONNX_EXECUTION_PROVIDER_CPU,
+  GST_ML_ONNX_EXECUTION_PROVIDER_QNN
+} GstMLOnnxExecutionProvider;
 
 /**
  * GstAudioDecodeCodecType:
