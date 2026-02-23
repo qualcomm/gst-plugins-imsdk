@@ -898,11 +898,8 @@ gst_video_split_srcpad_decide_allocation (GstVideoSplitSrcPad * pad,
 {
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
-  GstStructure *config = NULL;
-  GstAllocator *allocator = NULL;
-  GstAllocationParams params = { 0, };
-  guint size = 0, minbuffers = 0, maxbuffers = 0;
-  GstVideoInfo info;
+  GstVideoInfo info = {};
+  GstAllocationParams params = {};
   GstVideoAlignment align = { 0, }, ds_align = { 0, };
 
   gst_query_parse_allocation (query, &caps, NULL);
@@ -910,12 +907,6 @@ gst_video_split_srcpad_decide_allocation (GstVideoSplitSrcPad * pad,
   if (NULL == caps) {
     GST_ERROR_OBJECT (pad, "Failed to parse the allocation caps!");
     return FALSE;
-  }
-
-  // Invalidate the cached pool if there is an allocation_query.
-  if (pad->pool != NULL) {
-    gst_buffer_pool_set_active (pad->pool, FALSE);
-    gst_clear_object (&pad->pool);
   }
 
   if (!gst_video_info_from_caps (&info, caps)) {
@@ -950,31 +941,50 @@ gst_video_split_srcpad_decide_allocation (GstVideoSplitSrcPad * pad,
 
   // Create a new buffer pool.
   pool = gst_video_split_create_pool (GST_PAD (pad), caps, &align, &params);
-  if (pool == NULL) {
-    GST_ERROR_OBJECT (pad, "Failed to create buffer pool!");
+
+  if (pool == NULL)
     return FALSE;
+
+  // Check whether the previous buffer pool can be reused.
+  if (pad->pool != NULL) {
+    GstStructure *oldconfig = NULL, *newconfig = NULL;
+    GstCaps *oldcaps = NULL;
+    guint oldsize = 0, newsize = 0;
+
+    // Get the confuration of the new and old buffer pools for comparison.
+    newconfig = gst_buffer_pool_get_config (pool);
+    oldconfig = gst_buffer_pool_get_config (pad->pool);
+
+    gst_buffer_pool_config_get_params (newconfig, &caps, &newsize, NULL, NULL);
+    gst_buffer_pool_config_get_params (oldconfig, &oldcaps, &oldsize, NULL, NULL);
+
+    GST_DEBUG_OBJECT (pad, "New buffer pool size %u and caps %"
+        GST_PTR_FORMAT ", old buffer pool size %u and caps %" GST_PTR_FORMAT,
+        newsize, caps, oldsize, oldcaps);
+
+    // If reconfiguration is not needed invalidate the new pool.
+    if (gst_caps_is_equal (oldcaps, caps) && (newsize == oldsize))
+      gst_clear_object (&pool);
+
+    g_clear_pointer (&oldconfig, gst_structure_free);
+    g_clear_pointer (&newconfig, gst_structure_free);
+
+    GST_DEBUG_OBJECT (pad, "%s previous output pool %p",
+        pool ? "Invalidate" : "Reuse", pad->pool);
   }
 
+  // If new pool was previously invalidated there is nothing further to do.
+  if (pool == NULL)
+    return TRUE;
+
+  if (pad->pool != NULL)
+    gst_buffer_pool_set_active (pad->pool, FALSE);
+
+  gst_clear_object (&pad->pool);
   pad->pool = pool;
+
   gst_buffer_pool_set_active (pad->pool, TRUE);
-
-  // Get the configured pool properties in order to set in query.
-  config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_get_params (config, &caps, &size, &minbuffers,
-      &maxbuffers);
-
-  if (gst_buffer_pool_config_get_allocator (config, &allocator, &params))
-    gst_query_add_allocation_param (query, allocator, &params);
-
-  gst_structure_free (config);
-
-  // Check whether the query has pool.
-  if (gst_query_get_n_allocation_pools (query) > 0)
-    gst_query_set_nth_allocation_pool (query, 0, pool, size, minbuffers,
-        maxbuffers);
-  else
-    gst_query_add_allocation_pool (query, pool, size, minbuffers,
-        maxbuffers);
+  GST_DEBUG_OBJECT (pad, "Output pool: %" GST_PTR_FORMAT, pad->pool);
 
   return TRUE;
 }

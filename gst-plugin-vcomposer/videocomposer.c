@@ -390,21 +390,17 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER_CAST (aggregator);
   GstCaps *caps = NULL;
-  GstVideoInfo info;
-  GstVideoAlignment align = { 0, }, ds_align = { 0, };
   GstBufferPool *pool = NULL;
+  GstStructure *config = NULL;
+  GstVideoInfo info = {};
+  GstVideoAlignment align = { 0, }, ds_align = { 0, };
+  GstAllocationParams params = { 0, };
   guint size = 0, minbuffers = 0, maxbuffers = 0;
 
   gst_query_parse_allocation (query, &caps, NULL);
-  if (!caps) {
+  if (caps == NULL) {
     GST_ERROR_OBJECT (vcomposer, "Failed to parse the decide_allocation caps!");
     return FALSE;
-  }
-
-  // Invalidate the cached pool if there is an allocation_query.
-  if (vcomposer->outpool) {
-    gst_buffer_pool_set_active (vcomposer->outpool, FALSE);
-    gst_clear_object (&vcomposer->outpool);
   }
 
   if (!gst_video_info_from_caps (&info, caps)) {
@@ -427,47 +423,81 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
     // Find the most the appropriate alignment between us and downstream.
     align = gst_video_calculate_common_alignment (&align, &ds_align);
 
-    GST_DEBUG_OBJECT (vcomposer, "Common alignment: padding (top: %u bottom: "
-        "%u left: %u right: %u) stride (%u, %u, %u, %u)", align.padding_top,
+    GST_DEBUG_OBJECT (vcomposer, "Common alignment: padding (top: %u bottom: %u"
+        " left: %u right: %u) stride (%u, %u, %u, %u)", align.padding_top,
         align.padding_bottom, align.padding_left, align.padding_right,
         align.stride_align[0], align.stride_align[1], align.stride_align[2],
         align.stride_align[3]);
   }
 
-  {
-    GstStructure *config = NULL;
-    GstAllocator *allocator = NULL;
-    GstAllocationParams params = {0,};
+  if (gst_query_get_n_allocation_params (query))
+    gst_query_parse_nth_allocation_param (query, 0, NULL, &params);
 
-    if (gst_query_get_n_allocation_params (query))
-      gst_query_parse_nth_allocation_param (query, 0, NULL, &params);
+  // Create a new buffer pool.
+  pool = gst_video_composer_create_pool (vcomposer, caps, &align, &params);
 
-    pool = gst_video_composer_create_pool (vcomposer, caps, &align, &params);
+  if (pool == NULL)
+    return FALSE;
 
-    // Get the configured pool properties in order to set in query.
-    config = gst_buffer_pool_get_config (pool);
-    gst_buffer_pool_config_get_params (config, &caps, &size, &minbuffers,
-        &maxbuffers);
+  // Check whether the previous buffer pool can be reused.
+  if (vcomposer->outpool != NULL) {
+    GstStructure *oldconfig = NULL, *newconfig = NULL;
+    GstCaps *oldcaps = NULL;
+    guint oldsize = 0, newsize = 0;
 
-    if (gst_buffer_pool_config_get_allocator (config, &allocator, &params))
-      gst_query_add_allocation_param (query, allocator, &params);
+    // Get the confuration of the new and old buffer pools for comparison.
+    newconfig = gst_buffer_pool_get_config (pool);
+    oldconfig = gst_buffer_pool_get_config (vcomposer->outpool);
 
-    gst_structure_free (config);
+    gst_buffer_pool_config_get_params (newconfig, &caps, &newsize, NULL, NULL);
+    gst_buffer_pool_config_get_params (oldconfig, &oldcaps, &oldsize, NULL, NULL);
+
+    GST_DEBUG_OBJECT (vcomposer, "New buffer pool size %u and caps %"
+        GST_PTR_FORMAT ", old buffer pool size %u and caps %" GST_PTR_FORMAT,
+        newsize, caps, oldsize, oldcaps);
+
+    // If reconfiguration is not needed invalidate the new pool.
+    if (gst_caps_is_equal (oldcaps, caps) && (newsize == oldsize))
+      gst_clear_object (&pool);
+
+    g_clear_pointer (&oldconfig, gst_structure_free);
+    g_clear_pointer (&newconfig, gst_structure_free);
+
+    GST_DEBUG_OBJECT (vcomposer, "%s previous output pool %p",
+        pool ? "Invalidate" : "Reuse", vcomposer->outpool);
   }
+
+  // If new pool was previously invalidated there is nothing further to do.
+  if (pool == NULL)
+    goto exit;
+
+  if (vcomposer->converter != NULL)
+    gst_video_converter_engine_flush (vcomposer->converter);
+
+  if (vcomposer->outpool != NULL)
+    gst_buffer_pool_set_active (vcomposer->outpool, FALSE);
+
+  gst_clear_object (&vcomposer->outpool);
+  vcomposer->outpool = pool;
+
+exit:
+  // Get the configured pool properties in order to set in query.
+  config = gst_buffer_pool_get_config (vcomposer->outpool);
+  gst_buffer_pool_config_get_params (config, NULL, &size, &minbuffers, &maxbuffers);
+
+  gst_structure_free (config);
+  size = MAX (size, info.size);
+
+  if (gst_query_get_n_allocation_params (query) > 0)
+    gst_query_set_nth_allocation_param (query, 0, NULL, NULL);
 
   // Check whether the query has pool.
   if (gst_query_get_n_allocation_pools (query) > 0)
-    gst_query_set_nth_allocation_pool (query, 0, pool, size, minbuffers,
-        maxbuffers);
+    gst_query_set_nth_allocation_pool (query, 0, NULL, size, minbuffers, maxbuffers);
   else
-    gst_query_add_allocation_pool (query, pool, size, minbuffers,
-        maxbuffers);
+    gst_query_add_allocation_pool (query, NULL, size, minbuffers, maxbuffers);
 
-  vcomposer->outpool = pool;
-
-  GST_DEBUG_OBJECT (vcomposer, "Output pool: %" GST_PTR_FORMAT,
-      vcomposer->outpool);
-
+  GST_DEBUG_OBJECT (vcomposer, "Output pool: %" GST_PTR_FORMAT, vcomposer->outpool);
   return TRUE;
 }
 

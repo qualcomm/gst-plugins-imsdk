@@ -1609,8 +1609,7 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (mlconverter, "Failed to set pool configuration!");
-    g_object_unref (pool);
-    pool = NULL;
+    gst_clear_object (&pool);
   }
   g_object_unref (allocator);
 
@@ -1726,23 +1725,16 @@ gst_ml_video_converter_decide_allocation (GstBaseTransform * base,
     GstQuery * query)
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
-
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
-  GstAllocator *allocator = NULL;
-  guint size, minbuffers, maxbuffers;
-  GstAllocationParams params;
+  guint size = 0, minbuffers = 0, maxbuffers = 0;
 
   gst_query_parse_allocation (query, &caps, NULL);
-  if (!caps) {
+  if (caps == NULL) {
     GST_ERROR_OBJECT (mlconverter, "Failed to parse the allocation caps!");
     return FALSE;
   }
-
-  // Invalidate the cached pool if there is an allocation_query.
-  if (mlconverter->outpool)
-    gst_object_unref (mlconverter->outpool);
 
   // Create a new pool in case none was proposed in the query.
   if (!(pool = gst_ml_video_converter_create_pool (mlconverter, caps))) {
@@ -1750,25 +1742,64 @@ gst_ml_video_converter_decide_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
+  // Check whether the previous buffer pool can be reused.
+  if (mlconverter->outpool != NULL) {
+    GstStructure *oldconfig = NULL, *newconfig = NULL;
+    GstCaps *oldcaps = NULL;
+    guint oldsize = 0, newsize = 0;
+
+    // Get the confuration of the new and old buffer pools for comparison.
+    newconfig = gst_buffer_pool_get_config (pool);
+    oldconfig = gst_buffer_pool_get_config (mlconverter->outpool);
+
+    gst_buffer_pool_config_get_params (newconfig, &caps, &newsize, NULL, NULL);
+    gst_buffer_pool_config_get_params (oldconfig, &oldcaps, &oldsize, NULL, NULL);
+
+    GST_DEBUG_OBJECT (mlconverter, "New buffer pool size %u and caps %"
+        GST_PTR_FORMAT ", old buffer pool size %u and caps %" GST_PTR_FORMAT,
+        newsize, caps, oldsize, oldcaps);
+
+    // If reconfiguration is not needed invalidate the new pool.
+    if (gst_caps_is_equal (oldcaps, caps) && (newsize == oldsize))
+      gst_clear_object (&pool);
+
+    g_clear_pointer (&oldconfig, gst_structure_free);
+    g_clear_pointer (&newconfig, gst_structure_free);
+
+    GST_DEBUG_OBJECT (mlconverter, "%s previous output pool %p",
+        pool ? "Invalidate" : "Reuse", mlconverter->outpool);
+  }
+
+  // If new pool was previously invalidated there is nothing further to do.
+  if (pool == NULL)
+    goto exit;
+
+  if (mlconverter->converter != NULL)
+    gst_video_converter_engine_flush (mlconverter->converter);
+
+  if (mlconverter->outpool != NULL)
+    gst_buffer_pool_set_active (mlconverter->outpool, FALSE);
+
+  gst_clear_object (&mlconverter->outpool);
   mlconverter->outpool = pool;
 
+exit:
   // Get the configured pool properties in order to set in query.
-  config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_get_params (config, &caps, &size, &minbuffers,
-      &maxbuffers);
-
-  if (gst_buffer_pool_config_get_allocator (config, &allocator, &params))
-    gst_query_add_allocation_param (query, allocator, &params);
-
+  config = gst_buffer_pool_get_config (mlconverter->outpool);
+  gst_buffer_pool_config_get_params (config, NULL, &size, &minbuffers, &maxbuffers);
   gst_structure_free (config);
+
+  if (gst_query_get_n_allocation_params (query) > 0)
+    gst_query_set_nth_allocation_param (query, 0, NULL, NULL);
 
   // Check whether the query has pool.
   if (gst_query_get_n_allocation_pools (query) > 0)
-    gst_query_set_nth_allocation_pool (query, 0, pool, size, minbuffers,
-        maxbuffers);
+    gst_query_set_nth_allocation_pool (query, 0, NULL, size, minbuffers, maxbuffers);
   else
-    gst_query_add_allocation_pool (query, pool, size, minbuffers, maxbuffers);
+    gst_query_add_allocation_pool (query, NULL, size, minbuffers, maxbuffers);
 
+  GST_DEBUG_OBJECT (mlconverter, "Output pool: %" GST_PTR_FORMAT,
+      mlconverter->outpool);
   return TRUE;
 }
 
