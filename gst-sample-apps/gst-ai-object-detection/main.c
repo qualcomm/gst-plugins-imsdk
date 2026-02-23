@@ -9,8 +9,9 @@
  *
  * Description:
  * The application takes live video stream from camera/file/rtsp/USB camera and
- * gives same to Detection TensorFlow Lite or SNPE DLC Model for object detection
- * and display preview with overlayed AI Model output with detection labels.
+ * gives same to Detection TensorFlow Lite, SNPE DLC or ONNX Model for object
+ * detection and display preview with overlayed AI Model output with detection
+ * labels.
  *
  * Pipeline for Gstreamer with Camera:
  * qtiqmmfsrc  -> | qmmfsrc_caps (Preview)    -> qtivcomposer
@@ -33,7 +34,7 @@
  *
  *     qtivcomposer (COMPOSITION) -> fpsdisplaysink (Display)
  *     Pre-process: qtimlvconverter
- *     ML Framework: qtimlsnpe/qtimltflite
+ *     ML Framework: qtimlsnpe/qtimltflite/qtimlonnx
  *     Post-process: qtimlvdetection -> detection_filter
  */
 
@@ -62,6 +63,7 @@
 #define DEFAULT_TFLITE_YOLOV7_MODEL "/etc/models/Yolo-v7-Quantized.tflite"
 #define DEFAULT_QNN_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.bin"
 #define DEFAULT_QNN_YOLOX_MODEL "/etc/models/yolox_quantized.bin"
+#define DEFAULT_ONNX_YOLOX_MODEL "/etc/models/yolox.onnx"
 #define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.json"
 #define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.json"
 #define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.json"
@@ -174,6 +176,7 @@ gst_app_context_free
       options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV7_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_QNN_YOLOV8_MODEL) &&
       options->model_path != (gchar *)(&DEFAULT_QNN_YOLOX_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_ONNX_YOLOX_MODEL) &&
       options->model_path != NULL) {
     g_free ((gpointer)options->model_path);
   }
@@ -193,7 +196,6 @@ gst_app_context_free
     }
     g_free ((gpointer)options->snpe_tensors);
   }
-
 
   if (options->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME) &&
       options->output_file != NULL) {
@@ -540,13 +542,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
-  // Create the ML inferencing plugin SNPE/TFLITE
+  // Create the ML inferencing plugin SNPE/TFLITE/ONNX
   if (options->model_type == GST_MODEL_TYPE_SNPE) {
     qtimlelement = gst_element_factory_make ("qtimlsnpe", "qtimlsnpe");
   } else if (options->model_type == GST_MODEL_TYPE_TFLITE) {
     qtimlelement = gst_element_factory_make ("qtimltflite", "qtimlelement");
   } else if (options->model_type == GST_MODEL_TYPE_QNN) {
     qtimlelement = gst_element_factory_make ("qtimlqnn", "qtimlelement");
+  } else if (options->model_type == GST_MODEL_TYPE_ONNX) {
+    qtimlelement = gst_element_factory_make ("qtimlonnx", "qtimlelement");
   } else {
     g_printerr ("Invalid model type\n");
     goto error_clean_elements;
@@ -782,6 +786,24 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_print ("Using DSP delegate\n");
     g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
         "backend", "/usr/lib/libQnnHtp.so", NULL);
+  } else if (options->model_type == GST_MODEL_TYPE_ONNX) {
+    GstMLOnnxExecutionProvider onnx_delegate = GST_ML_ONNX_EXECUTION_PROVIDER_QNN;
+    g_object_set (G_OBJECT (qtimlelement), "execution-provider",
+        onnx_delegate, NULL);
+    g_object_set (G_OBJECT (qtimlelement), "model", options->model_path, NULL);
+    if (options->use_cpu) {
+      g_object_set (G_OBJECT (qtimlelement), "backend-path",
+          "/usr/lib/libQnnCpu.so", NULL);
+    } else if (options->use_gpu) {
+      g_object_set (G_OBJECT (qtimlelement), "backend-path",
+          "/usr/lib/libQnnGpu.so", NULL);
+    } else if (options->use_dsp) {
+      g_object_set (G_OBJECT (qtimlelement), "backend-path",
+          "/usr/lib/libQnnHtp.so", NULL);
+    } else {
+      g_printerr ("Invalid Runtime Selected\n");
+      goto error_clean_elements;
+    }
   } else {
     g_printerr ("Invalid model type\n");
     goto error_clean_elements;
@@ -969,6 +991,27 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
       default:
         g_printerr ("Unsupported QNN model, use YoloV8 or Yolox QNN model\n");
+        goto error_clean_elements;
+    }
+  } else if (options->model_type == GST_MODEL_TYPE_ONNX) {
+    switch (options->yolo_model_type) {
+      case GST_YOLO_TYPE_X:
+        // set qtimlvdetection properties
+        g_object_set (G_OBJECT (qtimlvdetection), "labels",
+            options->labels_path, NULL);
+        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
+        if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
+          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+        } else {
+          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
+          goto error_clean_elements;
+        }
+        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
+        break;
+      default:
+        g_printerr ("Unsupported ONNX model, use Yolox ONNX model\n");
         goto error_clean_elements;
     }
   } else {
@@ -1248,7 +1291,7 @@ error_clean_elements:
       &rtspsrc, &rtph264depay, &v4l2src, &v4l2src_caps, &tee, &qtimlvconverter,
       &qtimlelement, &qtimlvdetection, &qtivcomposer, &detection_filter,
       &waylandsink, &fpsdisplaysink, &filesink, &qtirtspbin,
-      &v4l2h264enc_file, &v4l2h264enc_rtsp, h264parse_enc_rtsp, &mp4mux,
+      &v4l2h264enc_file, &v4l2h264enc_rtsp, &h264parse_enc_rtsp, &mp4mux,
       &qtivtransform, &qtivtransform_capsfilter, &videoconvert, &jpegdec, NULL);
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_object_unref (queue[i]);
@@ -1354,10 +1397,11 @@ parse_json (gchar * config_file, GstAppOptions * options)
       options->model_type = GST_MODEL_TYPE_TFLITE;
     else if (g_strcmp0 (framework, "qnn") == 0) {
       options->model_type = GST_MODEL_TYPE_QNN;
-    }
-    else {
+    } else if (g_strcmp0 (framework, "onnx") == 0) {
+      options->model_type = GST_MODEL_TYPE_ONNX;
+    } else {
       gst_printerr ("ml-framework can only be one of "
-          "\"snpe\", \"tflite\" or \"qnn\"\n");
+          "\"snpe\", \"tflite\", \"onnx\" or \"qnn\"\n");
       g_object_unref (parser);
       return -1;
     }
@@ -1558,8 +1602,8 @@ main (gint argc, gchar * argv[])
       "  yolo-model-type: \"yolov5\" or \"yolov8\" or \"yolox\" or \"yolonas\"\n"
       "      Yolo Model version to Execute: Yolov5, Yolov8 or YoloNas "
       "or Yolox [Default]\n"
-      "  ml-framework: \"snpe\" or \"tflite\" or \"qnn\"\n"
-      "      Execute Model in SNPE DLC [Default] or TFlite format\n"
+      "  ml-framework: \"snpe\" or \"tflite\" or \"onnx\" or \"qnn\"\n"
+      "      Execute Model in TFlite[default], snpe, onnx or qnn format\n"
       "  model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default model path for YOLOV5 DLC: "DEFAULT_SNPE_YOLOV5_MODEL"\n"
@@ -1580,6 +1624,8 @@ main (gint argc, gchar * argv[])
       DEFAULT_QNN_YOLOV8_MODEL"\n"
       "      Default model path for YOLOX QNN: "
       DEFAULT_QNN_YOLOX_MODEL"\n"
+      "      Default model path for YOLOX ONNX: "
+      DEFAULT_ONNX_YOLOX_MODEL"\n"
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path for YOLOV5: "DEFAULT_YOLOV5_LABELS"\n"
@@ -1721,13 +1767,14 @@ main (gint argc, gchar * argv[])
   }
 
   if (options.model_type < GST_MODEL_TYPE_SNPE ||
-      options.model_type > GST_MODEL_TYPE_QNN) {
+      options.model_type > GST_MODEL_TYPE_ONNX) {
     g_printerr ("Invalid ml-framework option selected\n"
         "Available options:\n"
         "    SNPE: %d\n"
         "    TFLite: %d\n"
-        "    QNN: %d\n",
-        GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE, GST_MODEL_TYPE_QNN);
+        "    QNN: %d\n"
+        "    ONNX: %d\n",
+        GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE, GST_MODEL_TYPE_QNN, GST_MODEL_TYPE_ONNX);
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
@@ -1811,8 +1858,15 @@ main (gint argc, gchar * argv[])
         gst_app_context_free (&appctx, &options, config_file);
         return -EINVAL;
       }
-    }
-    else {
+    } else if (options.model_type == GST_MODEL_TYPE_ONNX) {
+      if (options.yolo_model_type == GST_YOLO_TYPE_X) {
+        options.model_path = DEFAULT_ONNX_YOLOX_MODEL;
+      } else {
+        g_printerr ("Only Yolox model is supported with onnx runtime\n");
+        gst_app_context_free (&appctx, &options, config_file);
+        return -EINVAL;
+      }
+    } else {
       g_printerr ("Invalid ml_framework\n");
       gst_app_context_free (&appctx, &options, config_file);
       return -EINVAL;
