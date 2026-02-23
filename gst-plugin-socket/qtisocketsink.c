@@ -228,7 +228,8 @@ gst_socket_serialize_roi_meta (GstVideoRegionOfInterestMeta * roi_meta)
   label_maxsize = sizeof (roi_meta_pl->label);
 
   if (label_size > label_maxsize) {
-    GST_WARNING ("Detection label too long, cut at %lu symbols", label_maxsize);
+    GST_WARNING ("Detection label too long, cut at %" G_GSIZE_FORMAT " symbols",
+        label_maxsize);
     label_size = label_maxsize;
   }
 
@@ -249,7 +250,8 @@ gst_socket_serialize_roi_meta (GstVideoRegionOfInterestMeta * roi_meta)
     gsize meta_maxsize = sizeof (roi_meta_pl->det_meta);
 
     if (meta_size > meta_maxsize) {
-      GST_WARNING ("Detection meta too long, cut at %lu symbols", meta_maxsize);
+      GST_WARNING ("Detection meta too long, cut at %" G_GSIZE_FORMAT " symbols",
+          meta_maxsize);
       meta_size = meta_maxsize;
     }
 
@@ -268,8 +270,8 @@ gst_socket_serialize_roi_meta (GstVideoRegionOfInterestMeta * roi_meta)
     gsize xp_maxsize = sizeof (roi_meta_pl->xtraparams);
 
     if (xp_size > xp_maxsize) {
-      GST_WARNING ("Detection xtraparams too long, cut at %lu symbols",
-          xp_maxsize);
+      GST_WARNING ("Detection xtraparams too long, cut at %" G_GSIZE_FORMAT
+          " symbols", xp_maxsize);
       xp_size = xp_maxsize;
     }
 
@@ -299,7 +301,8 @@ gst_socket_serialize_class_meta (GstVideoClassificationMeta * class_meta)
   labels_maxsize = sizeof (class_meta_pl->labels) / sizeof (GstClassLabelSer);
 
   if (class_meta_pl->size > labels_maxsize) {
-    GST_WARNING ("Too many labels, cut at %lu labels", labels_maxsize);
+    GST_WARNING ("Too many labels, cut at %" G_GSIZE_FORMAT " labels",
+        labels_maxsize);
     class_meta_pl->size = labels_maxsize;
   }
 
@@ -311,8 +314,8 @@ gst_socket_serialize_class_meta (GstVideoClassificationMeta * class_meta)
     gsize label_maxsize = sizeof (class_meta_pl->labels[i].name);
 
     if (label_size > label_maxsize) {
-      GST_WARNING ("Classification label too long, cut at %lu symbols",
-          label_maxsize);
+      GST_WARNING ("Classification label too long, cut at %" G_GSIZE_FORMAT
+          " symbols", label_maxsize);
       label_size = label_maxsize;
     }
 
@@ -329,8 +332,8 @@ gst_socket_serialize_class_meta (GstVideoClassificationMeta * class_meta)
       gsize xtraparams_maxsize = sizeof (class_meta_pl->labels[i].xtraparams);
 
       if (xtraparams_size > xtraparams_maxsize) {
-        GST_WARNING ("Label xtraparams too long, cut at %lu symbols",
-            xtraparams_maxsize);
+        GST_WARNING ("Label xtraparams too long, cut at %" G_GSIZE_FORMAT
+            " symbols", xtraparams_maxsize);
         xtraparams_size = xtraparams_maxsize;
       }
 
@@ -364,7 +367,8 @@ gst_socket_serialize_lm_meta (GstVideoLandmarksMeta *lm_meta)
   kps_maxsize = sizeof (lm_meta_pl->kps) / sizeof (GstVideoKeypointSer);
 
   if (lm_meta_pl->kps_size > kps_maxsize) {
-    GST_WARNING ("Too many keypoints, cut at %lu keypoints", kps_maxsize);
+    GST_WARNING ("Too many keypoints, cut at %" G_GSIZE_FORMAT " keypoints",
+        kps_maxsize);
     lm_meta_pl->kps_size = kps_maxsize;
   }
 
@@ -376,7 +380,7 @@ gst_socket_serialize_lm_meta (GstVideoLandmarksMeta *lm_meta)
     gsize keypoint_maxsize = sizeof (lm_meta_pl->kps[i].name);
 
     if (keypoint_size > keypoint_maxsize) {
-      GST_WARNING ("Keypoint label too long, cut at %lu symbols",
+      GST_WARNING ("Keypoint label too long, cut at %" G_GSIZE_FORMAT " symbols",
           keypoint_maxsize);
       keypoint_size = keypoint_maxsize;
     }
@@ -395,7 +399,8 @@ gst_socket_serialize_lm_meta (GstVideoLandmarksMeta *lm_meta)
   links_maxsize = sizeof (lm_meta_pl->links) / sizeof (GstVideoKeypointLinkSer);
 
   if (lm_meta_pl->links_size > links_maxsize) {
-    GST_WARNING ("Too many links, cut at %lu links", links_maxsize);
+    GST_WARNING ("Too many links, cut at %" G_GSIZE_FORMAT " links",
+        links_maxsize);
     lm_meta_pl->links_size = links_maxsize;
   }
 
@@ -414,8 +419,8 @@ gst_socket_serialize_lm_meta (GstVideoLandmarksMeta *lm_meta)
     gsize xtraparams_maxsize = sizeof (lm_meta_pl->xtraparams);
 
     if (xtraparams_size > xtraparams_maxsize) {
-      GST_WARNING ("Landmarks xtraparams too long, cut at %lu symbols",
-          xtraparams_maxsize);
+      GST_WARNING ("Landmarks xtraparams too long, cut at %" G_GSIZE_FORMAT
+          " symbols", xtraparams_maxsize);
       xtraparams_size = xtraparams_maxsize;
     }
 

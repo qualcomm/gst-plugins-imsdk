@@ -138,7 +138,7 @@ gst_appsrc_need_data (GstElement *appsrc, guint size, gpointer userdata)
   GST_BUFFER_OFFSET (buffer) = -1;
   GST_BUFFER_OFFSET_END (buffer) = -1;
 
-  GST_DEBUG_OBJECT (sinkpad, "Push buffer timestamp - %ld",
+  GST_DEBUG_OBJECT (sinkpad, "Push buffer timestamp - %" G_GINT64_FORMAT,
       GST_BUFFER_PTS (buffer));
 
   g_signal_emit_by_name (sinkpad->appsrc, "push-buffer", buffer, &ret);

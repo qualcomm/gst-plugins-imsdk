@@ -509,16 +509,18 @@ gst_ml_frame_convert_to_float (GstMLFrame *mlframe, guint idx,
 static gboolean
 gst_ml_tflite_initialize_library (GstMLTFLiteEngine * engine)
 {
-  std::string libname = "libtensorflowlite_c.so";
-
-#if defined(HAVE_TFLITE_VERSION_H)
-  libname += "." + std::string(TF_STR(TF_MAJOR_VERSION));
-#endif // HAVE_TFLITE_VERSION_H
+  std::string base_libname = "libtensorflowlite_c.so";
+  std::string libname = base_libname + "." + std::to_string(TF_MAJOR_VERSION);
 
   engine->libhandle = dlopen (libname.c_str(), RTLD_NOW | RTLD_LOCAL);
   if (engine->libhandle == NULL) {
-    GST_ERROR ("Failed to open TFLite library, error: %s!", dlerror());
-    return FALSE;
+    GST_DEBUG ("Failed to open TFLite library, error: %s!", dlerror());
+    // fallback to base lib name without version
+    engine->libhandle = dlopen (base_libname.c_str(), RTLD_NOW | RTLD_LOCAL);
+    if (engine->libhandle == NULL) {
+      GST_DEBUG ("Failed to open TFLite library, error: %s!", dlerror());
+      return FALSE;
+    }
   }
 
   auto success = load_symbol ((gpointer*)&engine->GpuDelegateOptionsV2Default,

@@ -33,7 +33,7 @@ G_DEFINE_TYPE (GstVOverlay, gst_overlay, GST_TYPE_BASE_TRANSFORM);
   "{ NV12, NV21, YUY2, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, NV12_Q08C }"
 
 #define DEFAULT_MIN_BUFFERS         1
-#define DEFAULT_MAX_BUFFERS         30
+#define DEFAULT_MAX_BUFFERS         50
 
 #define MAX_LABEL_LENGTH            48
 #define LABEL_FONTSIZE              40
@@ -1728,7 +1728,7 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
   gboolean success = TRUE;
 
   // Add the total number of meta entries that needs to be processed.
-  // Allocate 2 blits for ROI meta, 1for boundig box and 1 for label.
+  // Allocate 2 blits for ROI meta, 1 for boundig box and 1 for label.
   composition->n_blits = 2 * gst_buffer_get_n_meta (outbuffer,
       GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
   composition->n_blits += gst_buffer_get_n_meta (outbuffer,
@@ -1907,7 +1907,7 @@ gst_overlay_set_caps (GstBaseTransform * base, GstCaps * incaps,
         (ovltype == GST_OVERLAY_TYPE_DETECTION) ||
         (ovltype == GST_OVERLAY_TYPE_MASK) ||
         (ovltype == GST_OVERLAY_TYPE_POSE_ESTIMATION)) {
-      // Square resolution of atleats 256 is most optimal.
+      // Square resolution of atleast 256 is most optimal.
       width = height = GST_ROUND_UP_128 (MAX (MAX (width, height) / 8, 256));
     } else if (ovltype == GST_OVERLAY_TYPE_IMAGE) {
       // Square resolution 4 times smaller than the frame is most optimal.
