@@ -13,6 +13,9 @@ pkg_check_modules(TFLITE tensorflow-lite-prebuilt)
 if(NOT TFLITE_FOUND)
   pkg_check_modules(TFLITE tensorflow-lite)
 endif()
+if(NOT TFLITE_FOUND)
+  pkg_check_modules(TFLITE tensorflowlite_c)
+endif()
 
 # Check whether the C API header for the TFLITE library is present.
 check_include_file("tensorflow/lite/core/shims/c/c_api.h" HAVE_CORE_SHIMS_C_API_H)
