@@ -1615,7 +1615,7 @@ gst_qmmf_context_get_static_meta ()
 
   int32_t ret = recorder->GetCamStaticInfo (infolist);
   if (ret != 0)
-    GST_WARNING ("Failed to get camera static info !");
+    g_warning ("Failed to get camera static info !");
 
   for (guint i = 0; i < infolist.size(); ++i) {
     /* Allocate a new CameraMetadata entry */
