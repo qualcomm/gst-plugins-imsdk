@@ -382,18 +382,54 @@ gst_ml_onnx_extract_qparams (const gchar *filename, gdouble *scales,
 }
 
 static void
+gst_ml_onnx_convert_nchw_to_nhwc (float *output, const float *input,
+    guint n, guint c, guint h, guint w)
+{
+  for (guint i = 0; i < n; i++) {
+    for (guint height = 0; height < h; height++) {
+      for (guint width = 0; width < w; width++) {
+        for (guint channel = 0; channel < c; channel++) {
+          // NCHW index: i * (C*H*W) + channel * (H*W) + height * W + width
+          size_t nchw_idx =
+              i * (c * h * w) + channel * (h * w) + height * w + width;
+          // NHWC index: i * (H*W*C) + height * (W*C) + width * C + channel
+          size_t nhwc_idx =
+              i * (h * w * c) + height * (w * c) + width * c + channel;
+          output[nhwc_idx] = input[nchw_idx];
+        }
+      }
+    }
+  }
+}
+
+static void
 gst_ml_onnx_convert_to_float (GstMLFrame *mlframe, guint idx, void *tensor_data,
-    ONNXTensorElementDataType type, float scale, float offset)
+    ONNXTensorElementDataType type, float scale, float offset,
+    guint num_dims, const guint *dimensions)
 {
   float *output = NULL;
   size_t n_elements = 0;
+  bool format_conv = false;
+  float *temp_buffer = NULL;
 
   output = reinterpret_cast<float *>(GST_ML_FRAME_BLOCK_DATA (mlframe, idx));
   n_elements = gst_ml_info_tensor_size (&(mlframe->info), idx);
   n_elements /= gst_ml_type_get_size (mlframe->info.type);
 
+  // Check if we need to convert from NCHW to NHWC (4D tensor)
+  if (num_dims == 4) {
+    format_conv = true;
+    // Allocate temporary buffer for NCHW data before conversion
+    temp_buffer = new float[n_elements];
+    GST_LOG ("4D tensor detected, will convert from NCHW to NHWC layout");
+    GST_LOG ("Dimensions: N=%u, C=%u, H=%u, W=%u",
+             dimensions[0], dimensions[1], dimensions[2], dimensions[3]);
+  }
+
   GST_LOG ("Converting tensor from %s to FLOAT32 using scale: %f and offset: %f",
       onnx_type_to_string (type), scale, offset);
+
+  float *conversion_target = format_conv ? temp_buffer : output;
 
   switch (type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
@@ -401,7 +437,7 @@ gst_ml_onnx_convert_to_float (GstMLFrame *mlframe, guint idx, void *tensor_data,
       uint8_t *data = reinterpret_cast<uint8_t *>(tensor_data);
 
       for (size_t i = 0; i < n_elements; i++)
-        output[i] = (static_cast<float>(data[i]) - offset) * scale;
+        conversion_target[i] = (static_cast<float>(data[i]) - offset) * scale;
 
       break;
     }
@@ -410,7 +446,7 @@ gst_ml_onnx_convert_to_float (GstMLFrame *mlframe, guint idx, void *tensor_data,
       int8_t *data = reinterpret_cast<int8_t *>(tensor_data);
 
       for (size_t i = 0; i < n_elements; i++)
-        output[i] = (static_cast<float>(data[i]) - offset) * scale;
+        conversion_target[i] = (static_cast<float>(data[i]) - offset) * scale;
 
       break;
     }
@@ -419,7 +455,7 @@ gst_ml_onnx_convert_to_float (GstMLFrame *mlframe, guint idx, void *tensor_data,
       uint16_t *data = reinterpret_cast<uint16_t *>(tensor_data);
 
       for (size_t i = 0; i < n_elements; i++)
-        output[i] = (static_cast<float>(data[i]) - offset) * scale;
+        conversion_target[i] = (static_cast<float>(data[i]) - offset) * scale;
 
       break;
     }
@@ -428,7 +464,7 @@ gst_ml_onnx_convert_to_float (GstMLFrame *mlframe, guint idx, void *tensor_data,
       int16_t *data = reinterpret_cast<int16_t *>(tensor_data);
 
       for (size_t i = 0; i < n_elements; i++)
-        output[i] = (static_cast<float>(data[i]) - offset) * scale;
+        conversion_target[i] = (static_cast<float>(data[i]) - offset) * scale;
 
       break;
     }
@@ -437,7 +473,7 @@ gst_ml_onnx_convert_to_float (GstMLFrame *mlframe, guint idx, void *tensor_data,
       uint32_t *data = reinterpret_cast<uint32_t *>(tensor_data);
 
       for (size_t i = 0; i < n_elements; i++)
-        output[i] = (static_cast<float>(data[i]) - offset) * scale;
+        conversion_target[i] = (static_cast<float>(data[i]) - offset) * scale;
 
       break;
     }
@@ -446,7 +482,7 @@ gst_ml_onnx_convert_to_float (GstMLFrame *mlframe, guint idx, void *tensor_data,
       int32_t *data = reinterpret_cast<int32_t *>(tensor_data);
 
       for (size_t i = 0; i < n_elements; i++)
-        output[i] = (static_cast<float>(data[i]) - offset) * scale;
+        conversion_target[i] = (static_cast<float>(data[i]) - offset) * scale;
 
       break;
     }
@@ -455,7 +491,7 @@ gst_ml_onnx_convert_to_float (GstMLFrame *mlframe, guint idx, void *tensor_data,
       uint64_t *data = reinterpret_cast<uint64_t *>(tensor_data);
 
       for (size_t i = 0; i < n_elements; i++)
-        output[i] = (static_cast<float>(data[i]) - offset) * scale;
+        conversion_target[i] = (static_cast<float>(data[i]) - offset) * scale;
 
       break;
     }
@@ -464,19 +500,32 @@ gst_ml_onnx_convert_to_float (GstMLFrame *mlframe, guint idx, void *tensor_data,
       int64_t *data = reinterpret_cast<int64_t *>(tensor_data);
 
       for (size_t i = 0; i < n_elements; i++)
-        output[i] = (static_cast<float>(data[i]) - offset) * scale;
+        conversion_target[i] = (static_cast<float>(data[i]) - offset) * scale;
 
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
     {
-      memcpy (output, tensor_data, sizeof (float) * n_elements);
+      float *data = reinterpret_cast<float *>(tensor_data);
+
+      for (size_t i = 0; i < n_elements; i++)
+        conversion_target[i] = (data[i] - offset) * scale;
 
       break;
     }
     default:
       GST_ERROR ("Data type not supported yet!");
-      break;
+      if (temp_buffer)
+        delete[] temp_buffer;
+      return;
+  }
+
+  // If 4D tensor, convert from NCHW to NHWC
+  if (format_conv) {
+    gst_ml_onnx_convert_nchw_to_nhwc (output, temp_buffer,
+        dimensions[0], dimensions[1], dimensions[2], dimensions[3]);
+    delete[] temp_buffer;
+    GST_LOG ("Converted tensor from NCHW to NHWC layout");
   }
 }
 
@@ -935,11 +984,46 @@ gst_ml_onnx_engine_get_output_caps  (GstMLOnnxEngine * engine)
 {
   GstCaps *caps = NULL;
   GValue list = G_VALUE_INIT, value = G_VALUE_INIT;
+  GstMLInfo *modified_outinfo = NULL;
 
   if (engine == NULL)
     return NULL;
 
-  caps = gst_ml_info_to_caps (engine->outinfo);
+  // Check if we need to swap dimensions for 4D tensors (NCHW to NHWC)
+  gboolean format_conv = FALSE;
+  for (size_t i = 0; i < engine->n_outputs; i++) {
+    if (engine->outinfo->n_dimensions[i] == 4) {
+      format_conv = TRUE;
+      break;
+    }
+  }
+
+  if (format_conv) {
+    modified_outinfo = gst_ml_info_copy (engine->outinfo);
+
+    for (size_t i = 0; i < engine->n_outputs; i++) {
+      if (modified_outinfo->n_dimensions[i] == 4) {
+        // Swap dimensions from NCHW to NHWC
+        guint n = modified_outinfo->tensors[i][0];
+        guint c = modified_outinfo->tensors[i][1];
+        guint h = modified_outinfo->tensors[i][2];
+        guint w = modified_outinfo->tensors[i][3];
+
+        modified_outinfo->tensors[i][0] = n;
+        modified_outinfo->tensors[i][1] = h;
+        modified_outinfo->tensors[i][2] = w;
+        modified_outinfo->tensors[i][3] = c;
+
+        GST_DEBUG ("Swapped output tensor %zu dimensions from NCHW [%u,%u,%u,%u]"
+            " to NHWC [%u,%u,%u,%u]", i, n, c, h, w, n, h, w, c);
+      }
+    }
+
+    caps = gst_ml_info_to_caps (modified_outinfo);
+    gst_ml_info_free (modified_outinfo);
+  } else {
+    caps = gst_ml_info_to_caps (engine->outinfo);
+  }
 
   // If current type is already FLOAT, return immediately.
   if (GST_ML_INFO_TYPE (engine->outinfo) == GST_ML_TYPE_FLOAT32)
@@ -1059,8 +1143,10 @@ gst_ml_onnx_engine_execute (GstMLOnnxEngine * engine,
       goto cleanup;
     }
 
+    // Pass dimension information for NCHW to NHWC conversion
     gst_ml_onnx_convert_to_float (outframe, i, tensor_data, elem_type,
-        engine->scales[i], engine->offsets[i]);
+        engine->scales[i], engine->offsets[i],
+        engine->outinfo->n_dimensions[i], engine->outinfo->tensors[i]);
 
     mlmeta = gst_buffer_get_ml_tensor_meta_id (outframe->buffer, i);
     mlmeta->name = g_quark_from_string (engine->output_names[i]);
