@@ -61,6 +61,7 @@
 #include <gst/app/gstappsrc.h>
 #include <gst/base/gstdataqueue.h>
 #include <pthread.h>
+#include <time.h>
 #include <qmmf-sdk/qmmf_camera_metadata.h>
 #include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 
@@ -165,6 +166,18 @@ struct _GstAppContext {
   GCond live_pts_signal;
   // Source ID
   guint process_src_id;
+  // Duration control based on frame timestamps
+  GstClockTime recording_start_pts;
+  GstClockTime recording_end_pts;
+  GstClockTime recording_mid_pts;
+  gboolean recording_ended;
+  gboolean mid_snapshot_taken;
+  // Pre-buffering delay control based on frame timestamps
+  GstClockTime prebuffer_start_pts;
+  GstClockTime prebuffer_end_pts;
+  GstClockTime prebuffer_mid_pts;
+  gboolean prebuffer_ended;
+  gboolean prebuffer_mid_snapshot_taken;
   // Encoder Name
   gchar *encoder_name;
   // Snapshot Streams configs
@@ -254,7 +267,7 @@ capture_prepare_metadata (GstAppContext * appctx)
   }
 
   /* Get high quality metadata, which will be used for submitting capture-image. */
-  g_object_get (G_OBJECT (qtiqmmfsrc), "image-metadata", &meta, NULL);
+  g_object_get (G_OBJECT (qtiqmmfsrc), "video-metadata", &meta, NULL);
   if (!meta) {
     g_printerr ("failed to get image metadata\n");
     goto cleanupset;
@@ -292,6 +305,8 @@ capture_prepare_metadata (GstAppContext * appctx)
   }
 
   metadata->update (ANDROID_NOISE_REDUCTION_MODE, &noisemode, 1);
+
+  g_object_set(G_OBJECT(qtiqmmfsrc), "video-metadata", metadata, NULL);
 
   g_ptr_array_add (appctx->meta_capture, (gpointer) metadata);
 
@@ -405,6 +420,139 @@ live_frame_probe (GstPad * pad, GstPadProbeInfo * info, gpointer user_data)
       return GST_PAD_PROBE_REMOVE;
     }
   }
+  return GST_PAD_PROBE_OK;
+}
+
+// Probe to control pre-buffering delay based on frame timestamps
+static GstPadProbeReturn
+prebuffer_delay_control_probe (GstPad * pad, GstPadProbeInfo * info, gpointer user_data)
+{
+  GstAppContext *ctx = (GstAppContext *) user_data;
+
+  if (GST_PAD_PROBE_INFO_TYPE (info) & GST_PAD_PROBE_TYPE_BUFFER) {
+    GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER (info);
+    GstClockTime buffer_pts = GST_BUFFER_PTS (buffer);
+
+    // Initialize prebuffer timing on first frame
+    if (ctx->prebuffer_start_pts == GST_CLOCK_TIME_NONE &&
+        GST_CLOCK_TIME_IS_VALID (buffer_pts)) {
+      g_mutex_lock (&ctx->lock);
+      ctx->prebuffer_start_pts = buffer_pts;
+      ctx->prebuffer_end_pts = buffer_pts + (ctx->delay_to_start_recording * GST_SECOND);
+      ctx->prebuffer_mid_pts = buffer_pts +
+                               ((ctx->delay_to_start_recording * GST_SECOND) / 2);
+      ctx->prebuffer_ended = FALSE;
+      ctx->prebuffer_mid_snapshot_taken = FALSE;
+      g_mutex_unlock (&ctx->lock);
+
+      g_print ("[INFO] Initialized prebuffer timing from first frame PTS: %"
+               GST_TIME_FORMAT "\n", GST_TIME_ARGS (buffer_pts));
+    }
+
+    // Check for mid-delay snapshot trigger
+    if (ctx->enable_snapshot_streams && !ctx->prebuffer_mid_snapshot_taken &&
+        GST_CLOCK_TIME_IS_VALID (ctx->prebuffer_mid_pts) &&
+        GST_CLOCK_TIME_IS_VALID (buffer_pts) &&
+        buffer_pts >= ctx->prebuffer_mid_pts) {
+
+      ctx->prebuffer_mid_snapshot_taken = TRUE;
+
+      // Trigger snapshot in a separate thread to avoid blocking the probe
+      g_timeout_add(1, (GSourceFunc)trigger_snapshot, ctx);
+    }
+
+    // Check if we've reached the pre-buffering delay duration
+    if (GST_CLOCK_TIME_IS_VALID (ctx->prebuffer_end_pts) &&
+        GST_CLOCK_TIME_IS_VALID (buffer_pts) &&
+        buffer_pts >= ctx->prebuffer_end_pts) {
+
+      // First time reaching the initial calculated end time - signal to link Stream 3
+      if (!ctx->prebuffer_ended) {
+        ctx->prebuffer_ended = TRUE;
+
+        // Signal main thread to link Stream 3 and update prebuffer_end_pts
+        g_mutex_lock (&ctx->lock);
+        g_cond_signal (&ctx->eos_signal);
+        g_mutex_unlock (&ctx->lock);
+
+        // Wait for prebuffer_end_pts to be updated to Stream 3's first PTS
+        return GST_PAD_PROBE_OK;
+      }
+
+      // Check if prebuffer_end_pts has been updated to Stream 3's first PTS
+      g_mutex_lock (&ctx->lock);
+      gboolean pts_updated = (ctx->first_live_pts != GST_CLOCK_TIME_NONE &&
+                              ctx->prebuffer_end_pts == ctx->first_live_pts);
+      g_mutex_unlock (&ctx->lock);
+
+      // Only stop if prebuffer_end_pts has been updated to match Stream 3's first PTS
+      if (pts_updated) {
+        g_print ("[INFO] Pre-buffering ended");
+        // Send EOS to this encoder to stop it
+        GstElement *encoder = gst_pad_get_parent_element (pad);
+        if (encoder) {
+          gst_element_send_event (encoder, gst_event_new_eos ());
+          gst_object_unref (encoder);
+        }
+
+        // Drop this frame and all subsequent frames
+        return GST_PAD_PROBE_DROP;
+      }
+
+      return GST_PAD_PROBE_OK;
+    }
+  }
+
+  return GST_PAD_PROBE_OK;
+}
+
+// Probe to control exact recording duration based on frame timestamps
+static GstPadProbeReturn
+duration_control_probe (GstPad * pad, GstPadProbeInfo * info, gpointer user_data)
+{
+  GstAppContext *ctx = (GstAppContext *) user_data;
+
+  if (GST_PAD_PROBE_INFO_TYPE (info) & GST_PAD_PROBE_TYPE_BUFFER) {
+    GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER (info);
+    GstClockTime buffer_pts = GST_BUFFER_PTS (buffer);
+
+    // Check for mid-recording snapshot trigger
+    if (ctx->enable_snapshot_streams && !ctx->mid_snapshot_taken &&
+        GST_CLOCK_TIME_IS_VALID (ctx->recording_mid_pts) &&
+        GST_CLOCK_TIME_IS_VALID (buffer_pts) &&
+        buffer_pts >= ctx->recording_mid_pts) {
+
+      ctx->mid_snapshot_taken = TRUE;
+
+      // Trigger snapshot in a separate thread to avoid blocking the probe
+      g_timeout_add(1, (GSourceFunc)trigger_snapshot, ctx);
+    }
+
+    // Check if we've reached the target recording duration
+    if (GST_CLOCK_TIME_IS_VALID (ctx->recording_end_pts) &&
+        GST_CLOCK_TIME_IS_VALID (buffer_pts) &&
+        buffer_pts >= ctx->recording_end_pts) {
+
+      // Send EOS to this encoder to stop it
+      GstElement *encoder = gst_pad_get_parent_element (pad);
+      if (encoder) {
+        gst_element_send_event (encoder, gst_event_new_eos ());
+        gst_object_unref (encoder);
+      }
+
+      // Signal completion only once
+      g_mutex_lock (&ctx->lock);
+      if (!ctx->recording_ended) {
+        ctx->recording_ended = TRUE;
+        g_cond_signal (&ctx->eos_signal);
+      }
+      g_mutex_unlock (&ctx->lock);
+
+      // Drop this frame and all subsequent frames
+      return GST_PAD_PROBE_DROP;
+    }
+  }
+
   return GST_PAD_PROBE_OK;
 }
 
@@ -1145,6 +1293,10 @@ link_stream (GstAppContext * appctx, GstStreamInf * stream)
 static void
 unlink_stream (GstAppContext * appctx, GstStreamInf * stream)
 {
+  /* Deactivate the pad */
+  if (stream->qmmf_pad)
+    gst_pad_set_active (stream->qmmf_pad, FALSE);
+
   /* Unlink all elements for this stream */
   if (stream->is_dummy) {
     release_dummy_stream (appctx, stream);
@@ -1156,10 +1308,6 @@ unlink_stream (GstAppContext * appctx, GstStreamInf * stream)
     release_snapshot_stream (appctx, stream);
   else
     release_appsink_stream (appctx, stream);
-
-  /* Deactivate the pad */
-  if (stream->qmmf_pad)
-    gst_pad_set_active (stream->qmmf_pad, FALSE);
 
   g_print ("\n");
 }
@@ -1484,7 +1632,7 @@ start_pushing_buffers (gpointer user_data)
   GstAppContext *appctx = static_cast<GstAppContext *> (user_data);
 
   g_print ("[INFO] Starting to push queued buffers to appsrc pipeline\n");
-  appctx->process_src_id = g_timeout_add(16, process_queued_buffers, appctx);
+  appctx->process_src_id = g_timeout_add(10, process_queued_buffers, appctx);
 
   return FALSE;
 }
@@ -1544,6 +1692,15 @@ prebuffering_usecase (GstAppContext *appctx)
     g_printerr ("Failed to create live stream\n");
     release_stream (appctx, stream_inf_1);
     return;
+  }
+
+  if (stream_inf_2->capsfilter) {
+    GstPad *src_pad = gst_element_get_static_pad(stream_inf_2->capsfilter, "src");
+    if (src_pad) {
+      gst_pad_add_probe (src_pad, GST_PAD_PROBE_TYPE_BUFFER,
+          prebuffer_delay_control_probe, appctx, NULL);
+      gst_object_unref (src_pad);
+    }
   }
 
   g_print ("[INFO] Creating live encoder stream(recording) (1920x1080)\n");
@@ -1631,27 +1788,22 @@ prebuffering_usecase (GstAppContext *appctx)
       return;
     }
   }
-
   g_print ("[INFO] Waiting %u seconds before switching to live recording...\n",
       appctx->delay_to_start_recording);
 
-  interruptible_sleep (appctx, appctx->delay_to_start_recording/2);
+  g_mutex_lock (&appctx->lock);
+  while (!appctx->prebuffer_ended && !appctx->exit) {
+    // Wait with 1-second timeout to check periodically
+    gint64 wait_time = g_get_monotonic_time () + G_GINT64_CONSTANT (1000000);
+    g_cond_wait_until (&appctx->eos_signal, &appctx->lock, wait_time);
+  }
+  g_mutex_unlock (&appctx->lock);
   if (check_for_exit (appctx)) {
     exit_cleanup(appctx);
     return;
   }
 
-  if (appctx->enable_snapshot_streams)
-    if (!trigger_snapshot (appctx))
-      g_printerr ("[WARN] Failed to Trigger Snapshot \n");
-
-
-  interruptible_sleep (appctx, appctx->delay_to_start_recording/2);
-  if (check_for_exit (appctx)) {
-    exit_cleanup(appctx);
-    return;
-  }
-
+  // Pre-buffering delay has ended based on PTS - immediately link live streams
   g_print ("[INFO] Linking live stream back to pipeline\n");
   link_stream (appctx, stream_inf_3);
   link_stream (appctx, stream_inf_4);
@@ -1661,42 +1813,74 @@ prebuffering_usecase (GstAppContext *appctx)
   while (appctx->first_live_pts == GST_CLOCK_TIME_NONE && !appctx->exit)
     g_cond_wait (&appctx->live_pts_signal, &appctx->lock);
 
+  // Update prebuffer_end_pts to match Stream 3's first PTS for perfect synchronization
+  if (GST_CLOCK_TIME_IS_VALID (appctx->first_live_pts)) {
+    appctx->prebuffer_end_pts = appctx->first_live_pts;
+  }
+
   g_mutex_unlock (&appctx->lock);
+
+  // Calculate recording duration based on frame timestamps
+  appctx->recording_start_pts = appctx->first_live_pts;
+  appctx->recording_end_pts = appctx->recording_start_pts +
+                              (appctx->record_duration * GST_SECOND);
+  appctx->recording_mid_pts = appctx->recording_start_pts +
+                              ((appctx->record_duration * GST_SECOND) / 2);
+  appctx->recording_ended = FALSE;
+  appctx->mid_snapshot_taken = FALSE;
+
+  g_print ("[INFO] Live recording will run from %" GST_TIME_FORMAT
+           " to %" GST_TIME_FORMAT " (duration: %u seconds)\n",
+           GST_TIME_ARGS (appctx->recording_start_pts),
+           GST_TIME_ARGS (appctx->recording_end_pts),
+           appctx->record_duration);
+
+  // Add duration control probes to live encoder streams NOW that recording_end_pts is set
+  if (stream_inf_3->capsfilter) {
+    GstPad *src_pad = gst_element_get_static_pad(stream_inf_3->capsfilter, "src");
+    if (src_pad) {
+      gst_pad_add_probe (src_pad, GST_PAD_PROBE_TYPE_BUFFER,
+                         duration_control_probe, appctx, NULL);
+      gst_object_unref (src_pad);
+    }
+  }
+
+  if (stream_inf_4->capsfilter) {
+    GstPad *src_pad = gst_element_get_static_pad(stream_inf_4->capsfilter, "src");
+    if (src_pad) {
+      gst_pad_add_probe (src_pad, GST_PAD_PROBE_TYPE_BUFFER,
+                         duration_control_probe, appctx, NULL);
+      gst_object_unref (src_pad);
+    }
+  }
 
   appctx->switch_to_live = TRUE;
 
   // Start pushing buffers
   start_pushing_buffers (appctx);
 
-  // Unlink appsink stream (prebuffered) after switching to live
-  unlink_stream (appctx, stream_inf_1);
-  unlink_stream (appctx, stream_inf_2);
+  // release appsink stream (prebuffered) after switching to live
+  release_stream (appctx, stream_inf_1);
+  release_stream (appctx, stream_inf_2);
 
-  // Record for specified duration
   g_print ("[INFO] Live recording started for %u seconds\n",
-      appctx->record_duration);
+    appctx->record_duration);
 
-  interruptible_sleep (appctx, appctx->record_duration/2);
-  if (check_for_exit (appctx)) {
-    exit_cleanup(appctx);
-    return;
-  }
 
-  if (appctx->enable_snapshot_streams) {
-    if (!trigger_snapshot (appctx))
-      g_printerr ("[WARN] Failed to Trigger Snapshot \n");
+  // Wait for recording to complete based on frame timestamps (not wall-clock time)
+  g_print ("[INFO] Waiting for recording to complete based on frame timestamps...\n");
+  g_mutex_lock (&appctx->lock);
+  while (!appctx->recording_ended && !appctx->exit) {
+    // Wait with 1-second timeout to check periodically
+    gint64 wait_time = g_get_monotonic_time () + G_GINT64_CONSTANT (1000000);
+    g_cond_wait_until (&appctx->eos_signal, &appctx->lock, wait_time);
   }
+  g_mutex_unlock (&appctx->lock);
 
-  interruptible_sleep (appctx, appctx->record_duration/2);
-  if (check_for_exit (appctx)) {
-    exit_cleanup(appctx);
-    return;
-  }
+  g_print ("[INFO] Recording completed at exactly %u seconds\n",
+           appctx->record_duration);
 
   clear_buffers_queue (appctx);
-
-  link_stream (appctx, stream_inf_1);
-  link_stream (appctx, stream_inf_2);
 
   // Send EOS to allow proper flushing
   g_print ("[INFO] Sending EOS event to main pipeline\n");
@@ -1717,8 +1901,6 @@ prebuffering_usecase (GstAppContext *appctx)
       GST_CLOCK_TIME_NONE);
 
   // Release streams and pads
-  release_stream (appctx, stream_inf_1);
-  release_stream (appctx, stream_inf_2);
   release_stream (appctx, stream_inf_3);
   release_stream (appctx, stream_inf_4);
   if (appctx->enable_snapshot_streams) {
@@ -1783,6 +1965,18 @@ main (gint argc, gchar * argv[])
   appctx->first_live_pts = GST_CLOCK_TIME_NONE;
   appctx->switch_to_live = FALSE;
   appctx->record_duration = RECORD_DURATION;
+  // Initialize duration control fields
+  appctx->recording_start_pts = GST_CLOCK_TIME_NONE;
+  appctx->recording_end_pts = GST_CLOCK_TIME_NONE;
+  appctx->recording_mid_pts = GST_CLOCK_TIME_NONE;
+  appctx->recording_ended = FALSE;
+  appctx->mid_snapshot_taken = FALSE;
+  // Initialize pre-buffering delay control fields
+  appctx->prebuffer_start_pts = GST_CLOCK_TIME_NONE;
+  appctx->prebuffer_end_pts = GST_CLOCK_TIME_NONE;
+  appctx->prebuffer_mid_pts = GST_CLOCK_TIME_NONE;
+  appctx->prebuffer_ended = FALSE;
+  appctx->prebuffer_mid_snapshot_taken = FALSE;
   appctx->jpeg_snapshot_width = JPEG_SNAPHOT_WIDTH;
   appctx->jpeg_snapshot_height = JPEG_SNAPHOT_HEIGHT;
   appctx->raw_snapshot_width = RAW_SNAPHOT_WIDTH;
