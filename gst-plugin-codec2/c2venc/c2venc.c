@@ -9,6 +9,8 @@
 
 #include "c2venc.h"
 
+#include <unistd.h>
+
 #include <gst/utils/common-utils.h>
 #include <gst/video/video-utils.h>
 
@@ -1082,6 +1084,8 @@ gst_c2_venc_stop (GstVideoEncoder * encoder)
   g_list_free_full (c2venc->headers, (GDestroyNotify) gst_buffer_unref);
   c2venc->headers = NULL;
 
+  c2venc->prevfd = -1;
+
   GST_DEBUG_OBJECT (c2venc, "Engine stoped");
   return TRUE;
 }
@@ -1468,6 +1472,7 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   GstC2VEncoder *c2venc = GST_C2_VENC (encoder);
   GstClockTimeDiff deadline;
   GstC2QueueItem item;
+  gint fd = -1;
 
   // GAP input buffer, drop the frame.
   if ((gst_buffer_get_size (frame->input_buffer) == 0) &&
@@ -1512,6 +1517,56 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
 
   if (c2venc->isgbm)
     GST_BUFFER_FLAG_SET (frame->input_buffer, GST_VIDEO_BUFFER_FLAG_GBM);
+
+  // Get FD and check whether to duplicate it based on previous stored FD.
+  if (gst_is_fd_memory (gst_buffer_peek_memory (frame->input_buffer, 0)))
+    fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (frame->input_buffer, 0));
+
+  if ((fd != -1) && (c2venc->prevfd == fd)) {
+    GstMemory *mem = NULL;
+    GstBuffer *newbuf = NULL;
+    GstVideoMeta *oldmeta = NULL;
+
+    if (c2venc->allocator == NULL) {
+      GST_ERROR_OBJECT (c2venc, "Failed to create allocator for copy frame");
+      return GST_FLOW_ERROR;
+    }
+
+    mem = gst_dmabuf_allocator_alloc (c2venc->allocator, dup (fd),
+        gst_buffer_get_size (frame->input_buffer));
+
+    if (mem == NULL) {
+      GST_ERROR_OBJECT (c2venc, "Failed to alloc memory for copy frame");
+      return GST_FLOW_ERROR;
+    }
+
+    newbuf = gst_buffer_new ();
+
+    if (newbuf == NULL) {
+      GST_ERROR_OBJECT (c2venc, "Failed to create buffer for copy frame");
+      gst_object_unref (mem);
+      return GST_FLOW_ERROR;
+    }
+
+    gst_buffer_append_memory (newbuf, mem);
+
+    GST_BUFFER_PTS (newbuf) = GST_BUFFER_PTS (frame->input_buffer);
+    GST_BUFFER_DURATION (newbuf) = GST_BUFFER_DURATION (frame->input_buffer);
+    GST_BUFFER_OFFSET_END (newbuf) = GST_BUFFER_OFFSET_END (frame->input_buffer);
+
+    oldmeta = gst_buffer_get_video_meta (frame->input_buffer);
+
+    if (oldmeta != NULL) {
+      gst_buffer_add_video_meta_full (newbuf, oldmeta->flags, oldmeta->format,
+          oldmeta->width, oldmeta->height, oldmeta->n_planes, oldmeta->offset,
+          oldmeta->stride);
+    }
+
+    gst_buffer_add_parent_buffer_meta (newbuf, frame->input_buffer);
+    g_clear_pointer (&frame->input_buffer, gst_buffer_unref);
+    frame->input_buffer = newbuf;
+  }
+  c2venc->prevfd = fd;
 
   // This mutex was locked in the base class before call this function.
   // Needs to be unlocked when waiting for any pending buffers during drain.
@@ -1974,6 +2029,9 @@ gst_c2_venc_finalize (GObject * object)
 
   gst_buffer_list_unref (c2venc->incomplete_buffers);
 
+  if (c2venc->allocator)
+    gst_object_unref (c2venc->allocator);
+
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (c2venc));
 }
 
@@ -2219,6 +2277,8 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->headers = NULL;
 
   c2venc->incomplete_buffers = gst_buffer_list_new ();
+  c2venc->prevfd = -1;
+  c2venc->allocator = gst_dmabuf_allocator_new ();
 
   c2venc->prevts = GST_CLOCK_TIME_NONE;
   c2venc->duration = GST_CLOCK_TIME_NONE;

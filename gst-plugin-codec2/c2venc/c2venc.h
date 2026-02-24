@@ -52,6 +52,10 @@ struct _GstC2VEncoder {
   GList                *headers;
   /// List of incomplete buffers.
   GstBufferList        *incomplete_buffers;
+  /// Previous fd using in copy frame encoding
+  gint                 prevfd;
+  /// Allocator with dup fd used for copy frame encoding
+  GstAllocator         *allocator;
 
   /// Number of subframes contained in one buffer.
   guint32              n_subframes;
