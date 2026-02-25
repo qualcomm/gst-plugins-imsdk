@@ -44,5 +44,4 @@ usr/bin/gst-transform-example
 usr/bin/gst-video-playback-example
 usr/bin/gst-video-transcode-example
 usr/bin/gst-videocodec-concurrent-playback
-usr/bin/gst-webrtc-sendrecv-example
 usr/bin/gst-weston-composition-example

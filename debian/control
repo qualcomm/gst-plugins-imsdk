@@ -20,7 +20,6 @@ Build-Depends:
  libhiredis-dev,
  qcom-video-ctrl-dev,
  libsoup2.4-dev,
- libgstreamer-plugins-bad1.0-dev,
  libeigen3-dev,
  libopencv-dev,
  opencl-c-headers,
