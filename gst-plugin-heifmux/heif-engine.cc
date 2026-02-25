@@ -228,6 +228,43 @@ gst_heif_get_tile_info (GstHeifEngine * engine, GstBuffer * buffer)
   return pres == GST_H265_PARSER_OK ? TRUE : FALSE;
 }
 
+static gboolean
+gst_heif_get_tile_length (const guint8 * data, gsize size, guint *length)
+{
+  GstH265Parser *parser;
+  GstH265NalUnit nalu;
+  GstH265ParserResult pres;
+  gint vpscount = 0;
+
+  *length = 0;
+  parser = gst_h265_parser_new();
+  g_return_val_if_fail (parser != NULL, FALSE);
+  memset (&nalu, 0, sizeof (nalu));
+
+  do {
+    pres = gst_h265_parser_identify_nalu (parser, data,
+        nalu.offset + nalu.size, size, &nalu);
+    if (pres == GST_H265_PARSER_NO_NAL_END)
+      pres = GST_H265_PARSER_OK;
+
+    if (nalu.type == GST_H265_NAL_VPS) {
+      vpscount++;
+
+      if (vpscount == 1) {
+        // use the total size in case there is only one tile.
+        *length = size;
+      } else if (vpscount == 2) {
+        // update the first tile length.
+        *length = nalu.offset - 4;
+        break;
+      }
+    }
+  } while (pres == GST_H265_PARSER_OK);
+
+  gst_h265_parser_free (parser);
+  return *length > 0 ? TRUE : FALSE;
+}
+
 static heif_error
 gst_heif_stream_write (heif_context * ctx, const void * data, size_t size,
     void * userdata)
@@ -284,8 +321,9 @@ gst_heif_engine_execute (GstHeifEngine * engine, GstBuffer * inbuf,
   heif_image_handle *gridimage = nullptr;
   heif_writer writer;
   uint32_t columns = 0, rows = 0;
+  uint32_t memidx = 0, length = 0, offset = 0;
   heif_error error;
-  gboolean ret = TRUE;
+  gboolean nextmem = TRUE, ret = TRUE;
 
   vmeta = gst_buffer_get_video_meta (inbuf);
   g_return_val_if_fail (vmeta, FALSE);
@@ -317,7 +355,7 @@ gst_heif_engine_execute (GstHeifEngine * engine, GstBuffer * inbuf,
   columns = engine->width / engine->twidth;
   rows = engine->height / engine->theight;
 
-  error = engine->add_grid_image (engine->ctx, engine->width, engine->height,
+  error = engine->add_grid_image (engine->ctx, vmeta->width, vmeta->height,
       columns, rows, NULL, &gridimage);
   if (error.code != heif_error_Ok) {
     GST_ERROR ("Failed to create grid image with error %d", error.code);
@@ -335,28 +373,52 @@ gst_heif_engine_execute (GstHeifEngine * engine, GstBuffer * inbuf,
   // Add encoded tiles to grid image.
   for (uint32_t ty = 0; ty < rows; ty++) {
     for (uint32_t tx = 0; tx < columns; tx++) {
-      mem = gst_buffer_get_memory (inbuf, tx + ty * columns);
+      if (nextmem) {
+        mem = gst_buffer_get_memory (inbuf, memidx++);
+        nextmem = FALSE;
 
-      if (mem == NULL) {
-        GST_ERROR ("Failed to get memory at tile (%u, %u)", tx, ty);
-        ret = FALSE;
-        goto clean;
+        if (mem == NULL) {
+          GST_ERROR ("Failed to get %dth memory", memidx);
+          ret = FALSE;
+          goto clean;
+        }
+
+        if (!gst_memory_map (mem, &map, GST_MAP_READ)) {
+          GST_ERROR ("Cannot map memory");
+          gst_memory_unref (mem);
+          ret = FALSE;
+          goto clean;
+        }
       }
 
-      if (!gst_memory_map (mem, &map, GST_MAP_READ)) {
-        GST_ERROR ("Cannot map memory");
+      ret = gst_heif_get_tile_length (map.data + offset, map.size - offset, &length);
+      if (ret == FALSE) {
+        GST_ERROR ("Failed to get tile length!");
+        gst_memory_unmap (mem, &map);
         gst_memory_unref (mem);
-        ret = FALSE;
         goto clean;
       }
 
       error = engine->add_encoded_image_tile (
-          engine->ctx, gridimage, tx, ty, map.data, map.size);
-      gst_memory_unmap (mem, &map);
-      gst_memory_unref (mem);
+          engine->ctx, gridimage, tx, ty, map.data + offset, length);
+
+      if (offset + length == map.size) {
+        nextmem = TRUE;
+        offset = 0;
+        length = 0;
+        gst_memory_unmap (mem, &map);
+        gst_memory_unref (mem);
+      } else {
+        offset += length;
+      }
 
       if (error.code != heif_error_Ok) {
         GST_ERROR ("Failed to add image tile with error %d", error.code);
+        // Clean up memory if still mapped.
+        if (!nextmem) {
+          gst_memory_unmap (mem, &map);
+          gst_memory_unref (mem);
+        }
         ret = FALSE;
         goto clean;
       }
