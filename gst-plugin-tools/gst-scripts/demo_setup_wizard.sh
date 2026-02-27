@@ -79,7 +79,7 @@ do
     case $input in
         "1")
             echo "Selected model: Detection - FootTrackNet Quantized!"
-            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/foot_track_net_quantized.tflite ! queue ! qtimlpostprocess results=10 module=qpd labels=/etc/labels/foot_track_net.json settings=/etc/labels/foot_track_net_settings.json ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
+            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/foot_track_net_quantized.tflite ! queue ! qtimlpostprocess results=10 module=qpd labels=/etc/labels/foot_track_net.json settings=/etc/labels/foot_track_net_settings.json ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay ! queue ! '
             help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/foot_track_net\n"
             help+="Make sure to select your device, then select 'TFLite' under 'Choose runtime' and 'w8a8' under 'Choose Precision' before downloading!\n"
             help+="Push the Model file on the device at '/etc/models/' and name it 'foot_track_net_quantized.tflite'\n"
