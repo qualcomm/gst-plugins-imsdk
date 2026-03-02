@@ -508,17 +508,14 @@ gst_qmmfsrc_create_video_static_src_caps () {
   g_string_append (static_src_caps, "video/x-raw, format = (string) " \
       "{ NV12, NV16, NV12_Q08C, RGB");
 
-  if (gst_qmmfsrc_check_format (FORMAT_YUY2))
+  if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_YUY2))
     g_string_append (static_src_caps, ", YUY2");
 
-  if (gst_qmmfsrc_check_format (FORMAT_UYVY))
+  if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_UYVY))
     g_string_append (static_src_caps, ", UYVY");
 
-  if (gst_qmmfsrc_check_format (FORMAT_P010_10LE))
-    g_string_append (static_src_caps, ", P010_10LE");
-
-  if (gst_qmmfsrc_check_format (FORMAT_NV12_Q10LE32C))
-    g_string_append (static_src_caps, ", NV12_Q10LE32C");
+  if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
+    g_string_append (static_src_caps, ", P010_10LE, NV12_Q10LE32C");
 
   g_string_append_printf (static_src_caps,
     " }, "
@@ -567,14 +564,8 @@ gst_qmmfsrc_create_image_static_src_caps () {
   g_string_append (static_src_caps, "video/x-raw, format = (string) " \
       "{ NV21");
 
-  if (gst_qmmfsrc_check_format (FORMAT_NV12))
-    g_string_append (static_src_caps, ", NV12");
-
-  if (gst_qmmfsrc_check_format (FORMAT_P010_10LE))
-    g_string_append (static_src_caps, ", P010_10LE");
-
-  if (gst_qmmfsrc_check_format (FORMAT_NV12_Q10LE32C))
-    g_string_append (static_src_caps, ", NV12_Q10LE32C");
+  if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
+    g_string_append (static_src_caps, ", NV12, P010_10LE, NV12_Q10LE32C");
 
   g_string_append_printf (static_src_caps,
     " }, "
@@ -617,14 +608,12 @@ gst_qmmfsrc_video_src_caps (void)
           "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "
           "format = (string) { NV12, NV16, NV12_Q08C");
 
-      if (gst_qmmfsrc_check_format (FORMAT_YUY2))
+      if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_YUY2))
         g_string_append (gbm_caps_str, ", YUY2");
-      if (gst_qmmfsrc_check_format (FORMAT_UYVY))
+      if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_UYVY))
         g_string_append (gbm_caps_str, ", UYVY");
-      if (gst_qmmfsrc_check_format (FORMAT_P010_10LE))
-        g_string_append (gbm_caps_str, ", P010_10LE");
-      if (gst_qmmfsrc_check_format (FORMAT_NV12_Q10LE32C))
-        g_string_append (gbm_caps_str, ", NV12_Q10LE32C");
+      if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
+        g_string_append (gbm_caps_str, ", P010_10LE, NV12_Q10LE32C");
 
       g_string_append_printf (gbm_caps_str,
           " }, "
@@ -666,12 +655,8 @@ gst_qmmfsrc_image_src_caps (void)
           "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "
           "format = (string) { NV21");
 
-      if (gst_qmmfsrc_check_format (FORMAT_NV12))
-        g_string_append (gbm_caps_str, ", NV12, NV12_Q08C");
-      if (gst_qmmfsrc_check_format (FORMAT_P010_10LE))
-        g_string_append (gbm_caps_str, ", P010_10LE");
-      if (gst_qmmfsrc_check_format (FORMAT_NV12_Q10LE32C))
-        g_string_append (gbm_caps_str, ", NV12_Q10LE32C");
+      if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
+        g_string_append (gbm_caps_str, ", NV12, NV12_Q08C, P010_10LE, NV12_Q10LE32C");
 
       g_string_append_printf (gbm_caps_str,
           " }, "

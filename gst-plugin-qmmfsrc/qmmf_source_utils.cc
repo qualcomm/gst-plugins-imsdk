@@ -1427,7 +1427,7 @@ gst_qmmfsrc_get_raw_resolution_range (GstQmmfSrcResolutionRange *range)
 }
 
 gboolean
-gst_qmmfsrc_check_format (PixFormat format) {
+gst_qmmfsrc_check_format (Formats format) {
   GList *keys = g_hash_table_get_keys (gst_qmmf_get_static_metas ());
 
   // If keys are NULL, return TRUE to support all formats
