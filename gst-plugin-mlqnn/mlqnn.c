@@ -39,6 +39,8 @@ G_DEFINE_TYPE (GstMLQnn, gst_ml_qnn, GST_TYPE_BASE_TRANSFORM);
     "neural-network/tensors, "                    \
     "type = (string) " GST_ML_QNN_TENSOR_TYPES
 
+#define RETRY_ON_FAILURE_CNT 3
+
 enum
 {
   PROP_0,
@@ -504,7 +506,14 @@ gst_ml_qnn_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   ts_begin = gst_util_get_timestamp ();
 
-  success = gst_ml_qnn_engine_execute (mlqnn->engine, &inframe, &outframe);
+  for (guint i = 0; i < RETRY_ON_FAILURE_CNT && success == FALSE; i++) {
+    success = gst_ml_qnn_engine_execute (mlqnn->engine, &inframe, &outframe);
+
+    if (!success) {
+      GST_ERROR_OBJECT (mlqnn, "Failed to execute inference, retrying %d/%d!",
+        i + 1, RETRY_ON_FAILURE_CNT);
+    }
+  }
 
   ts_end = gst_util_get_timestamp ();
 
