@@ -730,6 +730,12 @@ gst_batch_sink_setcaps (GstBatch * batch, GstPad * pad, GstCaps * caps)
   // Take the intersected caps as base src caps for further manipulations.
   srccaps = g_steal_pointer (&intersect);
 
+  // Include the current pad's framerate in the framerate selection.
+  // The intersection above brings the current pad's framerate into srccaps;
+  // extract it here so it is compared alongside all other pads in the loop.
+  srccaps = gst_caps_make_writable (srccaps);
+  gst_caps_extract_video_framerate (srccaps, &framerate);
+
   GST_BATCH_LOCK (batch);
 
   // Iterate over all sink pads, check if negotiated and verify their caps.
