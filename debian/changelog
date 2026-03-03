@@ -1,3 +1,337 @@
+gst-plugins-qti-oss (1.8.1) noble; urgency=medium
+
+  [ QCTECMDR Service ]
+  * Merge "heifmux: correctly handle multiple tiles per memory block for 4K"
+  * Merge "gst-ai-sample-app: Enable ONNX model support in sample app."
+
+  [ Kin Zhao ]
+  * heifmux: correctly handle multiple tiles per memory block for 4K
+
+  [ Muthumula Sai Harshith Reddy ]
+  * gst-ai-sample-app: Enable ONNX model support in sample app.
+
+  [ QCTECMDR Service ]
+  * Merge "Remove gst-webrtc-sendrecv-example from 2.0 build as webrtc plugin support is not provided"
+  * Merge "mltools (cmake): Fix header detection for QNN/SNPE and add TFLite fallback"
+  * Merge "gst-plugin-qmmfsrc : add fallback for missing metadata"
+  * Merge "mltflite (cmake): Extract and expose TensorFlow Lite version macros"
+  * Merge "voverlay: Increase max buffer limit from 30 to 50"
+
+  [ Raja Ganapathi Busam ]
+  * mltools (cmake): Fix header detection for QNN/SNPE and add TFLite fallback
+  * mltflite (cmake): Extract and expose TensorFlow Lite version macros
+
+  [ QCTECMDR Service ]
+  * Merge "build (fix): compilation issues for ARMv7"
+  * Merge "mlonnx: Disable compilation on mainline build"
+
+  [ Muthumula Sai Harshith Reddy ]
+  * Remove gst-webrtc-sendrecv-example from 2.0 build as webrtc plugin support is not provided
+
+  [ shukulk ]
+  * gst-plugin-qmmfsrc : add fallback for missing metadata
+
+  [ Pratik Pachange ]
+  * mlonnx: Disable compilation on mainline build
+
+  [ Tushar Darote ]
+  * gst-plugin-mltflite: Fix TFLite dependency checking logic
+
+  [ QCTECMDR Service ]
+  * Merge "gst-transform-example: OOM due to mmap capture vs dmabuf output"
+  * Merge "base: Improve camera base install path"
+
+  [ shanmaju ]
+  * gst-transform-example: OOM due to mmap capture vs dmabuf output
+
+  [ Raja Ganapathi Busam ]
+  * build (fix): compilation issues for ARMv7
+
+  [ QCTECMDR Service ]
+  * Merge "onnx: Onnxruntime inference plugin to support onnx models"
+  * Merge "gst-sample-apps: Remove hardcoding of env variables"
+
+  [ Pratik Pachange ]
+  * onnx: Onnxruntime inference plugin to support onnx models
+
+  [ Ivan Evlogiev ]
+  * base: Improve camera base install path
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-mltflite: Update pkg-config lookup for TFLite 2.20"
+  * Merge "qmmfsrc plugin : remove preprocessor directives"
+
+  [ shukulk ]
+  * qmmfsrc plugin : remove preprocessor directives
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: add qmmf_camera_metadata pkgconfig check"
+
+  [ Shyam ]
+  * qmmfsrc: add qmmf_camera_metadata pkgconfig check
+
+  [ QCTECMDR Service ]
+  * Merge "base: Improve dependant libs and headers installation"
+
+  [ Tushar Darote ]
+  * gst-plugin-mltflite: Update pkg-config lookup for TFLite 2.20
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-daisychain-detection-classification: Adding yuy2 video format support"
+  * Merge "gst-ai-superresolution: Adding queue for extra buffering"
+  * Merge "objtracker: Update Object tracker to handle tracks optimially"
+  * Merge "heifmux: Fix memory leak in input buffer handling"
+
+  [ Rahul Khandelwal ]
+  * gst-sample-apps: Remove hardcoding of env variables
+
+  [ Ivan Evlogiev ]
+  * base: Improve dependant libs and headers installation
+
+  [ Kin Zhao ]
+  * heifmux: Fix memory leak in input buffer handling
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-qmmfsrc: Replace the colorimetry macro"
+
+  [ skomakul ]
+  * gst-plugin-qmmfsrc: Replace the colorimetry macro
+
+  [ Rahul Khandelwal ]
+  * gst-ai-daisychain-detection-classification: Adding yuy2 video format support
+
+  [ Linux Build Service Account ]
+  * Merge "cmake: Update GST_PLUGINS_QTI_OSS_INSTALL_* paths" into le-gst.lnx.2.1
+
+  [ Raja Ganapathi Busam ]
+  * gst-plugin-objtracker: Relocate ByteTrack module and fix packaging
+
+  [ Rahul Khandelwal ]
+  * gst-ai-superresolution: Adding queue for extra buffering
+
+  [ QCTECMDR Service ]
+  * Merge "build(cmake): Update the module installation paths"
+  * Merge "bytetrack: use pkg-config for Eigen3 include path"
+  * Merge "mlaconverter (fix): Use float literal in Eigen max operation"
+  * Merge "gst-plugin-qmmfsrc: fix reference leak."
+
+  [ Raja Ganapathi Busam ]
+  * bytetrack: use pkg-config for Eigen3 include path
+  * mlaconverter (fix): Use float literal in Eigen max operation
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-qmmfsrc: add safety check to avoid segmentation fault."
+
+  [ Tushar Patra Jamula ]
+  * cmake: Update GST_PLUGINS_QTI_OSS_INSTALL_* paths
+  * build(cmake): Update the module installation paths
+
+  [ QCTECMDR Service ]
+  * Merge "build(cmake): Align plugin library names and module install paths with GStreamer"
+
+  [ Tushar Patra Jamula ]
+  * build(cmake): Align plugin library names and module install paths with GStreamer
+
+  [ Raja Ganapathi Busam ]
+  * cmake: Fix compilation issues on mainline build
+
+  [ shukulk ]
+  * qtiqmmfsrc : fix undefined symbol
+
+  [ QCTECMDR Service ]
+  * Merge "github: Add repo governance files, templates, and CI workflows"
+
+  [ Girish K ]
+  * github: Add repo governance files, templates, and CI workflows
+
+  [ Tushar Patra Jamula ]
+  * mlpostprocess: Honor the alignment requirements from downstream
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-msgbroker: Generate versioned libs for msg protocols"
+  * Merge "gst-plugin-qmmfsrc: Modify check between format and colorspace."
+
+  [ Bala Sai Kosuri ]
+  * gst-plugin-msgbroker: Generate versioned libs for msg protocols
+
+  [ QCTECMDR Service ]
+  * Merge "voverlay: fix labels height"
+  * Merge "gst-plugin-msgbroker: Fixed mosquitto lib name suffix"
+
+  [ Arindam Biswas ]
+  * gst-plugin-msgbroker: Fixed mosquitto lib name suffix
+
+  [ Filip Kardzhaliyski ]
+  * voverlay: fix labels height
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-voverlay: Remove 'engine' property"
+
+  [ Guangde ]
+  * qmmfsrc: Use camera metadata tag only if supported
+
+  [ Hongyong Huang ]
+  * gst-plugin-qmmfsrc: Modify check between format and colorspace.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugins-qti-oss: remove FD allocator"
+  * Merge "gst-plugin-mlpostprocess: Resolve compilation errors"
+
+  [ Mustafa Ali ]
+  * gst-plugin-mlpostprocess: Resolve compilation errors
+
+  [ Victor Sokolov ]
+  * gst-plugins-qti-oss: remove FD allocator
+
+  [ QCTECMDR Service ]
+  * Merge "base: ib2c: Fix fallback to 128 alignment"
+  * Merge "gimlpostprocess: fix segmentation mask corruption"
+
+  [ Konstantin Motov ]
+  * base: ib2c: Fix fallback to 128 alignment
+
+  [ QCTECMDR Service ]
+  * Merge "gst-fastswitch-example: add one option."
+
+  [ Filip Kardzhaliyski ]
+  * gimlpostprocess: fix segmentation mask corruption
+
+  [ QCTECMDR Service ]
+  * Merge "Fix blank frame issue in PPE Detection use case"
+
+  [ Siva Kesava Koppineedi ]
+  * gst-camera-hotplug-example: Fix for POV disconnect issue
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugins-qcom: Fix plugin describing defines in source"
+  * Merge "gst-plugins-qcom: Enable docker compilation"
+  * Merge "new hotplug app with signal handling implementation for pov removal"
+
+  [ shukulk ]
+  * new hotplug app with signal handling implementation for pov removal
+
+  [ QCTECMDR Service ]
+  * Merge "camimgreproc: move the set_format to caps event handling"
+  * Merge "mlpostprocess: Add NHWC support for segmentation models using YOLOv8-seg"
+
+  [ skomakul ]
+  * camimgreproc: move the set_format to caps event handling
+
+  [ QCTECMDR Service ]
+  * Merge "gst-camera-prebuffered-data-app"
+
+  [ shukulk ]
+  * gst-camera-prebuffered-data-app
+
+  [ Stilyan Uzunov ]
+  * gst-plugins-qcom: Fix plugin describing defines in source
+
+  [ Ziyi Gai ]
+  * gst-fastswitch-example: add one option.
+
+  [ QCTECMDR Service ]
+  * Merge "qtiqmmfsrc : add support for camera hotplug event"
+
+  [ Ivan Evlogiev ]
+  * gst-plugins-qcom: Enable docker compilation
+
+  [ QCTECMDR Service ]
+  * Merge "base, mlvconverter: Add support for batched planar RGBs"
+
+  [ Deepali Reddy Karra ]
+  * qtiqmmfsrc : add support for camera hotplug event
+
+  [ QCTECMDR Service ]
+  * Merge "ib2c: Handle format difference between freedreno and adreno"
+
+  [ Ziyi Gai ]
+  * gst-plugin-qmmfsrc: add safety check to avoid segmentation fault.
+  * gst-plugin-qmmfsrc: fix reference leak.
+
+  [ QCTECMDR Service ]
+  * Merge "mlmetaparser: Added AudioClassification support JSON module"
+  * Merge "mlpostprocess: Add MediaPipe pose landmark module"
+
+  [ shrasoma ]
+  * gst-plugin-voverlay: Remove 'engine' property
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: Add pad property for camera-meta attachment."
+  * Merge "mlpostprocess: Add MediaPipe pose detection module"
+  * Merge "mlpostprocess: Add 5-tensor support to PoseNet module"
+
+  [ Angel Hitov ]
+  * ib2c: Handle format difference between freedreno and adreno
+
+  [ QCTECMDR Service ]
+  * Merge "base: compilation fix"
+
+  [ skomakul ]
+  * qmmfsrc: Add pad property for camera-meta attachment.
+  * base: compilation fix
+
+  [ Stilyan Uzunov ]
+  * gst-plugins-qcom: Fix Global CMakeLists.txt file
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-codec2: Add hdr-mode property."
+  * Merge "gst-plugin-base: Add 10bit for IB2C."
+  * Merge "vcomposer: Move backend engine creation to change_state"
+
+  [ Ishu Raj ]
+  * Fix blank frame issue in PPE Detection use case
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: add support for attaching the camera meta with the buffer"
+  * Merge "heifmux: heif muxer plugin"
+
+  [ Yashaswini Guvvala ]
+  * mlpostprocess: Add MediaPipe pose detection module
+
+  [ Hongyong Huang ]
+  * gst-plugin-codec2: Add hdr-mode property.
+
+  [ Yashaswini Guvvala ]
+  * mlpostprocess: Add MediaPipe pose landmark module
+  * mlpostprocess: Add 5-tensor support to PoseNet module
+
+  [ Kin Zhao ]
+  * heifmux: heif muxer plugin
+
+  [ Hongyong Huang ]
+  * gst-plugin-base: Add 10bit for IB2C.
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: Remove compiletime definition"
+  * Merge "gst-plugins-qti-oss: Optimize CMake Configuration"
+
+  [ Stilyan Uzunov ]
+  * qmmfsrc: Remove compiletime definition
+
+  [ Tushar Darote ]
+  * gst-plugins-qti-oss: Optimize CMake Configuration
+
+  [ Tushar Patra Jamula ]
+  * voverlay: Increase max buffer limit from 30 to 50
+
+  [ nitepath ]
+  * objtracker: Update Object tracker to handle tracks optimially
+  * mlpostprocess: Add NHWC support for segmentation models using YOLOv8-seg
+
+  [ skomakul ]
+  * qmmfsrc: add support for attaching the camera meta with the buffer
+
+  [ Petar G. Georgiev ]
+  * base, mlvconverter: Add support for batched planar RGBs
+
+  [ Tushar Patra Jamula ]
+  * vcomposer: Move backend engine creation to change_state
+
+  [ Ventsislav Dzhenev ]
+  * mlmetaparser: Added AudioClassification support JSON module
+
+ -- Bala Sai Kosuri <bkosuri@qti.qualcomm.com>  Tue, 03 Mar 2026 16:32:03 +0530
+
 gst-plugins-qti-oss (1.8.0) noble; urgency=medium
 
   [ QCTECMDR Service ]
