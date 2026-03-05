@@ -7,9 +7,6 @@
 
 #define CAT_PERFORMANCE gst_ml_frame_get_category()
 
-G_DEFINE_BOXED_TYPE (GstMLFrame, gst_ml_frame,
-    (GBoxedCopyFunc) gst_ml_frame_ref, (GBoxedFreeFunc) gst_ml_frame_unref);
-
 static inline GstDebugCategory *
 gst_ml_frame_get_category (void)
 {
@@ -24,39 +21,36 @@ gst_ml_frame_get_category (void)
   return category;
 }
 
-GstMLFrame *
-gst_ml_frame_new (void)
+static GstMLFrame*
+gst_ml_frame_copy (GstMLFrame * frame)
 {
-  GstMLFrame *frame = g_slice_new (GstMLFrame);
+  GstMLFrame *newframe = NULL;
   guint idx = 0;
 
-  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++)
-    memset (&(frame->mapinfo[idx]), 0, sizeof (frame->mapinfo[idx]));
-
-  gst_ml_info_init (&frame->info);
-  g_atomic_ref_count_init (&frame->refcount);
-  return frame;
-}
-
-GstMLFrame*
-gst_ml_frame_ref (GstMLFrame * frame)
-{
   g_return_val_if_fail (frame != NULL, NULL);
-  g_atomic_ref_count_inc (&frame->refcount);
 
-  return frame;
+  newframe = g_slice_new (GstMLFrame);
+
+  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++)
+    memcpy (&(newframe->mapinfo[idx]), &(frame->mapinfo[idx]), sizeof (GstMapInfo));
+
+  newframe->info = frame->info;
+  newframe->buffer = gst_buffer_ref (frame->buffer);
+
+  return newframe;
 }
 
-void
-gst_ml_frame_unref (GstMLFrame * frame)
+static void
+gst_ml_frame_free (GstMLFrame * frame)
 {
   g_return_if_fail (frame != NULL);
 
-  if (g_atomic_ref_count_dec (&frame->refcount)) {
-    gst_buffer_unref (frame->buffer);
-    g_slice_free (GstMLFrame, frame);
-  }
+  gst_buffer_unref (frame->buffer);
+  g_slice_free (GstMLFrame, frame);
 }
+
+G_DEFINE_BOXED_TYPE (GstMLFrame, gst_ml_frame,
+    (GBoxedCopyFunc) gst_ml_frame_copy, (GBoxedFreeFunc) gst_ml_frame_free);
 
 gboolean
 gst_ml_frame_map (GstMLFrame * frame, const GstMLInfo * info,
@@ -81,8 +75,6 @@ gst_ml_frame_map (GstMLFrame * frame, const GstMLInfo * info,
         info->n_tensors, n_memory);
     return FALSE;
   }
-
-  g_atomic_ref_count_init (&frame->refcount);
 
   // Copy the ML info into the frame.
   frame->info = *info;

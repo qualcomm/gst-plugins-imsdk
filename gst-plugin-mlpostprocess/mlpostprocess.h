@@ -92,8 +92,8 @@ struct _GstMLPostProcess {
   /// Post processing type.
   GQuark               type;
 
-  /// Array with info for each batch.
-  GPtrArray            *info;
+  /// Array with ML params for each batch.
+  GPtrArray            *mlparams;
 
   // Stashed ML boxes used fot stabilization
   std::vector<DetectionPrediction> *stashedmlboxes;

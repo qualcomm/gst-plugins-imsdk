@@ -181,23 +181,24 @@ GST_API GstMLDetections*
 gst_ml_detections_new_sized (guint size);
 
 /**
- * gst_ml_detections_ref:
- * @detections: A #GstMLDetections
+ * gst_ml_detections_ref: (skip)
+ * @detections: (transfer none): A #GstMLDetections
  *
  * Atomically increments the reference count of @detections by one.
  * This function is thread-safe and may be called from any thread.
  *
- * Returns: (transfer full): The passed in `GstMLDetections`
+ * Returns: (transfer none): A pointer to the object passed in @detections
  */
 GST_API GstMLDetections*
 gst_ml_detections_ref (GstMLDetections * detections);
 
 /**
- * gst_ml_detections_unref:
- * @detections: (transfer full):  A #GstMLDetections
+ * gst_ml_detections_unref: (skip)
+ * @detections: (transfer none):  A #GstMLDetections
  *
  * Atomically decrements the reference count of @detections by one. If the
  * reference count drops to 0, free the GstMLDetections.
+ *
  * This function is thread-safe and may be called from any thread.
  */
 GST_API void

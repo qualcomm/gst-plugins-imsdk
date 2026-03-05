@@ -153,24 +153,25 @@ GST_API GstMLPoses*
 gst_ml_poses_new_sized (guint size);
 
 /**
- * gst_ml_poses_ref:
- * @poses: A #GstMLPoses
+ * gst_ml_poses_ref: (skip)
+ * @poses: (transfer none): A #GstMLPoses
  *
  * Atomically increments the reference count of @poses by one.
  * This function is thread-safe and may be called from any thread.
  *
- * Returns: (transfer full): The passed in `GstMLPoses`
+ * Returns: (transfer none): A pointer to the object passed in @poses
  */
 GST_API GstMLPoses*
 gst_ml_poses_ref (GstMLPoses * poses);
 
 /**
- * gst_ml_poses_unref:
- * @poses: (transfer full):  A #GstMLPoses
+ * gst_ml_poses_unref: (skip)
+ * @poses: (transfer none):  A #GstMLPoses
  *
  * Atomically decrements the reference count of @poses by one. If the
  * reference count drops to 0, the GstMLPoses apreviously allocated with
  * gst_ml_poses_new() or gst_ml_poses_copy() will be deallocated.
+ *
  * This function is thread-safe and may be called from any thread.
  */
 GST_API void

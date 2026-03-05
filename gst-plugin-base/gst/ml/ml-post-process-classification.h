@@ -125,23 +125,24 @@ GST_API GstMLClassifications*
 gst_ml_classifications_new_sized (guint size);
 
 /**
- * gst_ml_classifications_ref:
- * @classifications: A #GstMLClassifications
+ * gst_ml_classifications_ref: (skip)
+ * @classifications: (transfer none): A #GstMLClassifications
  *
  * Atomically increments the reference count of @classifications by one.
  * This function is thread-safe and may be called from any thread.
  *
- * Returns: (transfer full): The passed in `GstMLClassifications`
+ * Returns: (transfer none): A pointer to the object passed in @classifications
  */
 GST_API GstMLClassifications*
 gst_ml_classifications_ref (GstMLClassifications * classifications);
 
 /**
- * gst_ml_classifications_unref:
- * @classifications: (transfer full): A #GstMLClassifications
+ * gst_ml_classifications_unref: (skip)
+ * @classifications: (transfer none): A #GstMLClassifications
  *
  * Atomically decrements the reference count of @classifications by one. If the
  * reference count drops to 0, free the GstMLClassifications.
+ *
  * This function is thread-safe and may be called from any thread.
  */
 GST_API void

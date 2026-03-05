@@ -40,6 +40,45 @@ gst_module_logging (uint32_t level, const char * msg)
   }
 }
 
+static gboolean
+gst_structure_parse_entry (GQuark field, const GValue * value, gpointer userdata)
+{
+  Dictionary *dictionary = (Dictionary*) (userdata);
+  const gchar *name = g_quark_to_string (field);
+
+  if (G_VALUE_HOLDS_INT (value)) {
+    dictionary->emplace(name, g_value_get_int (value));
+  } else if (G_VALUE_HOLDS_UINT (value)) {
+    dictionary->emplace(name, g_value_get_uint (value));
+  } else if (G_VALUE_HOLDS_INT64 (value)) {
+    dictionary->emplace(name, g_value_get_int64 (value));
+  } else if (G_VALUE_HOLDS_UINT64 (value)) {
+    dictionary->emplace(name, g_value_get_uint64 (value));
+  } else if (G_VALUE_HOLDS_FLOAT (value)) {
+    dictionary->emplace(name, g_value_get_float (value));
+  } else if (G_VALUE_HOLDS_DOUBLE (value)) {
+    dictionary->emplace(name, g_value_get_double (value));
+  } else if (G_VALUE_HOLDS_BOOLEAN (value)) {
+    dictionary->emplace(name, static_cast<bool>(g_value_get_boolean (value)));
+  } else if (G_VALUE_HOLDS_STRING (value)) {
+    dictionary->emplace(name, std::string(g_value_get_string (value)));
+  } else {
+    g_warning ("Unsupported type for field '%s'", name);
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+Dictionary
+gst_structure_to_dictionary (const GstStructure * structure)
+{
+  Dictionary dictionary;
+
+  gst_structure_foreach (structure, gst_structure_parse_entry, &dictionary);
+  return dictionary;
+}
+
 GstStructure*
 gst_structure_from_dictionary (const Dictionary& dictionary)
 {
@@ -62,7 +101,7 @@ gst_structure_from_dictionary (const Dictionary& dictionary)
       gst_structure_set(structure, key.c_str(),
           G_TYPE_STRING, std::any_cast<std::string>(val).c_str(), NULL);
     } else {
-      g_warning("Unsupported type for key '%s'", key.c_str());
+      g_warning ("Unsupported type for key '%s'", key.c_str());
     }
   }
 
@@ -258,6 +297,63 @@ gst_ml_frame_to_module_tensors (const GstMLFrame * mlframe, const gint index,
     // Add dequantization parameters
     tensor.qscale = mlmeta->qscale;
     tensor.qoffset = mlmeta->qoffset;
+  }
+
+  return TRUE;
+}
+
+gboolean
+gst_module_tensors_to_ml_frame (Tensors& tensors, GstMLFrame * mlframe)
+{
+  GST_ML_FRAME_N_TENSORS (mlframe) = tensors.size();
+
+  for (auto num = 0; num < tensors.size (); ++num) {
+    Tensor& tensor = tensors[num];
+
+    switch (tensor.type) {
+      case TensorType::kInt8:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_INT8;
+        break;
+      case TensorType::kUint8:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_UINT8;
+        break;
+      case TensorType::kInt16:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_INT16;
+        break;
+      case TensorType::kUint16:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_UINT16;
+        break;
+      case TensorType::kInt32:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_INT32;
+        break;
+      case TensorType::kUint32:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_UINT32;
+        break;
+      case TensorType::kInt64:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_INT64;
+        break;
+      case TensorType::kUint64:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_UINT64;
+        break;
+      case TensorType::kFloat16:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_FLOAT16;
+        break;
+      case TensorType::kFloat32:
+        GST_ML_FRAME_TYPE (mlframe) = GST_ML_TYPE_FLOAT32;
+        break;
+      default:
+        GST_ERROR ("Unsupported ML type %u!", static_cast<uint32_t>(tensor.type));
+        return FALSE;
+    }
+
+    for (auto idx = 0; idx < tensor.dimensions.size (); ++idx)
+      GST_ML_FRAME_DIM (mlframe, num, idx) = tensor.dimensions[idx];
+
+    GST_ML_FRAME_N_DIMENSIONS (mlframe, num) = tensor.dimensions.size ();
+    GST_ML_FRAME_BLOCK_DATA (mlframe, num) = reinterpret_cast<guint8*>(tensor.data);
+    GST_ML_FRAME_BLOCK_SIZE (mlframe, num) = GST_ML_FRAME_TENSOR_SIZE (mlframe, num);
+
+    mlframe->mapinfo[num].flags = static_cast<GstMapFlags>(GST_MAP_READWRITE);
   }
 
   return TRUE;
@@ -642,23 +738,6 @@ gst_ml_post_process_box_displacement_correction (ObjectDetection& l_box,
   }
 
   return;
-}
-
-gboolean
-gst_ml_box_compare_entries_by_position (ObjectDetection& l_entry,
-    ObjectDetection& r_entry)
-{
-  gfloat delta = l_entry.left - r_entry.left;
-
-  if (fabs (delta) > POSITION_THRESHOLD)
-    return (delta < 0);
-
-  delta = l_entry.top - r_entry.top;
-
-  if (fabs (delta) > POSITION_THRESHOLD)
-    return (delta < 0);
-
-  return TRUE;
 }
 
 void

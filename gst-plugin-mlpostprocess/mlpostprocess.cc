@@ -46,6 +46,9 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-post-process-classification.h>
+#include <gst/ml/ml-post-process-detection.h>
+#include <gst/ml/ml-post-process-pose.h>
 #include <gst/allocators/gstqtiallocator.h>
 #include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
@@ -116,6 +119,16 @@ G_DEFINE_TYPE (GstMLPostProcess, gst_ml_post_process,
 
 enum
 {
+  SIGNAL_PROCESS_IMAGE_CLASSIFICATION,
+  SIGNAL_PROCESS_AUDIO_CLASSIFICATION,
+  SIGNAL_PROCESS_OBJECT_DETECTION,
+  SIGNAL_PROCESS_POSE_ESTIMATION,
+  SIGNAL_PROCESS_TENSORS,
+  LAST_SIGNAL
+};
+
+enum
+{
   PROP_0,
   PROP_MODULE,
   PROP_LABELS,
@@ -131,8 +144,7 @@ enum
   OUTPUT_MODE_TENSOR,
 };
 
-static GstStaticCaps gst_ml_post_process_static_sink_caps =
-    GST_STATIC_CAPS (GST_ML_POST_PROCESS_SINK_CAPS);
+static guint signals[LAST_SIGNAL];
 
 static GstCaps *
 gst_ml_post_process_sink_caps (void)
@@ -141,7 +153,7 @@ gst_ml_post_process_sink_caps (void)
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_ml_post_process_static_sink_caps);
+    caps = gst_caps_from_string (GST_ML_POST_PROCESS_SINK_CAPS);
     g_once_init_leave (&inited, 1);
   }
   return caps;
@@ -195,8 +207,6 @@ gst_ml_post_process_module_free (GstMLPostProcess * postprocess)
     dlclose (postprocess->handle);
     postprocess->handle = NULL;
   }
-
-  GST_INFO_OBJECT (postprocess, "Destroyed module.");
 }
 
 static gboolean
@@ -382,7 +392,7 @@ gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
     Tensors tensors;
 
     Dictionary mlparams = gst_ml_structure_to_module_params (
-        GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx)));
+        GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, idx)));
 
     std::any predictions;
 
@@ -423,7 +433,7 @@ gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
     }
 
     // Get saved info for the current batch
-    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, idx));
 
     // Sorting entries
     if (GST_IS_DETECTION_TYPE (postprocess->type)) {
@@ -446,6 +456,318 @@ cleanup:
   return success;
 }
 
+static GQuark
+gst_ml_post_process_signal_get_type (GstMLPostProcess * postprocess)
+{
+  gboolean connected = FALSE;
+
+  connected = g_signal_has_handler_pending (postprocess,
+      signals[SIGNAL_PROCESS_IMAGE_CLASSIFICATION], 0, FALSE);
+
+  if (connected)
+    return g_quark_from_string (GST_CLASSIFICATION_TYPE);
+
+  connected = g_signal_has_handler_pending (postprocess,
+      signals[SIGNAL_PROCESS_AUDIO_CLASSIFICATION], 0, FALSE);
+
+  if (connected)
+    return g_quark_from_string (GST_AUDIO_CLASSIFICATION_TYPE);
+
+  connected = g_signal_has_handler_pending (postprocess,
+      signals[SIGNAL_PROCESS_OBJECT_DETECTION], 0, FALSE);
+
+  if (connected)
+    return g_quark_from_string (GST_DETECTION_TYPE);
+
+  connected = g_signal_has_handler_pending (postprocess,
+      signals[SIGNAL_PROCESS_POSE_ESTIMATION], 0, FALSE);
+
+  if (connected)
+    return g_quark_from_string (GST_POSE_TYPE);
+
+  connected = g_signal_has_handler_pending (postprocess,
+      signals[SIGNAL_PROCESS_TENSORS], 0, FALSE);
+
+  if (connected)
+    return g_quark_from_string (GST_TENSOR_TYPE);
+
+  return g_quark_from_string ("unknown");
+}
+
+static gboolean
+gst_ml_post_process_image_classification_callback (GstMLPostProcess * postprocess,
+    GstMLFrame * mlframe, GstStructure * mlparam, std::any& output)
+{
+  GstMLClassifications *classifications = gst_ml_classifications_new ();
+  guint idx = 0, num = 0, size = 0, length = 0;
+  gboolean success = FALSE;
+
+  g_signal_emit (postprocess, signals[SIGNAL_PROCESS_IMAGE_CLASSIFICATION], 0,
+      mlframe, mlparam, classifications, &success);
+
+  gst_ml_classifications_sort (classifications);
+  size = gst_ml_classifications_size (classifications);
+
+  ImageClassifications predictions;
+
+  for (idx = 0; idx < size; idx++) {
+    GstMLClassification *entry =
+        gst_ml_classifications_entry (classifications, idx);
+
+    ImageClassification classification(
+        g_quark_to_string (entry->name), entry->confidence);
+
+    classification.color = entry->color;
+
+    if (entry->xtraparams != NULL)
+      classification.xtraparams = gst_structure_to_dictionary (entry->xtraparams);
+
+    predictions.push_back(std::move(classification));
+  }
+
+  std::any_cast<std::vector<ImageClassifications>&>(output).push_back(predictions);
+  gst_ml_classifications_unref (classifications);
+
+  return success;
+}
+
+static gboolean
+gst_ml_post_process_audio_classification_callback (GstMLPostProcess * postprocess,
+    GstMLFrame * mlframe, GstStructure * mlparam, std::any& output)
+{
+  GstMLClassifications *classifications = gst_ml_classifications_new ();
+  guint idx = 0, num = 0, size = 0, length = 0;
+  gboolean success = FALSE;
+
+  g_signal_emit (postprocess, signals[SIGNAL_PROCESS_AUDIO_CLASSIFICATION],
+      0, mlframe, mlparam, classifications, &success);
+
+  gst_ml_classifications_sort (classifications);
+  size = gst_ml_classifications_size (classifications);
+
+  AudioClassifications predictions;
+
+  for (idx = 0; idx < size; idx++) {
+    GstMLClassification *entry =
+        gst_ml_classifications_entry (classifications, idx);
+
+    AudioClassification classification(
+        g_quark_to_string (entry->name), entry->confidence);
+
+    classification.color = entry->color;
+
+    if (entry->xtraparams != NULL)
+      classification.xtraparams = gst_structure_to_dictionary (entry->xtraparams);
+
+    predictions.push_back(std::move(classification));
+  }
+
+  std::any_cast<std::vector<AudioClassifications>&>(output).push_back(predictions);
+  gst_ml_classifications_unref (classifications);
+
+  return success;
+}
+
+static gboolean
+gst_ml_post_process_object_detection_callback (GstMLPostProcess * postprocess,
+    GstMLFrame * mlframe, GstStructure * mlparam, std::any& output)
+{
+  GstMLDetections *detections = gst_ml_detections_new ();
+  guint idx = 0, num = 0, size = 0, length = 0;
+  gboolean success = FALSE;
+
+  g_signal_emit (postprocess, signals[SIGNAL_PROCESS_OBJECT_DETECTION], 0,
+      mlframe, mlparam, detections, &success);
+
+  size = gst_ml_detections_size (detections);
+  gst_ml_detections_sort (detections);
+
+  ObjectDetections predictions;
+
+  for (idx = 0; idx < size; idx++) {
+    GstMLDetection *entry = gst_ml_detections_entry (detections, idx);
+    GstMLKeypoint *kp = NULL;
+
+    ObjectDetection detection(entry->left, entry->top, entry->right, entry->bottom);
+
+    detection.name = g_quark_to_string (entry->name);
+    detection.confidence = entry->confidence;
+    detection.color = entry->color;
+
+    length = (entry->landmarks != NULL) ? entry->landmarks->len : 0;
+
+    if (length > 0)
+      detection.landmarks.emplace();
+
+    for (num = 0; num < length; num++) {
+      kp = &(g_array_index (entry->landmarks, GstMLKeypoint, num));
+
+      Keypoint lmk(g_quark_to_string (kp->name), kp->x, kp->y, kp->confidence);
+      lmk.color = kp->color;
+
+      detection.landmarks->push_back(std::move(lmk));
+    }
+
+    if (entry->xtraparams != NULL)
+      detection.xtraparams = gst_structure_to_dictionary (entry->xtraparams);
+
+    predictions.push_back(std::move(detection));
+  }
+
+  gst_ml_post_process_objects_affine_correction (postprocess, mlparam, predictions);
+  std::any_cast<std::vector<ObjectDetections>&>(output).push_back(predictions);
+
+  gst_ml_detections_unref (detections);
+  return success;
+}
+
+static gboolean
+gst_ml_post_process_pose_estimation_callback (GstMLPostProcess * postprocess,
+    GstMLFrame * mlframe, GstStructure * mlparam, std::any& output)
+{
+  GstMLPoses *poses = gst_ml_poses_new ();
+  guint idx = 0, num = 0, size = 0, length = 0;
+  gboolean success = FALSE;
+
+  g_signal_emit (postprocess, signals[SIGNAL_PROCESS_POSE_ESTIMATION], 0,
+      mlframe, mlparam, poses, &success);
+
+  gst_ml_poses_sort (poses);
+  size = gst_ml_poses_size (poses);
+
+  PoseEstimations predictions;
+
+  for (idx = 0; idx < size; idx++) {
+    GstMLPose *entry = gst_ml_poses_entry (poses, idx);
+    GstMLKeypoint *kp = NULL;
+    GstMLKeypointLink *connection = NULL;
+
+    PoseEstimation pose;
+
+    pose.name = g_quark_to_string (entry->name);
+    pose.confidence = entry->confidence;
+
+    length = (entry->keypoints != NULL) ? entry->keypoints->len : 0;
+
+    for (num = 0; num < length; num++) {
+      kp = &(g_array_index (entry->keypoints, GstMLKeypoint, num));
+
+      Keypoint keypoint(g_quark_to_string (kp->name), kp->x, kp->y, kp->confidence);
+      keypoint.color = kp->color;
+
+      pose.keypoints.push_back(std::move(keypoint));
+    }
+
+    length = (entry->links != NULL) ? entry->links->len : 0;
+
+    if (length > 0)
+      pose.links.emplace();
+
+    for (num = 0; num < length; num++) {
+      connection = &(g_array_index (entry->links, GstMLKeypointLink, num));
+
+      Keypoint l_kp(g_quark_to_string (connection->l_kp.name), connection->l_kp.x,
+                    connection->l_kp.y, connection->l_kp.confidence);
+      l_kp.color = connection->l_kp.color;
+
+      Keypoint r_kp(g_quark_to_string (connection->r_kp.name), connection->r_kp.x,
+                    connection->r_kp.y, connection->r_kp.confidence);
+      r_kp.color = connection->r_kp.color;
+
+      pose.links->emplace_back(l_kp, r_kp);
+    }
+
+    if (entry->xtraparams != NULL)
+      pose.xtraparams = gst_structure_to_dictionary (entry->xtraparams);
+
+    predictions.push_back(std::move(pose));
+  }
+
+  gst_ml_post_process_poses_affine_correction (postprocess, mlparam, predictions);
+  std::any_cast<std::vector<PoseEstimations>&>(output).push_back(predictions);
+
+  gst_ml_poses_unref (poses);
+  return success;
+}
+
+static gboolean
+gst_ml_post_process_tensors_callback (GstMLPostProcess *postprocess,
+    GstMLFrame *mlframe, GstStructure *mlparam, GstBuffer *buffer, std::any& output)
+{
+  GstMLFrame outmlframe = {};
+  gboolean success = FALSE;
+
+  auto& tensors = std::any_cast<Tensors&>(output);
+  gst_module_tensors_to_ml_frame (tensors, &outmlframe);
+  outmlframe.buffer = buffer;
+
+  g_signal_emit (postprocess, signals[SIGNAL_PROCESS_TENSORS], 0,
+      mlframe, mlparam, &outmlframe, &success);
+
+  return success;
+}
+
+static gboolean
+gst_ml_post_process_signal (GstMLPostProcess * postprocess,
+    GstBuffer * inbuffer, GstBuffer * outbuffer, std::any& output)
+{
+  GstStructure *mlparam = NULL;
+  GstMLFrame mlframe = {};
+  guint idx = 0, num = 0, n_batch = 0;
+  gboolean success = FALSE;
+
+  if (gst_buffer_get_size (inbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
+    return TRUE;
+
+  if (!gst_ml_frame_map (&mlframe, postprocess->mlinfo, inbuffer, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (postprocess, "Failed to map input ML buffer!");
+    return FALSE;
+  }
+
+  n_batch = GST_ML_FRAME_DIM (&mlframe, 0, 0);
+
+  // Set batch size for each tensor to 1 as they are processed sequentially.
+  for (idx = 0; idx < GST_ML_FRAME_N_TENSORS (&mlframe); ++idx)
+    GST_ML_FRAME_DIM (&mlframe, idx, 0) = 1;
+
+  // Iterate all batches and execute the process
+  for (idx = 0; idx < n_batch; ++idx) {
+    mlparam = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, idx));
+
+    if (GST_IS_CLASSIFICATION_TYPE (postprocess->type)) {
+      success = gst_ml_post_process_image_classification_callback (postprocess,
+            &mlframe, mlparam, output);
+    } else if (GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type)) {
+      success = gst_ml_post_process_audio_classification_callback (postprocess,
+            &mlframe, mlparam, output);
+    } else if (GST_IS_DETECTION_TYPE (postprocess->type)) {
+      success = gst_ml_post_process_object_detection_callback (postprocess,
+            &mlframe, mlparam, output);
+    } else if (GST_IS_POSE_TYPE (postprocess->type)) {
+      success = gst_ml_post_process_pose_estimation_callback (postprocess,
+            &mlframe, mlparam, output);
+    } else if (GST_IS_TENSOR_TYPE (postprocess->type)) {
+      success = gst_ml_post_process_tensors_callback (postprocess,
+            &mlframe, mlparam, outbuffer, output);
+    }
+
+    if (!success)
+      break;
+
+    // Update the each tensor data pointer for next iteration.
+    for (num = 0; num < GST_ML_FRAME_N_TENSORS (&mlframe); num++) {
+      GST_ML_FRAME_BLOCK_DATA (&mlframe, num) +=
+          GST_ML_FRAME_TENSOR_SIZE (&mlframe, num);
+    }
+  }
+
+cleanup:
+  gst_ml_frame_unmap (&mlframe);
+
+  return success;
+}
+
 static GstBufferPool *
 gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
     GstCaps * caps, GstVideoAlignment * align)
@@ -453,16 +775,15 @@ gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
   GstStructure *config = NULL;
   GstBufferPool *pool = NULL;
   GstAllocator *allocator = NULL;
-
-  GstVideoInfo video_info = {0,};
-  GstMLInfo ml_info = {};
+  GstVideoInfo vinfo = {0,};
+  GstMLInfo mlinfo = {};
   gboolean success = TRUE;
   guint size = 0;
 
   if (postprocess->mode == OUTPUT_MODE_TENSOR)
-    success = gst_ml_info_from_caps (&ml_info, caps);
+    success = gst_ml_info_from_caps (&mlinfo, caps);
   else
-    success = gst_video_info_from_caps (&video_info, caps);
+    success = gst_video_info_from_caps (&vinfo, caps);
 
   if (!success) {
     GST_ERROR_OBJECT (postprocess, "Invalid caps %" GST_PTR_FORMAT, caps);
@@ -514,13 +835,13 @@ gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
     gst_buffer_pool_config_add_option (config,
         GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
     gst_buffer_pool_config_set_video_alignment (config, align);
-    gst_video_info_align (&video_info, align);
+    gst_video_info_align (&vinfo, align);
   }
 
   if (postprocess->mode == OUTPUT_MODE_TENSOR)
-    size = gst_ml_info_size (&ml_info);
+    size = gst_ml_info_size (&mlinfo);
   else
-    size = video_info.size;
+    size = vinfo.size;
 
   gst_buffer_pool_config_set_params (config, caps, size, DEFAULT_MIN_BUFFERS,
       DEFAULT_MAX_BUFFERS);
@@ -605,7 +926,7 @@ gst_ml_video_detection_fill_video_output (GstMLPostProcess * postprocess,
       continue;
 
     // Get saved info for the current batch
-    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, idx));
 
     // Extract the source tensor region with actual data.
     gst_ml_structure_get_source_region (info, &region);
@@ -741,7 +1062,7 @@ gst_ml_video_detection_fill_text_output (GstMLPostProcess * postprocess,
         detections.size() : postprocess->n_results;
 
     // Get saved info for the current batch
-    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, idx));
 
     if (gst_structure_has_field (info, "sequence-index"))
         gst_structure_get_uint (info, "sequence-index", &sequence_idx);
@@ -987,7 +1308,7 @@ gst_ml_video_classification_fill_text_output (GstMLPostProcess * postprocess,
         classifications.size() : postprocess->n_results;
 
     // Get saved info for the current batch
-    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, idx));
 
     if (gst_structure_has_field (info, "sequence-index"))
         gst_structure_get_uint (info, "sequence-index", &sequence_idx);
@@ -1180,7 +1501,7 @@ gst_ml_audio_classification_fill_text_output (GstMLPostProcess * postprocess,
         classifications.size() : postprocess->n_results;
 
     // Get saved info for the current batch
-    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, idx));
 
     if (gst_structure_has_field (info, "sequence-index"))
         gst_structure_get_uint (info, "sequence-index", &sequence_idx);
@@ -1307,7 +1628,7 @@ gst_ml_video_pose_fill_video_output (GstMLPostProcess * postprocess,
       continue;
 
     // Get saved info for the current batch
-    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, idx));
 
     // Extract the source tensor region with actual data.
     gst_ml_structure_get_source_region (info, &region);
@@ -1411,7 +1732,7 @@ gst_ml_video_pose_fill_text_output (GstMLPostProcess * postprocess,
         estimations.size() : postprocess->n_results;
 
     // Get saved info for the current batch
-    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, idx));
 
     if (gst_structure_has_field (info, "sequence-index"))
         gst_structure_get_uint (info, "sequence-index", &sequence_idx);
@@ -1448,7 +1769,7 @@ gst_ml_video_pose_fill_text_output (GstMLPostProcess * postprocess,
 
       length = (entry.links.has_value()) ? entry.links.value().size() : 0;
 
-      // Extract the connections from the entry and place them in a structure.
+      // Extract the links from the entry and place them in a structure.
       for (seqnum = 0; seqnum < length; seqnum++) {
         KeypointLink& connection = entry.links.value()[seqnum];
 
@@ -1662,14 +1983,14 @@ gst_ml_post_process_prepare_output_buffer (GstBaseTransform * base,
   gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
   // Clear previously stored values and populate the new ml params for later use.
-  g_ptr_array_remove_range (postprocess->info, 0, postprocess->info->len);
+  g_ptr_array_remove_range (postprocess->mlparams, 0, postprocess->mlparams->len);
   n_batch = GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0);
 
   for (idx = 0; idx < n_batch; ++idx) {
     GstProtectionMeta *pmeta = gst_buffer_get_protection_meta_id (inbuffer,
         gst_batch_channel_name (idx));
 
-    g_ptr_array_add (postprocess->info, pmeta->info);
+    g_ptr_array_add (postprocess->mlparams, pmeta->info);
 
     if (postprocess->mode != OUTPUT_MODE_TENSOR)
       continue;
@@ -1954,16 +2275,25 @@ gst_ml_post_process_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GstVideoInfo vinfo = {};
   gboolean success = FALSE;
 
-  modulecaps = gst_ml_caps_from_json (postprocess->module->Caps ());
+  if (postprocess->module == NULL) {
+    GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+    modulecaps = gst_pad_get_pad_template_caps (pad);
+  } else {
+    modulecaps = gst_ml_caps_from_json (postprocess->module->Caps ());
+  }
 
-  if (!gst_caps_can_intersect (incaps, modulecaps)) {
+  success = gst_caps_can_intersect (incaps, modulecaps);
+  gst_caps_unref (modulecaps);
+
+  if (!success) {
     GST_ELEMENT_ERROR (postprocess, RESOURCE, FAILED, (NULL),
         ("Module caps %" GST_PTR_FORMAT " do not intersect with the "
-         "negotiated caps %" GST_PTR_FORMAT "!", modulecaps, incaps));
+        "negotiated caps %" GST_PTR_FORMAT "!", modulecaps, incaps));
     return FALSE;
   }
 
-  if (!gst_ml_post_process_module_set_opts (postprocess)) {
+  if ((postprocess->module != NULL) &&
+      !gst_ml_post_process_module_set_opts (postprocess)) {
     GST_ELEMENT_ERROR (postprocess, RESOURCE, FAILED, (NULL),
         ("Failed to set module options!"));
     return FALSE;
@@ -2059,9 +2389,9 @@ gst_ml_video_post_process_change_state (GstElement * element,
       GEnumValue *evalue = NULL;
 
       if (DEFAULT_PROP_MODULE == postprocess->mdlenum) {
-        GST_ERROR_OBJECT (postprocess, "Module name not set, automatic module "
-            "pick up not supported!");
-        return GST_STATE_CHANGE_FAILURE;
+        GST_INFO_OBJECT (postprocess, "Module name not set, 'process' signal "
+            "will be called");
+        break;
       }
 
       eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
@@ -2073,16 +2403,23 @@ gst_ml_video_post_process_change_state (GstElement * element,
         GST_ERROR_OBJECT (postprocess, "Module creation failed!");
         return GST_STATE_CHANGE_FAILURE;
       }
+      break;
+    }
+    case GST_STATE_CHANGE_READY_TO_PAUSED:
+    {
+      GQuark type = 0;
 
-      postprocess->type =
-          gst_ml_module_caps_get_type (postprocess->module->Caps ());
+      if (postprocess->module != NULL)
+        type = gst_ml_module_caps_get_type (postprocess->module->Caps ());
+      else // postprocess->module == NULL
+        type = gst_ml_post_process_signal_get_type (postprocess);
 
-      if (postprocess->type == g_quark_from_string ("unknown")) {
+      if (type == g_quark_from_string ("unknown")) {
         GST_ERROR_OBJECT (postprocess, "Failed to get module type!");
         return GST_STATE_CHANGE_FAILURE;
       }
 
-      break;
+      postprocess->type = type;
     }
     default:
       break;
@@ -2166,8 +2503,10 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     output = std::move(tensors);
   }
 
-  // Call the submodule process funtion.
-  success = gst_ml_post_process_module_execute (postprocess, inbuffer, output);
+  if (postprocess->module != NULL)
+    success = gst_ml_post_process_module_execute (postprocess, inbuffer, output);
+  else // postprocess->module == NULL
+    success = gst_ml_post_process_signal (postprocess, inbuffer, outbuffer, output);
 
   if (GST_IS_SEGMENTATION_TYPE (postprocess->type) ||
       GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
@@ -2181,17 +2520,9 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     return GST_FLOW_ERROR;
   }
 
-  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
-
-  GST_LOG_OBJECT (postprocess, "Processing took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
-      (GST_TIME_AS_USECONDS (time) % 1000));
-
   // Apply stabilization for fluctuating bboxes
   if (GST_IS_DETECTION_TYPE (postprocess->type) && postprocess->bbox_stabilization)
     gst_ml_post_process_bbox_stabilization (postprocess, output);
-
-  time = gst_util_get_timestamp ();
 
   if (postprocess->mode == OUTPUT_MODE_VIDEO) {
     if (!gst_video_frame_map (&vframe, postprocess->vinfo, outbuffer,
@@ -2217,7 +2548,7 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
       GstVideoRectangle region = { 0, };
       GstStructure *info = NULL;
 
-      info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, 0));
+      info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->mlparams, 0));
 
       // Extract the source tensor region with actual data.
       gst_ml_structure_get_source_region (info, &region);
@@ -2253,7 +2584,7 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
-  GST_LOG_OBJECT (postprocess, "Postprocess took %" G_GINT64_FORMAT ".%03"
+  GST_LOG_OBJECT (postprocess, "Process took %" G_GINT64_FORMAT ".%03"
       G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
 
@@ -2326,7 +2657,7 @@ gst_ml_post_process_finalize (GObject * object)
   if (postprocess->stashedmlboxes)
     delete postprocess->stashedmlboxes;
 
-  g_ptr_array_free (postprocess->info, TRUE);
+  g_ptr_array_free (postprocess->mlparams, TRUE);
   gst_ml_post_process_module_free (postprocess);
 
   if (postprocess->mlinfo != NULL)
@@ -2350,41 +2681,63 @@ gst_ml_post_process_finalize (GObject * object)
 static void
 gst_ml_post_process_class_init (GstMLPostProcessClass * klass)
 {
-  GObjectClass *gobject       = G_OBJECT_CLASS (klass);
-  GstElementClass *element    = GST_ELEMENT_CLASS (klass);
+  GObjectClass *gobject = G_OBJECT_CLASS (klass);
+  GstElementClass *element = GST_ELEMENT_CLASS (klass);
   GstBaseTransformClass *base = GST_BASE_TRANSFORM_CLASS (klass);
 
-  gobject->set_property =
-      GST_DEBUG_FUNCPTR (gst_ml_post_process_set_property);
-  gobject->get_property =
-      GST_DEBUG_FUNCPTR (gst_ml_post_process_get_property);
-  gobject->finalize     = GST_DEBUG_FUNCPTR (gst_ml_post_process_finalize);
+  gobject->set_property = GST_DEBUG_FUNCPTR (gst_ml_post_process_set_property);
+  gobject->get_property = GST_DEBUG_FUNCPTR (gst_ml_post_process_get_property);
+  gobject->finalize = GST_DEBUG_FUNCPTR (gst_ml_post_process_finalize);
 
   g_object_class_install_property (gobject, PROP_MODULE,
       g_param_spec_enum ("module", "Module",
           "Module name that is going to be used for processing the tensors",
-          GST_TYPE_ML_MODULES, DEFAULT_PROP_MODULE, static_cast <GParamFlags> (
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          GST_TYPE_ML_MODULES, DEFAULT_PROP_MODULE,
+          static_cast <GParamFlags> (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject, PROP_LABELS,
       g_param_spec_string ("labels", "Labels",
-          "Labels filename", DEFAULT_PROP_LABELS, static_cast <GParamFlags> (
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          "Labels filename. Applicable only for some modules.", DEFAULT_PROP_LABELS,
+          static_cast <GParamFlags> (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject, PROP_NUM_RESULTS,
       g_param_spec_uint ("results", "Results",
-          "Number of results to display", 0, 50, DEFAULT_PROP_NUM_RESULTS,
-          static_cast <GParamFlags> (
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          "Number of results to display. Applicable only for some modules.",
+          0, 50, DEFAULT_PROP_NUM_RESULTS,
+          static_cast <GParamFlags> (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject, PROP_SETTINGS,
       g_param_spec_string ("settings", "Settings",
           "Settings used by the chosen module for post-processing. "
-          "Applicable only for some modules.",
-          DEFAULT_PROP_SETTINGS, static_cast <GParamFlags> (
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          "Applicable only for some modules.", DEFAULT_PROP_SETTINGS,
+          static_cast <GParamFlags> (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
   g_object_class_install_property (gobject, PROP_BBOX_STABILIZATION,
-      g_param_spec_boolean ("bbox-stabilization", "BBox Stabilization enable",
+      g_param_spec_boolean ("bbox-stabilization", "BBox Stabilization",
           "Enable stabilization of bboxes", DEFAULT_PROP_BBOX_STABILIZATION,
-          static_cast <GParamFlags> (
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          static_cast <GParamFlags> (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  signals[SIGNAL_PROCESS_IMAGE_CLASSIFICATION] =
+      g_signal_new ("process-image-classification", G_TYPE_FROM_CLASS (klass),
+          static_cast <GSignalFlags> (G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE),
+          0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_ML_FRAME,
+          GST_TYPE_STRUCTURE, GST_TYPE_ML_CLASSIFICATIONS);
+  signals[SIGNAL_PROCESS_AUDIO_CLASSIFICATION] =
+      g_signal_new ("process-audio-classification", G_TYPE_FROM_CLASS (klass),
+          static_cast <GSignalFlags> (G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE),
+          0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_ML_FRAME,
+          GST_TYPE_STRUCTURE, GST_TYPE_ML_CLASSIFICATIONS);
+  signals[SIGNAL_PROCESS_OBJECT_DETECTION] =
+      g_signal_new ("process-object-detection", G_TYPE_FROM_CLASS (klass),
+          static_cast <GSignalFlags> (G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE),
+          0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_ML_FRAME,
+          GST_TYPE_STRUCTURE, GST_TYPE_ML_DETECTIONS);
+  signals[SIGNAL_PROCESS_POSE_ESTIMATION] =
+      g_signal_new ("process-pose-estimation", G_TYPE_FROM_CLASS (klass),
+          static_cast <GSignalFlags> (G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE),
+          0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_ML_FRAME,
+          GST_TYPE_STRUCTURE, GST_TYPE_ML_POSES);
+  signals[SIGNAL_PROCESS_TENSORS] =
+      g_signal_new ("process-tensors", G_TYPE_FROM_CLASS (klass),
+          static_cast <GSignalFlags> (G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE),
+          0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_ML_FRAME,
+          GST_TYPE_STRUCTURE, GST_TYPE_ML_FRAME);
 
   gst_element_class_set_static_metadata (element,
       "Machine Learning postprocess", "Filter/Effect/Converter",
@@ -2431,7 +2784,7 @@ gst_ml_post_process_init (GstMLPostProcess * postprocess)
 
   postprocess->stage_id = 0;
 
-  postprocess->info = g_ptr_array_new ();
+  postprocess->mlparams = g_ptr_array_new ();
 
   postprocess->stashedmlboxes = new std::vector<DetectionPrediction>();
 

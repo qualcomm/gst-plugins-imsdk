@@ -45,6 +45,15 @@ typedef IModule *(*NewIModule)(LogCallback logger);
 void
 gst_module_logging (uint32_t level, const char * msg);
 
+/* gst_structure_to_dictionary
+ *
+ * Helper function to get GstStructure from dictionary.
+ *
+ * return: Pointer to GstStructure.
+ **/
+Dictionary
+gst_structure_to_dictionary (const GstStructure * structure);
+
 /* gst_structure_from_dictionary
  *
  * Helper function to get GstStructure from dictionary.
@@ -82,6 +91,15 @@ gst_video_frame_to_module_frame (const GstVideoFrame * vframe, VideoFrame& frame
 gboolean
 gst_ml_frame_to_module_tensors (const GstMLFrame * mlframe, const gint index,
                                 Tensors& tensors);
+
+/* gst_module_tensors_to_ml_frame
+ *
+ * Helper function to translate per batch Tensors to GstMLFrame.
+ *
+ * return: TRUE on success and FALSE on failure
+ **/
+gboolean
+gst_module_tensors_to_ml_frame (Tensors& tensors, GstMLFrame * mlframe);
 
 /* gst_ml_caps_from_json
  *
@@ -177,16 +195,6 @@ gst_ml_post_process_boxes_intersection_score (ObjectDetection& l_box,
 void
 gst_ml_post_process_box_displacement_correction (ObjectDetection& l_box,
                                                  ObjectDetections& boxes);
-
-/* gst_ml_box_compare_entries_by_position
- *
- * Helper function to compare boxes by position.
- *
- * return: TRUE if arguments in order.
- **/
-gboolean
-gst_ml_box_compare_entries_by_position (ObjectDetection& l_entry,
-                                        ObjectDetection& r_entry);
 
 /* gst_ml_object_detections_sort_and_push
  *
