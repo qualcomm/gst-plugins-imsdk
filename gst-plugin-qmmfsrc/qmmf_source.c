@@ -58,7 +58,11 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_SLAVE                     FALSE
 #define DEFAULT_PROP_CAMERA_LDC_MODE                  FALSE
 #define DEFAULT_PROP_CAMERA_LCAC_MODE                 FALSE
-#define DEFAULT_PROP_CAMERA_EIS_MODE                  0
+#ifndef EIS_MODES_ENABLE
+#define DEFAULT_PROP_CAMERA_EIS_MODE                  FALSE
+#else
+#define DEFAULT_PROP_CAMERA_EIS_MODE                  EIS_OFF
+#endif // EIS_MODES_ENABLE
 #ifndef VHDR_MODES_ENABLE
 #define DEFAULT_PROP_CAMERA_SHDR_MODE                 FALSE
 #else
@@ -96,6 +100,9 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_MULTI_ROI                 FALSE
 #define DEFAULT_PROP_CAMERA_PHYSICAL_CAMERA_SWITCH    -1
 #define DEFAULT_PROP_CAMERA_PAD_ACTIVAION_MODE        GST_PAD_ACTIVATION_MODE_NORMAL
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+#define DEFAULT_PROP_CAMERA_MULTICAMERA_HINT          FALSE
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
 #define DEFAULT_PROP_CAMERA_SW_TNR                    FALSE
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
@@ -172,6 +179,9 @@ enum
   PROP_CAMERA_INPUT_ROI_INFO,
   PROP_CAMERA_PHYSICAL_CAMERA_SWITCH,
   PROP_CAMERA_PAD_ACTIVATION_MODE,
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  PROP_CAMERA_MULTICAMERA_HINT,
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
   PROP_CAMERA_SW_TNR,
   PROP_CAMERA_STATIC_METADATAS,
 };
@@ -1434,6 +1444,12 @@ qmmfsrc_set_property (GObject * object, guint property_id,
     case PROP_CAMERA_PAD_ACTIVATION_MODE:
       qmmfsrc->pad_activation_mode = g_value_get_enum(value);
       break;
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PROP_CAMERA_MULTICAMERA_HINT:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_MULTICAMERA_HINT, value);
+      break;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PROP_CAMERA_SW_TNR:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
            PARAM_CAMERA_SW_TNR, value);
@@ -1638,6 +1654,12 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_PAD_ACTIVATION_MODE:
       g_value_set_enum(value, qmmfsrc->pad_activation_mode);
       break;
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PROP_CAMERA_MULTICAMERA_HINT:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_MULTICAMERA_HINT, value);
+      break;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PROP_CAMERA_SW_TNR:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SW_TNR, value);
@@ -1725,20 +1747,19 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       g_param_spec_boolean ("lcac", "LCAC",
           "Lateral Chromatic Aberration Correction", DEFAULT_PROP_CAMERA_LCAC_MODE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-
-  if (!gst_qmmfsrc_check_eis_support ()) {
-    g_object_class_install_property (gobject, PROP_CAMERA_EIS,
-        g_param_spec_boolean ("eis", "EIS",
-            "Electronic Image Stabilization mode to reduce the effects of camera shake",
-            DEFAULT_PROP_CAMERA_EIS_MODE,
-            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  } else if (gst_qmmfsrc_check_eis_support () > 0) {
-    g_object_class_install_property (gobject, PROP_CAMERA_EIS,
-        g_param_spec_enum ("eis", "EIS",
-            "Electronic Image Stabilization mode to reduce the effects of camera shake",
-            GST_TYPE_QMMFSRC_EIS_MODE, DEFAULT_PROP_CAMERA_EIS_MODE,
-            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  }
+#ifndef EIS_MODES_ENABLE
+  g_object_class_install_property (gobject, PROP_CAMERA_EIS,
+      g_param_spec_boolean ("eis", "EIS",
+          "Electronic Image Stabilization mode to reduce the effects of camera shake",
+          DEFAULT_PROP_CAMERA_EIS_MODE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#else
+  g_object_class_install_property (gobject, PROP_CAMERA_EIS,
+      g_param_spec_enum ("eis", "EIS",
+          "Electronic Image Stabilization mode to reduce the effects of camera shake",
+          GST_TYPE_QMMFSRC_EIS_MODE, DEFAULT_PROP_CAMERA_EIS_MODE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#endif // EIS_MODES_ENABLE
 #ifndef VHDR_MODES_ENABLE
     g_object_class_install_property (gobject, PROP_CAMERA_SHDR,
         g_param_spec_boolean ("shdr", "SHDR",
@@ -2039,6 +2060,15 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           DEFAULT_PROP_CAMERA_PAD_ACTIVAION_MODE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  g_object_class_install_property (gobject, PROP_CAMERA_MULTICAMERA_HINT,
+      g_param_spec_boolean ("multicamera-hint", "multicamera-hint",
+          "multicamera-hint if enabled, this flag will make camera hardwares "
+          "to work in offline which is useful when camera sensors are more then "
+          "camera hardwares, it has impact on memory usage and latency.",
+          DEFAULT_PROP_CAMERA_MULTICAMERA_HINT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
   if (gst_qmmfsrc_check_sw_tnr_support ()) {
     g_object_class_install_property (gobject, PROP_CAMERA_SW_TNR,
         g_param_spec_boolean ("sw-tnr", "SW TNR",
@@ -2125,17 +2155,17 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
   g_value_unset (&value);
 
   // EIS
-  if (!gst_qmmfsrc_check_eis_support ()) {
-    g_value_init (&value, G_TYPE_BOOLEAN);
-    g_value_set_boolean (&value, DEFAULT_PROP_CAMERA_EIS_MODE);
-    gst_qmmf_context_set_camera_param (qmmfsrc->context, PARAM_CAMERA_EIS, &value);
-    g_value_unset (&value);
-  } else if (gst_qmmfsrc_check_eis_support () > 0) {
-    g_value_init (&value, GST_TYPE_QMMFSRC_EIS_MODE);
-    g_value_set_enum (&value, DEFAULT_PROP_CAMERA_EIS_MODE);
-    gst_qmmf_context_set_camera_param (qmmfsrc->context, PARAM_CAMERA_EIS, &value);
-    g_value_unset (&value);
-  }
+#ifndef EIS_MODES_ENABLE
+  g_value_init (&value, G_TYPE_BOOLEAN);
+  g_value_set_boolean (&value, DEFAULT_PROP_CAMERA_EIS_MODE);
+  gst_qmmf_context_set_camera_param (qmmfsrc->context, PARAM_CAMERA_EIS, &value);
+  g_value_unset (&value);
+#else
+  g_value_init (&value, GST_TYPE_QMMFSRC_EIS_MODE);
+  g_value_set_enum (&value, DEFAULT_PROP_CAMERA_EIS_MODE);
+  gst_qmmf_context_set_camera_param (qmmfsrc->context, PARAM_CAMERA_EIS, &value);
+  g_value_unset (&value);
+#endif // EIS_MODES_ENABLE
 
   // ADRC (default: FALSE)
   g_value_init (&value, G_TYPE_BOOLEAN);
