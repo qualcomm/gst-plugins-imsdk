@@ -132,8 +132,13 @@ struct _GstQmmfContext {
   gboolean          ldc;
   /// Camera property to Enable or Disable Lateral Chromatic Aberration Correction.
   gboolean          lcac;
+#ifndef EIS_MODES_ENABLE
   /// Camera property to Enable or Disable Electronic Image Stabilization.
-  gboolean          eis_bool;
+  gboolean          eis;
+#else
+  /// Camera property to select Electronic Image Stabilization mode.
+  gint              eis;
+#endif // EIS_MODES_ENABLE
   /// Camera property to select Electronic Image Stabilization mode.
   gint              eis_enum;
 #ifndef VHDR_MODES_ENABLE
@@ -213,7 +218,10 @@ struct _GstQmmfContext {
   gboolean          input_roi_enable;
   /// Number of Input ROI's
   gint32            input_roi_count;
-
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  /// Offline IFE enable for multicamera usecase
+  gboolean          multicamera_hint;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
   gboolean          sw_tnr;
   /// Capabilities of each camera
   GHashTable        *static_metas;
@@ -1849,21 +1857,21 @@ gst_qmmf_context_open (GstQmmfContext * context)
   xtraparam.Update (::qmmf::recorder::QMMF_LCAC, lcac);
 
   // EIS
-  if (!gst_qmmfsrc_check_eis_support ()) {
-    ::qmmf::recorder::EISSetup eis;
-    eis.enable = context->eis_bool;
-    xtraparam.Update (::qmmf::recorder::QMMF_EIS, eis);
-  } else if (gst_qmmfsrc_check_eis_support () > 0) {
-    ::qmmf::recorder::EISModeSetup eis;
-    if (context->eis_enum == EIS_OFF) {
-      eis.mode = ::qmmf::recorder::EisMode::kEisOff;
-    } else if (context->eis_enum == EIS_ON_SINGLE_STREAM) {
-      eis.mode = ::qmmf::recorder::EisMode::kEisSingleStream;
-    } else {
-      eis.mode = ::qmmf::recorder::EisMode::kEisDualStream;
-    }
-    xtraparam.Update (::qmmf::recorder::QMMF_EIS_MODE, eis);
+#ifndef EIS_MODES_ENABLE
+  ::qmmf::recorder::EISSetup eis;
+  eis.enable = context->eis;
+  xtraparam.Update (::qmmf::recorder::QMMF_EIS, eis);
+#else
+  ::qmmf::recorder::EISModeSetup eis;
+  if (context->eis == EIS_OFF) {
+    eis.mode = ::qmmf::recorder::EisMode::kEisOff;
+  } else if (context->eis == EIS_ON_SINGLE_STREAM) {
+    eis.mode = ::qmmf::recorder::EisMode::kEisSingleStream;
+  } else {
+    eis.mode = ::qmmf::recorder::EisMode::kEisDualStream;
   }
+  xtraparam.Update (::qmmf::recorder::QMMF_EIS_MODE, eis);
+#endif // EIS_MODES_ENABLE
 
   // SHDR
   ::qmmf::recorder::VideoHDRMode hdr;
@@ -1919,6 +1927,12 @@ gst_qmmf_context_open (GstQmmfContext * context)
   ::qmmf::recorder::InputROISetup qmmf_input_roi;
   qmmf_input_roi.enable = context->input_roi_enable;
   xtraparam.Update (::qmmf::recorder::QMMF_INPUT_ROI, qmmf_input_roi);
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  // Offline IFE
+  ::qmmf::recorder::OfflineIFE qmmf_offline_ife;
+  qmmf_offline_ife.enable = context->multicamera_hint;
+  xtraparam.Update (::qmmf::recorder::QMMF_OFFLINE_IFE, qmmf_offline_ife);
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
 
   if (gst_qmmfsrc_check_sw_tnr_support ()) {
     ::qmmf::recorder::SWTNR sw_tnr;
@@ -2800,10 +2814,11 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       context->lcac = g_value_get_boolean (value);
       return;
     case PARAM_CAMERA_EIS:
-      if (!gst_qmmfsrc_check_eis_support ())
-        context->eis_bool = g_value_get_boolean (value);
-      else if (gst_qmmfsrc_check_eis_support () > 0)
-        context->eis_enum = g_value_get_enum (value);
+#ifndef EIS_MODES_ENABLE
+      context->eis = g_value_get_boolean (value);
+#else
+      context->eis = g_value_get_enum (value);
+#endif // EIS_MODES_ENABLE
       return;
 #ifndef VHDR_MODES_ENABLE
     case PARAM_CAMERA_SHDR: {
@@ -2840,6 +2855,11 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_INPUT_ROI:
       context->input_roi_enable = g_value_get_boolean (value);
       return;
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PARAM_CAMERA_MULTICAMERA_HINT:
+      context->multicamera_hint = g_value_get_boolean (value);
+      return;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PARAM_CAMERA_SW_TNR:
       context->sw_tnr = g_value_get_boolean (value);
       return;
@@ -3440,10 +3460,11 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_value_set_boolean (value, context->lcac);
       break;
     case PARAM_CAMERA_EIS:
-      if (!gst_qmmfsrc_check_eis_support ())
-        g_value_set_boolean (value, context->eis_bool);
-      else if (gst_qmmfsrc_check_eis_support () > 0)
-        g_value_set_enum (value, context->eis_enum);
+#ifndef EIS_MODES_ENABLE
+      g_value_set_boolean (value, context->eis);
+#else
+      g_value_set_enum (value, context->eis);
+#endif // EIS_MODES_ENABLE
       break;
 #ifndef VHDR_MODES_ENABLE
     case PARAM_CAMERA_SHDR:
@@ -3521,6 +3542,11 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_value_set_int (value, context->superframerate);
       break;
     }
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PARAM_CAMERA_MULTICAMERA_HINT:
+      g_value_set_boolean (value, context->multicamera_hint);
+      break;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PARAM_CAMERA_SW_TNR:
       g_value_set_boolean (value, context->sw_tnr);
       break;
