@@ -58,6 +58,43 @@ GST_API GType gst_ml_onnx_execution_provider_get_type (void);
     "GstMLOnnxEngine.qnn-backend-path"
 
 /**
+ * GstMLOnnxHtpPerformanceMode:
+ * @GST_ML_ONNX_HTP_PERFORMANCE_MODE_DEFAULT                    : Default performance mode
+ * @GST_ML_ONNX_HTP_PERFORMANCE_MODE_BURST                      : Burst (maximum) performance
+ * @GST_ML_ONNX_HTP_PERFORMANCE_MODE_BALANCED                   : Balanced performance/power
+ * @GST_ML_ONNX_HTP_PERFORMANCE_MODE_LOW_BALANCED               : Low balanced performance
+ * @GST_ML_ONNX_HTP_PERFORMANCE_MODE_HIGH_PERFORMANCE           : High performance
+ * @GST_ML_ONNX_HTP_PERFORMANCE_MODE_EXTREME_POWER              : Extreme power performance
+ * @GST_ML_ONNX_HTP_PERFORMANCE_MODE_LOW_POWER                  : Low power mode
+ * @GST_ML_ONNX_HTP_PERFORMANCE_MODE_SUSTAINED_HIGH_PERFORMANCE : Sustained high performance
+ *
+ * HTP performance modes for QNN execution provider.
+ */
+typedef enum {
+  GST_ML_ONNX_HTP_PERFORMANCE_MODE_DEFAULT,
+  GST_ML_ONNX_HTP_PERFORMANCE_MODE_BURST,
+  GST_ML_ONNX_HTP_PERFORMANCE_MODE_BALANCED,
+  GST_ML_ONNX_HTP_PERFORMANCE_MODE_LOW_BALANCED,
+  GST_ML_ONNX_HTP_PERFORMANCE_MODE_HIGH_PERFORMANCE,
+  GST_ML_ONNX_HTP_PERFORMANCE_MODE_EXTREME_POWER,
+  GST_ML_ONNX_HTP_PERFORMANCE_MODE_LOW_POWER,
+  GST_ML_ONNX_HTP_PERFORMANCE_MODE_SUSTAINED_HIGH_PERFORMANCE,
+} GstMLOnnxHtpPerformanceMode;
+
+GST_API GType gst_ml_onnx_htp_performance_mode_get_type (void);
+#define GST_TYPE_ML_ONNX_HTP_PERFORMANCE_MODE \
+    (gst_ml_onnx_htp_performance_mode_get_type())
+
+/**
+ * GST_ML_ONNX_ENGINE_OPT_QNN_HTP_PERFORMANCE_MODE:
+ *
+ * #GST_TYPE_ML_ONNX_HTP_PERFORMANCE_MODE, set the HTP performance mode for QNN.
+ * Default: #GST_ML_ONNX_HTP_PERFORMANCE_MODE_DEFAULT.
+ */
+#define GST_ML_ONNX_ENGINE_OPT_QNN_HTP_PERFORMANCE_MODE \
+    "GstMLOnnxEngine.qnn-htp-performance-mode"
+
+/**
  * GstMLOnnxOptimizationLevel:
  * @GST_ML_ONNX_OPTIMIZATION_LEVEL_DISABLE_ALL     : Disable all optimizations
  * @GST_ML_ONNX_OPTIMIZATION_LEVEL_ENABLE_BASIC    : Enable basic optimizations

@@ -45,6 +45,7 @@ struct _GstMLOnnx {
   gchar                       *model;
   GstMLOnnxExecutionProvider  execution_provider;
   gchar                       *backend_path;
+  GstMLOnnxHtpPerformanceMode htp_performance_mode;
   GstMLOnnxOptimizationLevel  optimization_level;
   guint                       n_threads;
 };

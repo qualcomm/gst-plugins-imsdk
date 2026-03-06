@@ -48,13 +48,14 @@ GST_DEBUG_CATEGORY_STATIC (gst_ml_onnx_debug);
 #define gst_ml_onnx_parent_class parent_class
 G_DEFINE_TYPE (GstMLOnnx, gst_ml_onnx, GST_TYPE_BASE_TRANSFORM);
 
-#define DEFAULT_PROP_MODEL                NULL
-#define DEFAULT_PROP_EXECUTION_PROVIDER   GST_ML_ONNX_EXECUTION_PROVIDER_CPU
-#define DEFAULT_PROP_OPTIMIZATION_LEVEL   GST_ML_ONNX_OPTIMIZATION_LEVEL_ENABLE_EXTENDED
-#define DEFAULT_PROP_QNN_BACKEND_PATH     NULL
-#define DEFAULT_PROP_THREADS              1
-#define DEFAULT_PROP_MIN_BUFFERS 2
-#define DEFAULT_PROP_MAX_BUFFERS 10
+#define DEFAULT_PROP_MODEL                    NULL
+#define DEFAULT_PROP_EXECUTION_PROVIDER       GST_ML_ONNX_EXECUTION_PROVIDER_CPU
+#define DEFAULT_PROP_OPTIMIZATION_LEVEL       GST_ML_ONNX_OPTIMIZATION_LEVEL_ENABLE_EXTENDED
+#define DEFAULT_PROP_QNN_BACKEND_PATH         NULL
+#define DEFAULT_PROP_QNN_HTP_PERFORMANCE_MODE GST_ML_ONNX_HTP_PERFORMANCE_MODE_DEFAULT
+#define DEFAULT_PROP_THREADS                  1
+#define DEFAULT_PROP_MIN_BUFFERS              2
+#define DEFAULT_PROP_MAX_BUFFERS              10
 
 #define GST_ML_ONNX_TENSOR_TYPES "{ INT8, UINT8, INT16, UINT16, INT32, UINT32, INT64, UINT64, FLOAT16, FLOAT32 }"
 
@@ -68,6 +69,7 @@ enum
   PROP_MODEL,
   PROP_EXECUTION_PROVIDER,
   PROP_QNN_BACKEND_PATH,
+  PROP_QNN_HTP_PERFORMANCE_MODE,
   PROP_OPTIMIZATION_LEVEL,
   PROP_THREADS,
 };
@@ -465,6 +467,9 @@ gst_ml_onnx_change_state (GstElement * element, GstStateChange transition)
           onnx->execution_provider,
           GST_ML_ONNX_ENGINE_OPT_QNN_BACKEND_PATH, G_TYPE_STRING,
           onnx->backend_path,
+          GST_ML_ONNX_ENGINE_OPT_QNN_HTP_PERFORMANCE_MODE,
+          GST_TYPE_ML_ONNX_HTP_PERFORMANCE_MODE,
+          onnx->htp_performance_mode,
           GST_ML_ONNX_ENGINE_OPT_OPTIMIZATION_LEVEL,
           GST_TYPE_ML_ONNX_OPTIMIZATION_LEVEL,
           onnx->optimization_level,
@@ -573,6 +578,10 @@ gst_ml_onnx_set_property (GObject * object, guint prop_id,
       g_free (onnx->backend_path);
       onnx->backend_path = g_strdup (g_value_get_string (value));
       break;
+    case PROP_QNN_HTP_PERFORMANCE_MODE:
+      onnx->htp_performance_mode =
+          (GstMLOnnxHtpPerformanceMode) g_value_get_enum (value);
+      break;
     case PROP_OPTIMIZATION_LEVEL:
       onnx->optimization_level = (GstMLOnnxOptimizationLevel) g_value_get_enum (value);
       break;
@@ -600,6 +609,9 @@ gst_ml_onnx_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_QNN_BACKEND_PATH:
       g_value_set_string (value, onnx->backend_path);
+      break;
+    case PROP_QNN_HTP_PERFORMANCE_MODE:
+      g_value_set_enum (value, onnx->htp_performance_mode);
       break;
     case PROP_OPTIMIZATION_LEVEL:
       g_value_set_enum (value, onnx->optimization_level);
@@ -665,6 +677,13 @@ gst_ml_onnx_class_init (GstMLOnnxClass * klass)
           "Provide the QNN backend library path for execution-provider 'qnn'.",
           DEFAULT_PROP_QNN_BACKEND_PATH,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_QNN_HTP_PERFORMANCE_MODE,
+      g_param_spec_enum ("htp-performance-mode", "HTP Performance Mode",
+          "QNN HTP performance mode. Applicable only when "
+          "execution-provider is 'qnn'.",
+          GST_TYPE_ML_ONNX_HTP_PERFORMANCE_MODE,
+          DEFAULT_PROP_QNN_HTP_PERFORMANCE_MODE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_OPTIMIZATION_LEVEL,
       g_param_spec_enum ("optimization-level", "Optimization Level",
           "ONNX Runtime graph optimization level",
@@ -711,6 +730,7 @@ gst_ml_onnx_init (GstMLOnnx * onnx)
   onnx->model = DEFAULT_PROP_MODEL;
   onnx->execution_provider = DEFAULT_PROP_EXECUTION_PROVIDER;
   onnx->backend_path = DEFAULT_PROP_QNN_BACKEND_PATH;
+  onnx->htp_performance_mode = DEFAULT_PROP_QNN_HTP_PERFORMANCE_MODE;
   onnx->optimization_level = DEFAULT_PROP_OPTIMIZATION_LEVEL;
   onnx->n_threads = DEFAULT_PROP_THREADS;
 
