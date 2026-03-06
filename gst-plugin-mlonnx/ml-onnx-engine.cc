@@ -66,6 +66,8 @@
 #define DEFAULT_OPT_EXECUTION_PROVIDER GST_ML_ONNX_EXECUTION_PROVIDER_CPU
 #define DEFAULT_OPT_OPTIMIZATION_LEVEL \
     GST_ML_ONNX_OPTIMIZATION_LEVEL_ENABLE_EXTENDED
+#define DEFAULT_OPT_HTP_PERFORMANCE_MODE \
+    GST_ML_ONNX_HTP_PERFORMANCE_MODE_DEFAULT
 
 #define GET_OPT_MODEL(s) get_opt_string (s, GST_ML_ONNX_ENGINE_OPT_MODEL)
 #define GET_OPT_EXECUTION_PROVIDER(s) get_opt_enum (s, \
@@ -73,6 +75,9 @@
     GST_TYPE_ML_ONNX_EXECUTION_PROVIDER, DEFAULT_OPT_EXECUTION_PROVIDER)
 #define GET_OPT_QNN_BACKEND_PATH(s) get_opt_string (s, \
     GST_ML_ONNX_ENGINE_OPT_QNN_BACKEND_PATH)
+#define GET_OPT_QNN_HTP_PERFORMANCE_MODE(s) get_opt_enum (s, \
+    GST_ML_ONNX_ENGINE_OPT_QNN_HTP_PERFORMANCE_MODE, \
+    GST_TYPE_ML_ONNX_HTP_PERFORMANCE_MODE, DEFAULT_OPT_HTP_PERFORMANCE_MODE)
 #define GET_OPT_OPTIMIZATION_LEVEL(s) get_opt_enum (s, \
     GST_ML_ONNX_ENGINE_OPT_OPTIMIZATION_LEVEL, \
     GST_TYPE_ML_ONNX_OPTIMIZATION_LEVEL, DEFAULT_OPT_OPTIMIZATION_LEVEL)
@@ -138,6 +143,44 @@ gst_ml_onnx_execution_provider_get_type (void)
 
   if (!gtype)
     gtype = g_enum_register_static ("GstMLOnnxExecutionProvider", variants);
+
+  return gtype;
+}
+
+GType
+gst_ml_onnx_htp_performance_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_ML_ONNX_HTP_PERFORMANCE_MODE_DEFAULT,
+        "Default performance mode", "default"
+    },
+    { GST_ML_ONNX_HTP_PERFORMANCE_MODE_BURST,
+        "Burst (maximum) performance", "burst"
+    },
+    { GST_ML_ONNX_HTP_PERFORMANCE_MODE_BALANCED,
+        "Balanced performance/power", "balanced"
+    },
+    { GST_ML_ONNX_HTP_PERFORMANCE_MODE_LOW_BALANCED,
+        "Low balanced performance", "low-balanced"
+    },
+    { GST_ML_ONNX_HTP_PERFORMANCE_MODE_HIGH_PERFORMANCE,
+        "High performance", "high-performance"
+    },
+    { GST_ML_ONNX_HTP_PERFORMANCE_MODE_EXTREME_POWER,
+        "Extreme power performance", "extreme-power"
+    },
+    { GST_ML_ONNX_HTP_PERFORMANCE_MODE_LOW_POWER,
+        "Low power mode", "low-power"
+    },
+    { GST_ML_ONNX_HTP_PERFORMANCE_MODE_SUSTAINED_HIGH_PERFORMANCE,
+        "Sustained high performance", "sustained-high-performance"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstMLOnnxHtpPerformanceMode", variants);
 
   return gtype;
 }
@@ -645,13 +688,49 @@ gst_ml_onnx_engine_new (GstStructure * settings)
         return NULL;
       }
 
+      gint htp_perf_mode_enum =
+          GET_OPT_QNN_HTP_PERFORMANCE_MODE (engine->settings);
+      const char *htp_perf_mode_str = NULL;
+      switch (htp_perf_mode_enum) {
+        case GST_ML_ONNX_HTP_PERFORMANCE_MODE_BURST:
+          htp_perf_mode_str = "burst";
+          break;
+        case GST_ML_ONNX_HTP_PERFORMANCE_MODE_BALANCED:
+          htp_perf_mode_str = "balanced";
+          break;
+        case GST_ML_ONNX_HTP_PERFORMANCE_MODE_LOW_BALANCED:
+          htp_perf_mode_str = "low_balanced";
+          break;
+        case GST_ML_ONNX_HTP_PERFORMANCE_MODE_HIGH_PERFORMANCE:
+          htp_perf_mode_str = "high_performance";
+          break;
+        case GST_ML_ONNX_HTP_PERFORMANCE_MODE_EXTREME_POWER:
+          htp_perf_mode_str = "extreme_power";
+          break;
+        case GST_ML_ONNX_HTP_PERFORMANCE_MODE_LOW_POWER:
+          htp_perf_mode_str = "low_power";
+          break;
+        case GST_ML_ONNX_HTP_PERFORMANCE_MODE_SUSTAINED_HIGH_PERFORMANCE:
+          htp_perf_mode_str = "sustained_high_performance";
+          break;
+        case GST_ML_ONNX_HTP_PERFORMANCE_MODE_DEFAULT:
+        default:
+          htp_perf_mode_str = "default";
+          break;
+      }
+
       // QNN execution provider configuration
       // Using SessionOptionsAppendExecutionProvider with QNN provider name
-      const char* qnn_provider_options_keys[] = {"backend_path"};
-      const char* qnn_provider_options_values[] = {backend_path};
+      const char* qnn_provider_options_keys[] = {
+          "backend_path", "htp_performance_mode"};
+      const char* qnn_provider_options_values[] = {
+          backend_path, htp_perf_mode_str};
+
+      GST_INFO ("QNN backend path: %s, HTP performance mode: %s",
+          backend_path, htp_perf_mode_str);
 
       status = api->SessionOptionsAppendExecutionProvider (session_options,
-          "QNN", qnn_provider_options_keys, qnn_provider_options_values, 1);
+          "QNN", qnn_provider_options_keys, qnn_provider_options_values, 2);
       if (status) {
         GST_WARNING ("Failed to set QNN execution provider: %s",
             api->GetErrorMessage (status));
