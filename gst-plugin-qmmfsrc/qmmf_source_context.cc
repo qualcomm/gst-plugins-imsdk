@@ -1137,12 +1137,12 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
   g_return_val_if_fail (gstbuffer != NULL, NULL);
 
   // Create a FD backed allocator.
-  allocator = gst_fd_allocator_new ();
+  allocator = gst_dmabuf_allocator_new ();
   QMMFSRC_RETURN_VAL_IF_FAIL_WITH_CLEAN (NULL, allocator != NULL,
       gst_buffer_unref (gstbuffer), NULL, "Failed to create FD allocator!");
 
   // Wrap our buffer memory block in FD backed memory.
-  gstmemory = gst_fd_allocator_alloc (
+  gstmemory = gst_dmabuf_allocator_alloc_with_flags (
       allocator, buffer->fd, buffer->capacity,
       GST_FD_MEMORY_FLAG_DONT_CLOSE
   );
