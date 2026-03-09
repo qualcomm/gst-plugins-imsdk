@@ -905,7 +905,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
     // Index and convinient pointer to the current blit object.
     idx = composition->n_blits;
     vblit = &(composition->blits[idx]);
-    vblit->buffer = inbuffer;
+    vblit->buffer = gst_buffer_ref (inbuffer);
 
     meta = gst_buffer_get_video_meta (inbuffer);
 
@@ -1013,7 +1013,10 @@ gst_ml_video_converter_cleanup_composition (GstMLVideoConverter * mlconverter)
   for (idx = 0; idx < composition->n_blits; idx++) {
     blit = &(composition->blits[idx]);
 
-    blit->buffer = NULL;
+    if (blit->buffer != NULL) {
+      gst_buffer_unref (blit->buffer);
+      blit->buffer = NULL;
+    }
   }
 
   composition->buffer = NULL;
