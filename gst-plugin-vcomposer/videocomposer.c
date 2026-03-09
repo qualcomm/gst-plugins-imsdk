@@ -775,7 +775,8 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 #endif // GST_VERSION_MAJOR > 1 || (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR >= 16)
 
     // GAP input buffer, nothing to do.
-    if (inbuffer == NULL)
+    if (inbuffer == NULL || (gst_buffer_get_size (inbuffer) == 0 &&
+        GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP)))
       continue;
 
     // Index to the current blit object to be populated.
