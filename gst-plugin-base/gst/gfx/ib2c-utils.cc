@@ -77,8 +77,11 @@ int32_t QueryAlignment() {
       // generic way to retrieve the GPU pixel alignment.
       // Relying on kernel device-tree nodes is not a robust long-term approach,
       // as they are not guaranteed to reflect the actual userspace driver in use.
-      if (false == std::filesystem::exists("/dev/kgsl-3d0"))
-        throw Exception(e.what(), "Adreno Utils is not supported on this platform!");
+      if (false == std::filesystem::exists("/dev/kgsl-3d0")) {
+        kAlignment = 128;
+        Log("WARNING: Non-GPU dev. Using default alignment of ", kAlignment);
+        return kAlignment;
+      }
 
       void *handle = dlopen("libadreno_utils.so.1", RTLD_NOW);
 
@@ -103,7 +106,7 @@ int32_t QueryAlignment() {
       // Close the library as it is no longer needed.
       dlclose(handle);
     } catch (std::exception& excp) {
-      Log("CRITICAL: '", excp.what(), "' Using default alignment of 128!");
+      Log("WARNING: '", excp.what(), "' Using default alignment of 128!");
       kAlignment = 128;
     }
   }
