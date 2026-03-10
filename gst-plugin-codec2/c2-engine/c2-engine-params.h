@@ -32,6 +32,7 @@ typedef struct _GstC2QuantInit GstC2QuantInit;
 typedef struct _GstC2QuantRanges GstC2QuantRanges;
 typedef struct _GstC2QuantRectangle GstC2QuantRectangle;
 typedef struct _GstC2QuantRegions GstC2QuantRegions;
+typedef struct _GstC2QuantMbmapInfo GstC2QuantMbmapInfo;
 typedef struct _GstC2TemporalLayer GstC2TemporalLayer;
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
 typedef struct _GstC2HdrStaticMetadata GstC2HdrStaticMetadata;
@@ -65,6 +66,7 @@ enum {
   GST_C2_PARAM_QP_INIT,              // GstC2QuantInit
   GST_C2_PARAM_QP_RANGES,            // GstC2QuantRanges
   GST_C2_PARAM_ROI_ENCODE,           // GstC2QuantRegions
+  GST_C2_PARAM_ROI_MBMAP_INFO,       // GstC2QuantMbmapInfo
   GST_C2_PARAM_TRIGGER_SYNC_FRAME,   // gboolean
   GST_C2_PARAM_NATIVE_RECORDING,     // gboolean
   GST_C2_PARAM_TEMPORAL_LAYERING,    // GstC2TemporalLayer
@@ -380,6 +382,17 @@ struct _GstC2QuantRegions {
   GstC2QuantRectangle rects[GST_C2_MAX_RECT_ROI_NUM];
   guint32             n_rects;
   guint64             timestamp;
+};
+
+struct _GstC2QuantMbmapInfo {
+  /// Flag to indicate whether enable mb map info to c2
+  gboolean enable;
+  /// Macroblock side length
+  guint8   mb_side_length;
+  /// Total number of macroblock
+  guint32  total_mbs;
+  /// Map indicating the region for QP bias
+  GArray   *qp_bias_map;
 };
 
 struct _GstC2TemporalLayer {

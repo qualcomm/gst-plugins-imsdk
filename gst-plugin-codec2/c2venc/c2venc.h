@@ -82,6 +82,8 @@ struct _GstC2VEncoder {
   GstStructure         *roi_quant_values;
   GArray               *roi_quant_boxes;
 
+  GstC2QuantMbmapInfo  mb_map_info;
+
   GstC2EntropyMode     entropy_mode;
   GstC2LoopFilterMode  loop_filter_mode;
   guint32              num_ltr_frames;

@@ -57,6 +57,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_FLIP                 (GST_C2_FLIP_NONE)
 #define DEFAULT_PROP_VBV_DELAY            (0x7fffffff)
 #define DEFAULT_PROP_HDR_MODE             (GST_C2_HDR_NONE)
+#define DEFAULT_PROP_MB_MAP_TOTAL_MBS     (0xffffffff)
 #define DEFAULT_PROP_CHROMA_QP_OFFSET     (0x7fffffff)
 
 #define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
@@ -83,6 +84,7 @@ enum
   PROP_ROI_QUANT_MODE,
   PROP_ROI_QUANT_META_VALUE,
   PROP_ROI_QUANT_BOXES,
+  PROP_ROI_MB_MAP_INFO,
   PROP_SLICE_MODE,
   PROP_SLICE_SIZE,
   PROP_ENTROPY_MODE,
@@ -355,6 +357,43 @@ gst_c2_venc_ltr_use (GstC2VEncoder * c2venc, guint id)
     GST_ERROR_OBJECT (c2venc, "Failed to set ltr use index!");
     return FALSE;
   }
+
+  return TRUE;
+}
+
+static gboolean
+gst_c2_venc_check_roi_mb_map_info (GstC2VEncoder * c2venc,
+    GstVideoInfo * vinfo)
+{
+  guint32 mb_size = 0, num_mb_rows = 0, num_mb_cols = 0, expected_mbs = 0;
+  GstC2QuantMbmapInfo *mb_map_info = &c2venc->mb_map_info;
+  GstVideoInfo *videoinfo = (vinfo == NULL) ? (&c2venc->instate->info) : vinfo;
+
+  // Determine macroblock size based on codec format
+  if (g_str_has_suffix (c2venc->name, "avc.encoder")) {
+    // AVC uses 16x16 macroblocks
+    mb_size = 16;
+  } else if (g_str_has_suffix (c2venc->name, "hevc.encoder")) {
+    // HEVC uses 32x32 macroblocks
+    mb_size = 32;
+  } else {
+    GST_ERROR_OBJECT (c2venc, "MB ROI is not supported for this codec");
+    return FALSE;
+  }
+
+  num_mb_cols = (GST_VIDEO_INFO_WIDTH (videoinfo) + mb_size - 1) / mb_size;
+  num_mb_rows = (GST_VIDEO_INFO_HEIGHT (videoinfo) + mb_size - 1) / mb_size;
+  expected_mbs = num_mb_cols * num_mb_rows;
+
+  if (mb_map_info->qp_bias_map->len != expected_mbs) {
+    GST_ERROR_OBJECT (c2venc, "Unexpected input ROI mb map length, "
+        "real len=%u, expected len=%u", mb_map_info->qp_bias_map->len,
+        expected_mbs);
+    return FALSE;
+  }
+
+  mb_map_info->mb_side_length = mb_size;
+  mb_map_info->total_mbs = expected_mbs;
 
   return TRUE;
 }
@@ -847,20 +886,80 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     }
   }
 
+  if (c2venc->mb_map_info.total_mbs != DEFAULT_PROP_MB_MAP_TOTAL_MBS) {
+    GstC2QuantMbmapInfo roi_mb_map;
+
+    if (c2venc->mb_map_info.qp_bias_map->len > 0 &&
+        gst_c2_venc_check_roi_mb_map_info (c2venc, info))
+      roi_mb_map.enable = TRUE;
+    else if (c2venc->mb_map_info.qp_bias_map->len == 0)
+      roi_mb_map.enable = FALSE;
+    else
+      return FALSE;
+
+    // To indicate setting mb map info in config state
+    roi_mb_map.total_mbs = 0;
+
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_ROI_MBMAP_INFO, GST_PTR_CAST (&roi_mb_map));
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set roi mb map parameter!");
+      return FALSE;
+    }
+  }
+
   return TRUE;
 }
 
 static void
+gst_c2_venc_free_roi_mb_map (GstC2QuantMbmapInfo * roi_mb_map)
+{
+  if (roi_mb_map == NULL)
+    return;
+
+  if (roi_mb_map->qp_bias_map != NULL)
+    g_array_free (roi_mb_map->qp_bias_map, TRUE);
+
+  g_free (roi_mb_map);
+}
+
+static void
 gst_c2_venc_handle_region_encode (GstC2VEncoder * c2venc,
-    GstVideoCodecFrame * frame)
+    GstVideoCodecFrame * frame, GstC2UserdataType * userdatatype)
 {
   GstMeta *meta = NULL;
   gpointer state = NULL;
   GstC2QuantRegions *roiparam = NULL;
+  GstC2QuantMbmapInfo *roi_mb_map = NULL;
   gint32 qpdelta = 0;
   guint32 idx = 0;
 
-  // ROI mode is disabled, nothing to do except to return immediately.
+  // Avoid race condition against setting mb map info property called by user
+  GST_OBJECT_LOCK (c2venc);
+  // Process MB-level first, mutually exclusive with legacy rectangle ROI
+  if (c2venc->mb_map_info.qp_bias_map->len > 0 &&
+      gst_c2_venc_check_roi_mb_map_info (c2venc, NULL)) {
+    // Allocate ROI mb map structure
+    roi_mb_map = g_new0 (GstC2QuantMbmapInfo, 1);
+    roi_mb_map->enable = TRUE;
+    roi_mb_map->mb_side_length = c2venc->mb_map_info.mb_side_length;
+    roi_mb_map->total_mbs = c2venc->mb_map_info.total_mbs;
+    roi_mb_map->qp_bias_map = g_array_copy (c2venc->mb_map_info.qp_bias_map);
+
+    // Attach ROI MB data to frame
+    gst_video_codec_frame_set_user_data (frame, roi_mb_map,
+        (GDestroyNotify) gst_c2_venc_free_roi_mb_map);
+    *userdatatype = GST_C2_USERDATA_TYPE_ROI_MB_MAP;
+
+    GST_LOG_OBJECT (c2venc, "Attached ROI MB data for frame %u",
+        frame->system_frame_number);
+  }
+  GST_OBJECT_UNLOCK (c2venc);
+
+  if (*userdatatype == GST_C2_USERDATA_TYPE_ROI_MB_MAP)
+    return;
+
+  // ROI quant mode is disabled, nothing to do except to return immediately
   if (!c2venc->roi_quant_mode)
     return;
 
@@ -939,6 +1038,7 @@ gst_c2_venc_handle_region_encode (GstC2VEncoder * c2venc,
 
   // Attach ROI info to the codec frame to be consumed by the component.
   gst_video_codec_frame_set_user_data (frame, roiparam, g_free);
+  *userdatatype = GST_C2_USERDATA_TYPE_ROI_RECTANGLE;
 
   return;
 }
@@ -1535,6 +1635,7 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   GstClockTimeDiff deadline;
   GstC2QueueItem item;
   gint fd = -1;
+  GstC2UserdataType userdatatype = GST_C2_USERDATA_TYPE_NONE;
 
   // GAP input buffer, drop the frame.
   if ((gst_buffer_get_size (frame->input_buffer) == 0) &&
@@ -1572,7 +1673,7 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
     gst_c2_venc_trigger_iframe (c2venc);
   }
 
-  gst_c2_venc_handle_region_encode (c2venc, frame);
+  gst_c2_venc_handle_region_encode (c2venc, frame, &userdatatype);
 
   if (c2venc->isheif)
     GST_BUFFER_FLAG_SET (frame->input_buffer, GST_VIDEO_BUFFER_FLAG_HEIC);
@@ -1638,6 +1739,7 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   item.index = frame->system_frame_number;
   item.userdata = gst_video_codec_frame_get_user_data (frame);
   item.n_subframes = c2venc->n_subframes;
+  item.userdatatype = userdatatype;
 
   if (!gst_c2_engine_queue (c2venc->engine, &item)) {
     GST_ERROR_OBJECT(c2venc, "Failed to send input frame to be emptied!");
@@ -1820,6 +1922,17 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       }
       break;
     }
+    case PROP_ROI_MB_MAP_INFO:
+      // Remove all old values.
+      g_array_set_size (c2venc->mb_map_info.qp_bias_map, 0);
+      c2venc->mb_map_info.total_mbs = 0;
+
+      for (guint idx = 0; idx < gst_value_array_get_size (value); idx++) {
+        gint8 qp_bias =
+            g_value_get_schar (gst_value_array_get_value (value, idx));
+        g_array_append_val (c2venc->mb_map_info.qp_bias_map, qp_bias);
+      }
+      break;
     case PROP_CHROMA_QP_OFFSET:
     {
       c2venc->chroma_qp_offset = g_value_get_int (value);
@@ -2011,6 +2124,17 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       }
       break;
     }
+    case PROP_ROI_MB_MAP_INFO:
+      for (guint idx = 0; idx < c2venc->mb_map_info.qp_bias_map->len; idx++) {
+        GValue element = G_VALUE_INIT;
+        g_value_init (&element, G_TYPE_CHAR);
+        g_value_set_schar (&element,
+            g_array_index (c2venc->mb_map_info.qp_bias_map, gint8, idx));
+
+        // Append the MB map QP value to the output GST array.
+        gst_value_array_append_value (value, &element);
+        g_value_unset (&element);
+      }
     case PROP_CHROMA_QP_OFFSET:
       g_value_set_int (value, c2venc->chroma_qp_offset);
       break;
@@ -2082,6 +2206,7 @@ gst_c2_venc_finalize (GObject * object)
 
   g_array_free (c2venc->roi_quant_boxes, TRUE);
   gst_structure_free (c2venc->roi_quant_values);
+  g_array_free (c2venc->mb_map_info.qp_bias_map, TRUE);
 
   g_array_free (c2venc->temp_layer.bitrate_ratios, TRUE);
 
@@ -2225,6 +2350,15 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
                   G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
               G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_ROI_MB_MAP_INFO,
+      gst_param_spec_array ("roi-mb-map-info", "ROI MB Map Info",
+          "Manually set Macroblock-level based ROI QP map info in Garray per "
+          "frame. DeltaQP range: [-31, 30], MB size: 16 for AVC / 32 for HEVC",
+          g_param_spec_char ("value", "QP Value",
+                  "The QP value for each Macroblock within the frame",
+                  G_MININT8, G_MAXINT8, 0,
+                  G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CHROMA_QP_OFFSET,
       g_param_spec_int ("chroma-qp-offset", "Chroma Quantization Offset",
           "Chroma Quantization offset from Luma Quantization, supported "
@@ -2386,6 +2520,11 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->roi_quant_values = gst_structure_new_empty ("roi-meta-qp");
   c2venc->roi_quant_boxes =
       g_array_new (FALSE, FALSE, sizeof (GstC2QuantRectangle));
+
+  c2venc->mb_map_info.enable = FALSE;
+  c2venc->mb_map_info.mb_side_length = 0;
+  c2venc->mb_map_info.total_mbs = DEFAULT_PROP_MB_MAP_TOTAL_MBS;
+  c2venc->mb_map_info.qp_bias_map = g_array_new (FALSE, FALSE, sizeof (gint8));
 
   c2venc->entropy_mode = DEFAULT_PROP_ENTROPY_MODE;
   c2venc->loop_filter_mode = DEFAULT_PROP_LOOP_FILTER_MODE;

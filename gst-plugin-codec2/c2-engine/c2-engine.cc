@@ -571,12 +571,30 @@ gst_c2_engine_queue (GstC2Engine * engine, GstC2QueueItem * item)
   else if (GST_CLOCK_TIME_IS_VALID (GST_BUFFER_PTS (buffer)))
     timestamp = GST_TIME_AS_USECONDS (GST_BUFFER_PTS (buffer));
 
-  // Get per frame settings. TODO: Right now this is only ROI data.
+  // Get per frame settings.
   if (item->userdata) {
-    GstC2QuantRegions *roiparam = reinterpret_cast<GstC2QuantRegions*>(
-        item->userdata);
     std::unique_ptr<C2Param> c2param;
-    GstC2Utils::UnpackPayload(GST_C2_PARAM_ROI_ENCODE, roiparam, c2param);
+
+    switch (item->userdatatype) {
+      case GST_C2_USERDATA_TYPE_ROI_RECTANGLE: {
+        GstC2QuantRegions *roiparam =
+            reinterpret_cast<GstC2QuantRegions*>(item->userdata);
+        GstC2Utils::UnpackPayload(GST_C2_PARAM_ROI_ENCODE, roiparam, c2param);
+        break;
+      }
+      case GST_C2_USERDATA_TYPE_ROI_MB_MAP: {
+        GstC2QuantMbmapInfo *mbmapinfo =
+            reinterpret_cast<GstC2QuantMbmapInfo*>(item->userdata);
+        GstC2Utils::UnpackPayload(GST_C2_PARAM_ROI_MBMAP_INFO,
+            mbmapinfo, c2param);
+        break;
+      }
+      default:
+        GST_ERROR ("Invalid userdata type '%u'!",
+            static_cast<uint32_t>(item->userdatatype));
+        return FALSE;
+    }
+
     settings.push_back(std::move(c2param));
   }
 

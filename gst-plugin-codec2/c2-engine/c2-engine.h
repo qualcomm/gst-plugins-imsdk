@@ -30,15 +30,23 @@ enum
   GST_C2_MODE_AUDIO_DECODE,
 };
 
+typedef enum {
+  GST_C2_USERDATA_TYPE_NONE,
+  GST_C2_USERDATA_TYPE_ROI_RECTANGLE,
+  GST_C2_USERDATA_TYPE_ROI_MB_MAP,
+} GstC2UserdataType;
+
 struct _GstC2QueueItem {
   /// Input buffer to be queued
-  GstBuffer *buffer;
+  GstBuffer         *buffer;
   /// Current index of the buffer
-  guint64   index;
+  guint64           index;
   /// Frame user data
-  gpointer  userdata;
+  gpointer          userdata;
+  /// Type of user data
+  GstC2UserdataType userdatatype;
   /// Number of subframes in one buffer
-  guint32   n_subframes;
+  guint32           n_subframes;
 };
 
 struct _GstC2Callbacks {
