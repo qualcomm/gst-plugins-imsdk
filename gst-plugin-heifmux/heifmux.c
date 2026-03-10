@@ -168,7 +168,6 @@ gst_heifmux_worker_task (gpointer userdata)
       }
 
       thframes = g_list_append (thframes, frame);
-      item->object = NULL;
     }
   }
 
