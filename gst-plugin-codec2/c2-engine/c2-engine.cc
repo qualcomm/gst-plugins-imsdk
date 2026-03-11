@@ -56,7 +56,7 @@ static G_DEFINE_QUARK (GstC2BufferQuark, gst_c2_buffer_qdata);
   g_mutex_unlock (&engine->lock); \
 }
 
-#define MAX_NUM_PENDING_WORK      (11)
+#define MAX_NUM_PENDING_WORK      (26)
 
 struct _GstC2Engine {
   /// Component name, used mainly for debugging.

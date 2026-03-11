@@ -93,6 +93,7 @@ struct _GstC2VEncoder {
   gint32               bitrate_boost_margin;
   GstC2HdrMode         hdr_mode;
   gint32               chroma_qp_offset;
+  GstC2EncodingMode    encoding_mode;
 };
 
 struct _GstC2VEncoderClass {

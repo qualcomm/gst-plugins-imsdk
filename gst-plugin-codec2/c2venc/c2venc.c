@@ -28,6 +28,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define GST_TYPE_C2_VIDEO_ROTATION     (gst_c2_video_rotation_get_type())
 #define GST_TYPE_C2_VIDEO_FLIP         (gst_c2_video_flip_get_type())
 #define GST_TYPE_C2_HDR_MODE           (gst_c2_hdr_mode_get_type())
+#define GST_TYPE_C2_ENCODING_MODE      (gst_c2_encoding_mode_get_type())
 
 #define DEFAULT_PROP_ROTATE               (GST_C2_ROTATE_NONE)
 #define DEFAULT_PROP_RATE_CONTROL         (GST_C2_RATE_CTRL_DISABLE)
@@ -60,6 +61,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_MB_MAP_TOTAL_MBS     (0xffffffff)
 #define DEFAULT_PROP_CHROMA_QP_OFFSET     (0x7fffffff)
 #define DEFAULT_PROP_BITRATE_BOOST_MARGIN (0x7fffffff)
+#define DEFAULT_PROP_ENCODING_MODE        (GST_C2_ENCODING_MODE_DEFAULT)
 
 #define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 
@@ -98,6 +100,7 @@ enum
   PROP_HDR_MODE,
   PROP_BITRATE_BOOST_MARGIN,
   PROP_CHROMA_QP_OFFSET,
+  PROP_ENCODING_MODE,
 };
 
 static GstStaticPadTemplate gst_c2_venc_sink_pad_template =
@@ -270,6 +273,28 @@ gst_c2_hdr_mode_get_type (void)
 
   if (!gtype)
     gtype = g_enum_register_static ("GstC2HdrMode", variants);
+
+  return gtype;
+}
+
+static GType
+gst_c2_encoding_mode_get_type (void)
+{
+  static GType gtype = 0;
+
+  static const GEnumValue variants[] = {
+    { GST_C2_ENCODING_MODE_DEFAULT, "Default", "default" },
+    { GST_C2_ENCODING_MODE_PROSIGHT, "The max quality for professional editing "
+        "used for HEVC 10-bit only", "prosight" },
+    { GST_C2_ENCODING_MODE_DEPTH, "Encode depth with less lossy compression, "
+        "given the nature of depth video", "depth" },
+    { GST_C2_ENCODING_MODE_LOOKAHEAD, "Improve video encoding quality by using "
+        "future frames information, limited in VBR_CFR only", "lookahead" },
+    { 0, NULL, NULL },
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstC2EncodingMode", variants);
 
   return gtype;
 }
@@ -916,6 +941,15 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
         GST_C2_PARAM_ROI_MBMAP_INFO, GST_PTR_CAST (&roi_mb_map));
     if (!success) {
       GST_ERROR_OBJECT (c2venc, "Failed to set roi mb map parameter!");
+      return FALSE;
+    }
+  }
+
+  if (c2venc->encoding_mode != DEFAULT_PROP_ENCODING_MODE) {
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_ENCODING_MODE, GST_PTR_CAST (&c2venc->encoding_mode));
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set video encoding mode!");
       return FALSE;
     }
   }
@@ -2030,6 +2064,9 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_BITRATE_BOOST_MARGIN:
       c2venc->bitrate_boost_margin = g_value_get_int (value);
       break;
+    case PROP_ENCODING_MODE:
+      c2venc->encoding_mode = g_value_get_enum (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2208,6 +2245,9 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       break;
     case PROP_BITRATE_BOOST_MARGIN:
       g_value_set_int (value, c2venc->bitrate_boost_margin);
+      break;
+    case PROP_ENCODING_MODE:
+      g_value_set_enum (value, c2venc->encoding_mode);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2457,6 +2497,13 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           "(0x7fffffff=component default, value range could be 0 to 100)",
           0, G_MAXINT, DEFAULT_PROP_BITRATE_BOOST_MARGIN,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_ENCODING_MODE,
+      g_param_spec_enum ("encoding-mode", "Video Encoding Modes",
+          "Used by applications for setting the encoding usecase, the encoder "
+          "will override certain parameters internally necessary to meet the "
+          "functionality/quality/performance for the requested mode.",
+          GST_TYPE_C2_ENCODING_MODE, DEFAULT_PROP_ENCODING_MODE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
 
   g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_trigger_iframe),
@@ -2564,6 +2611,7 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->vbv_delay = DEFAULT_PROP_VBV_DELAY;
   c2venc->bitrate_boost_margin = DEFAULT_PROP_BITRATE_BOOST_MARGIN;
   c2venc->hdr_mode = DEFAULT_PROP_HDR_MODE;
+  c2venc->encoding_mode = DEFAULT_PROP_ENCODING_MODE;
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,
       "QTI c2venc encoder");
