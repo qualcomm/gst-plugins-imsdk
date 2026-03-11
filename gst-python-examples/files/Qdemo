@@ -1,3 +1,2 @@
-#!/bin/bash
-export XDG_RUNTIME_DIR=/dev/socket/weston && export WAYLAND_DISPLAY=wayland-1
+#!/bin/sh
 python3 /usr/bin/gst-gui-launcher-app.py

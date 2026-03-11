@@ -369,7 +369,10 @@ class DemoWindow(Gtk.Window):
                     self.popup.show_all()
 
                     # URL of the file to be downloaded
-                    url = "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/qualcomm-linux/scripts/download_artifacts.sh?raw=true"
+                    url = "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/main/qualcomm-linux/scripts/download_artifacts.sh"
+
+                    if not os.path.exists("/etc/media"):
+                        os.makedirs("/etc/media", exist_ok=True)
 
                     # Download the file from the URL to the specified file path
                     urllib.request.urlretrieve(url, file_path)
@@ -581,7 +584,7 @@ class DemoWindow(Gtk.Window):
                     sink_0::position='<0, 0>' sink_0::dimensions='<1920, 1080>' \
                     sink_1::position='<0, 0>' sink_1::dimensions='<240, 480>' \
                     sink_2::position='<1680, 0>' sink_2::dimensions='<240, 480>' \
-                    mixer. ! queue ! qtivoverlay  engine=gles ! gtksink"
+                    mixer. ! queue ! qtivoverlay ! gtksink"
             elif application == "Multistream":
                 pipeline = f"gst-launch-1.0 -e qtivcomposer name=mixer \
                     sink_0::position='<0, 0>' sink_0::dimensions='<960, 540>' \
@@ -623,7 +626,7 @@ class DemoWindow(Gtk.Window):
         self.popup.move(55, 0)
 
         # Load the animated GIF
-        gif_path = "/etc/media/Qdemo.gif"
+        gif_path = "/usr/share/qdemo/Qdemo.gif"
         animation = GdkPixbuf.PixbufAnimation.new_from_file(gif_path)
         gif_image = Gtk.Image.new_from_animation(animation)
 
