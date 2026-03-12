@@ -3,10 +3,6 @@ project(GST-CAMERA-FD-STREAM-EXAMPLE LANGUAGES C CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-include_directories(${SYSROOT_INCDIR})
-link_directories(${SYSROOT_LIBDIR})
-link_directories(${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR})
-
 find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools
@@ -28,7 +24,7 @@ add_executable(${GST_EXAMPLE_BIN}
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
-  ${SYSROOT_INCDIR}/camx-api/camx/service
+  ${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/camx-api/camx/service
   ${GST_INCLUDE_DIRS}/gstreamer-1.0/gst/sampleapps/
   $<$<BOOL:${QMMF_CAMERA_METADATA_FOUND}>:${QMMF_CAMERA_METADATA_INCLUDE_DIRS}>
 )

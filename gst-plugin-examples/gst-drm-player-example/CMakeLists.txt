@@ -15,7 +15,6 @@ endif()
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
-  ${SYSROOT_INCDIR}
   ${XML2_INCLUDE_DIRS}
 )
 

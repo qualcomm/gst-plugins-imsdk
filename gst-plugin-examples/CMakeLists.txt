@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(GST_PLUGIN_EXAMPLES LANGUAGES C CXX)
 
-include_directories(${SYSROOT_INCDIR})
-link_directories(${SYSROOT_LIBDIR})
-
 find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools
