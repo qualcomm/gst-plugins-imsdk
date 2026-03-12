@@ -6,9 +6,6 @@ project(GST_PLUGIN_QTI_OSS_ML_ONNX
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-include_directories(${SYSROOT_INCDIR})
-link_directories(${SYSROOT_LIBDIR})
-
 find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools
@@ -43,7 +40,7 @@ endif()
 
 # Find qnn execution provider library
 find_library(QNNPROVIDERS_LIB onnxruntime_providers_qnn
-  PATHS ${SYSROOT_LIBDIR}
+  PATHS ${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}
   NO_DEFAULT_PATH
 )
 if(NOT QNNPROVIDERS_LIB)
@@ -52,7 +49,7 @@ endif()
 
 # Find ONNX proto library
 find_library(ONNX_PROTO_LIB onnx_proto
-  PATHS ${SYSROOT_LIBDIR}
+  PATHS ${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}
   NO_DEFAULT_PATH
 )
 if(NOT ONNX_PROTO_LIB)

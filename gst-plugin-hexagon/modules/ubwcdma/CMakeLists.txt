@@ -5,9 +5,6 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(QTI_OSS_HEXAGON_MODULES ubwcdma)
 
-include_directories(${SYSROOT_INCDIR})
-link_directories(${SYSROOT_LIBDIR})
-
 add_library(${QTI_OSS_HEXAGON_MODULES} SHARED
   ubwcdma.c
 )

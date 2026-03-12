@@ -3,10 +3,6 @@ project(GST-CONCURRENT-VIDEOPLAY-COMPOSITION LANGUAGES C CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-include_directories(${SYSROOT_INCDIR})
-link_directories(${SYSROOT_LIBDIR})
-link_directories(${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR})
-
 find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools

@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(GST_UVC_CAMERA_DAEMON LANGUAGES C)
 
-include_directories(${SYSROOT_INCDIR})
-link_directories(${SYSROOT_LIBDIR})
-
 find_package(PkgConfig)
 find_package(ALSA REQUIRED)
 
