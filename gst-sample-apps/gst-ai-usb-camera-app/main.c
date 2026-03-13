@@ -51,7 +51,7 @@
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 #define DEFAULT_FRAMERATE 30
-#define DEFAULT_OUTPUT_FILENAME "/etc/media/video.mp4"
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/output.mp4"
 #define DEFAULT_IP "127.0.0.1"
 #define DEFAULT_PORT "8900"
 #define DEFAULT_PROP_MPOINT "/live"
