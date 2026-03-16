@@ -14,3 +14,6 @@ usr/bin/gst-multi-camera-stream-example.py
 usr/bin/gst-opencv-transform.py
 usr/bin/gst-parallel-inference.py
 usr/bin/gst-rtspsrc-detection-display.py
+usr/bin/Qdemo
+usr/qdemo/Qdemo.gif /usr/share/qdemo/
+usr/qdemo/Qdemo.png /usr/share/qdemo/
