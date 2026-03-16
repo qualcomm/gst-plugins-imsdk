@@ -149,20 +149,6 @@ typedef enum {
 } GstVideoSplitMode;
 
 /**
- * GstVideoConvBackend:
- * @C2D    : Use C2D based video converter
- * @GLES   : Use OpenGLES based video converter.
- * @FCV    : Use FastCV based video converter.
- *
- * The backend of the video converter engine.
- */
-typedef enum {
-  C2D,
-  GLES,
-  FCV
-} GstVideoConvBackend;
-
-/**
  * Structure for various application specific options
  */
 typedef struct {
@@ -962,12 +948,6 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
       goto error_clean_elements;
     }
   }
-
-  // 2.10 Set properties backend engine
-  g_value_init (&value, G_TYPE_INT);
-  g_value_set_int (&value, GLES);
-  g_object_set_property (G_OBJECT (qtivoverlay), "engine", &value);
-  g_value_unset (&value);
 
   if (options->sink_type == GST_WAYLANDSINK) {
     // 2.11 Set the properties of Wayland compositor
