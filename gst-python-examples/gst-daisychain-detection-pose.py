@@ -371,8 +371,6 @@ def create_pipeline(pipeline):
     elements["qtimlvpose"].set_property("results", 1)
     elements["qtimlvpose"].set_property("labels", args.pose_labels)
 
-    elements["qtivoverlay"].set_property("engine", "gles")
-
     # Set sync to False to override default value
     waylandsink.set_property("sync", True)
     waylandsink.set_property("fullscreen", True)
