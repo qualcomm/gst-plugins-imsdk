@@ -751,7 +751,7 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
                 pl_info.class_meta_info, idx);
         GstVideoClassificationMeta *class_meta = NULL;
 
-        GArray *labels = g_array_sized_new (FALSE, FALSE,
+        GArray *labels = g_array_sized_new (FALSE, TRUE,
             sizeof (GstClassLabel), class_meta_pl->size);
         g_array_set_size (labels, class_meta_pl->size);
 
