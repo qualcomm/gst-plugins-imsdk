@@ -924,7 +924,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     if (module_id != -1) {
       snprintf (settings, 127, "{\"confidence\": %.1f}", 75.0);
       g_object_set (G_OBJECT (qtimlvdetection[i]),
-          "results", 4, "module", module_id, "labels", options->yolox_labels_path,
+          "results", 2, "module", module_id, "labels", options->yolox_labels_path,
           "settings", settings, NULL);
       }
     else {

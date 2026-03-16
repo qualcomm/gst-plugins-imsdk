@@ -363,7 +363,7 @@ def create_pipeline(pipeline):
     settings = f'{{"confidence": {threshold:.1f}}}'
     elements["qtimlvdetection"].set_property("settings", settings)
     elements["qtimlvdetection"].set_property("module", "yolov8")
-    elements["qtimlvdetection"].set_property("results", 4)
+    elements["qtimlvdetection"].set_property("results", 2)
     elements["qtimlvdetection"].set_property("labels", args.yolo_labels)
 
     elements["qtimlvpose"].set_property("settings", args.pose_settings)
