@@ -724,18 +724,6 @@ gst_cairo_draw_setup (GstVideoFrame * frame, cairo_surface_t ** surface,
   cairo_format_t format;
   cairo_font_options_t *options = NULL;
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-    if (gst_is_fd_memory (gst_buffer_peek_memory (frame->buffer, 0))) {
-      struct dma_buf_sync bufsync;
-      gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (frame->buffer, 0));
-
-      bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
-
-      if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-        GST_WARNING ("DMA IOCTL SYNC START failed!");
-    }
-#endif // HAVE_LINUX_DMA_BUF_H
-
   switch (GST_VIDEO_FRAME_FORMAT (frame)) {
     case GST_VIDEO_FORMAT_BGRA:
     case GST_VIDEO_FORMAT_RGBA:
@@ -799,16 +787,4 @@ gst_cairo_draw_cleanup (GstVideoFrame * frame, cairo_surface_t * surface,
 
   cairo_destroy (context);
   cairo_surface_destroy (surface);
-
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (frame->buffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (frame->buffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING ("DMA IOCTL SYNC END failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
 }

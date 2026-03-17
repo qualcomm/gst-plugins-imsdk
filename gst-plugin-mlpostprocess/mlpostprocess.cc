@@ -54,11 +54,6 @@
 #include <gst/utils/batch-utils.h>
 #include <cairo/cairo.h>
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-#include <sys/ioctl.h>
-#include <linux/dma-buf.h>
-#endif // HAVE_LINUX_DMA_BUF_H
-
 #define GST_CAT_DEFAULT gst_ml_post_process_debug
 GST_DEBUG_CATEGORY (gst_ml_post_process_debug);
 
@@ -2146,18 +2141,6 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
     memset (vframe.map[0].data, 0, vframe.map[0].size);
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-    if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-      struct dma_buf_sync bufsync;
-      gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-      bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
-
-      if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-        GST_WARNING_OBJECT (postprocess, "DMA IOCTL SYNC START failed!");
-    }
-#endif // HAVE_LINUX_DMA_BUF_H
-
     if (!gst_video_frame_to_module_frame (&vframe, frame)) {
       GST_ERROR_OBJECT (postprocess, "Failed to translate video frame!");
       gst_video_frame_unmap (&vframe);
@@ -2188,18 +2171,6 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   if (GST_IS_SEGMENTATION_TYPE (postprocess->type) ||
       GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
-#ifdef HAVE_LINUX_DMA_BUF_H
-    if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-      struct dma_buf_sync bufsync;
-      gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-      bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
-
-      if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-        GST_WARNING_OBJECT (postprocess, "DMA IOCTL SYNC END failed!");
-    }
-#endif // HAVE_LINUX_DMA_BUF_H
-
     gst_video_frame_unmap (&vframe);
   } else if (GST_IS_TENSOR_TYPE (postprocess->type)) {
     gst_ml_frame_unmap (&mlframe);

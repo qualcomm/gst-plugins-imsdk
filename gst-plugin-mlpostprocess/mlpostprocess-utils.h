@@ -10,11 +10,6 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/ml-frame.h>
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-#include <sys/ioctl.h>
-#include <linux/dma-buf.h>
-#endif // HAVE_LINUX_DMA_BUF_H
-
 #include <math.h>
 #include <algorithm>
 #include <dlfcn.h>
