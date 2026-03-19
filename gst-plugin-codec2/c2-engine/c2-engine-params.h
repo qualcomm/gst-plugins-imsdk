@@ -96,6 +96,7 @@ enum {
   GST_C2_PARAM_OPERATING_FRAMERATE,  // gdouble
   GST_C2_PARAM_CHROMA_QP_OFFSET,     // gint32
   GST_C2_PARAM_NAL_LENGTH_BITSTREAM, // GstC2NalPrefixMode
+  GST_C2_PARAM_BITRATE_BOOST_MARGIN, // gint32
 };
 
 typedef enum {

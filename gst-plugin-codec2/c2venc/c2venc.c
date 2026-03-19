@@ -59,6 +59,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_HDR_MODE             (GST_C2_HDR_NONE)
 #define DEFAULT_PROP_MB_MAP_TOTAL_MBS     (0xffffffff)
 #define DEFAULT_PROP_CHROMA_QP_OFFSET     (0x7fffffff)
+#define DEFAULT_PROP_BITRATE_BOOST_MARGIN (0x7fffffff)
 
 #define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 
@@ -95,6 +96,7 @@ enum
   PROP_FLIP,
   PROP_VBV_DELAY,
   PROP_HDR_MODE,
+  PROP_BITRATE_BOOST_MARGIN,
   PROP_CHROMA_QP_OFFSET,
 };
 
@@ -873,6 +875,16 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
         GST_C2_PARAM_VBV_DELAY, GST_PTR_CAST (&c2venc->vbv_delay));
     if (!success) {
       GST_ERROR_OBJECT (c2venc, "Failed to set vbv delay!");
+      return FALSE;
+    }
+  }
+
+  if (c2venc->bitrate_boost_margin != DEFAULT_PROP_BITRATE_BOOST_MARGIN) {
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_BITRATE_BOOST_MARGIN,
+        GST_PTR_CAST (&c2venc->bitrate_boost_margin));
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set bitrate boost margin!");
       return FALSE;
     }
   }
@@ -2015,6 +2027,9 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_HDR_MODE:
       c2venc->hdr_mode = g_value_get_enum (value);
       break;
+    case PROP_BITRATE_BOOST_MARGIN:
+      c2venc->bitrate_boost_margin = g_value_get_int (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2190,6 +2205,9 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       break;
     case PROP_HDR_MODE:
       g_value_set_enum (value, c2venc->hdr_mode);
+      break;
+    case PROP_BITRATE_BOOST_MARGIN:
+      g_value_set_int (value, c2venc->bitrate_boost_margin);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2431,6 +2449,14 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           "(0x7fffffff=component default)",
           GST_TYPE_C2_HDR_MODE, DEFAULT_PROP_HDR_MODE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_BITRATE_BOOST_MARGIN,
+      g_param_spec_int ("bitrate-boost-margin", "Bitrate Boost Margin",
+          "Used to set bitrate boost margin percentage, "
+          "Its for CAC feature, for apps like VCHAT which needs higher bitrate "
+          "for low resolution clip, bitrate can be boosted with this setting. "
+          "(0x7fffffff=component default, value range could be 0 to 100)",
+          0, G_MAXINT, DEFAULT_PROP_BITRATE_BOOST_MARGIN,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
 
   g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_trigger_iframe),
@@ -2536,6 +2562,7 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
       g_array_new (FALSE, FALSE, sizeof (gfloat));
   c2venc->n_subframes = 0;
   c2venc->vbv_delay = DEFAULT_PROP_VBV_DELAY;
+  c2venc->bitrate_boost_margin = DEFAULT_PROP_BITRATE_BOOST_MARGIN;
   c2venc->hdr_mode = DEFAULT_PROP_HDR_MODE;
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,

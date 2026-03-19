@@ -159,6 +159,8 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
 #endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR == 1)
   { GST_C2_PARAM_NAL_LENGTH_BITSTREAM,
       qc2::C2VideoNalLengthBitStream::output::PARAM_TYPE },
+  { GST_C2_PARAM_BITRATE_BOOST_MARGIN,
+      qc2::C2VideoBitrateboostMargin::output::PARAM_TYPE },
 };
 
 // Convenient map for printing the engine parameter name in string form.
@@ -218,6 +220,7 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_VBV_DELAY, "VBV_DELAY" },
   { GST_C2_PARAM_VUI_TIMING_INFO, "VUI_TIMING_INFO" },
   { GST_C2_PARAM_HDR_MODE, "HDR_MODE" },
+  { GST_C2_PARAM_BITRATE_BOOST_MARGIN, "BITRATE_BOOST_MARGIN" },
   { GST_C2_PARAM_NAL_LENGTH_BITSTREAM, "NAL_LENGTH_BITSTREAM" },
 };
 
@@ -1163,6 +1166,13 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(nallen);
       break;
     }
+    case GST_C2_PARAM_BITRATE_BOOST_MARGIN: {
+      qc2::C2VideoBitrateboostMargin::output margin;
+
+      margin.value = *(reinterpret_cast<gint32*>(payload));
+      c2param = C2Param::Copy(margin);
+      break;
+    }
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1655,6 +1665,13 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
           reinterpret_cast<qc2::C2VideoNalLengthBitStream::output*>(c2param.get());
 
       *(reinterpret_cast<guint32*>(payload)) = nallen->num_bytes;
+      break;
+    }
+    case GST_C2_PARAM_BITRATE_BOOST_MARGIN: {
+      auto margin =
+          reinterpret_cast<qc2::C2VideoBitrateboostMargin::output*>(c2param.get());
+
+      *(reinterpret_cast<gint32*>(payload)) = margin->value;
       break;
     }
     default:
