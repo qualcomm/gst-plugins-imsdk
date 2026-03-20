@@ -5,17 +5,13 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 ################################################################################
 
-from gi.repository import Gst, GLib
 import os
 import sys
 import signal
 import argparse
 import cv2
 import time
-
-import gi
-gi.require_version('Gst', '1.0')
-gi.require_version("GLib", "2.0")
+from multiprocessing import Process, Event
 
 # Constants
 DESCRIPTION = """
@@ -31,101 +27,80 @@ export QT_QPA_PLATFORM=wayland-egl
 usecase:
 gst-camera-opencv-resize.py --inwidth 1280 --inheight 720 --outwidth 640 --outheight 480
 """
-
 DEFAULT_INPUT_WIDTH = 1280
 DEFAULT_INPUT_HEIGHT = 720
 DEFAULT_RESIZE_WIDTH = 640
 DEFAULT_RESIZE_HEIGHT = 480
 
 
-def read_cam():
-    print(cv2.getBuildInformation())
-
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(
-        description=DESCRIPTION,
-        formatter_class=type(
-            'CustomFormatter',
-            (argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter),
-            {}
-        )
-    )
-    parser.add_argument(
-        "--inwidth", type=int, default=DEFAULT_INPUT_WIDTH,
-        help="Input camera stream width"
-    )
-    parser.add_argument(
-        "--inheight", type=int, default=DEFAULT_INPUT_HEIGHT,
-        help="Input camera stream height"
-    )
-    parser.add_argument(
-        "--outwidth", type=int, default=DEFAULT_RESIZE_WIDTH,
-        help="Resize camera stream width"
-    )
-    parser.add_argument(
-        "--outheight", type=int, default=DEFAULT_RESIZE_HEIGHT,
-        help="Resize camera stream height"
-    )
-    args = parser.parse_args()
-    print("Input and Output resolution: ", args.inwidth,
-          args.inheight, args.outwidth, args.outheight)
-
+def cam_loop(stop_event, inwidth, inheight, outwidth, outheight):
     source_path = (
         f"qtiqmmfsrc name=camsrc video_0::type=video ! "
-        f"video/x-raw,format=NV12,width={args.inwidth},height={args.inheight},framerate=30/1 ! "
+        f"video/x-raw,format=NV12,width={inwidth},height={inheight},framerate=30/1 ! "
         "queue ! "
         "qtivtransform ! "
         "video/x-raw,format=RGBA ! "
         "appsink"
     )
 
-    cap = cv2.VideoCapture(source_path)
+    cap = cv2.VideoCapture(source_path, cv2.CAP_GSTREAMER)
+    if not cap.isOpened():
+        print("Failed to open camera.", flush=True)
+        return
 
-    if cap.isOpened():
-        print("Capture API success")
+    window_created = False
 
-        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        print("Caps properties: ", width, height, fps)
-
-        try:
-            while True:
-                ret_val, frame = cap.read()
-                if not ret_val:
-                    break
-                resize = cv2.resize(frame, (args.outwidth, args.outheight))
-                cv2.imshow('demo', resize)
-                cv2.waitKey(1)
-        except KeyboardInterrupt:
-            print("\nInterrupted by user. Exiting gracefully...")
-        finally:
-            cap.release()
-            cv2.destroyAllWindows()
-    else:
-        print("Capture API failed")
-
-def is_linux():
     try:
-        with open("/etc/os-release") as f:
-            for line in f:
-                if "Linux" in line:
-                    return True
-    except FileNotFoundError:
-        return False
-    return False
+        while not stop_event.is_set():
+            ret, frame = cap.read()
+            if not ret:
+                print("Frame grab failed", flush=True)
+                break
+
+            resized = cv2.resize(frame, (outwidth, outheight))
+            cv2.imshow("demo", resized)
+            window_created = True
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                stop_event.set()
+                break
+
+    finally:
+        try:
+            cap.release()
+        except Exception:
+            pass
+        time.sleep(0.2)
+        if window_created:
+            try:
+                cv2.destroyAllWindows()
+            except Exception:
+                pass
+
 
 def main():
-    """Main function to set up and run the OpenCV with color conversion and resize  plugins."""
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
+    parser.add_argument("--inwidth", type=int, default=DEFAULT_INPUT_WIDTH, help="Input image width")
+    parser.add_argument("--inheight", type=int, default=DEFAULT_INPUT_HEIGHT, help="Input image height")
+    parser.add_argument("--outwidth", type=int, default=DEFAULT_RESIZE_WIDTH, help="Output image width")
+    parser.add_argument("--outheight", type=int, default=DEFAULT_RESIZE_HEIGHT, help="Output image height")
+    args = parser.parse_args()
 
-    # Set the environment
-    if is_linux():
-        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    stop_event = Event()
+    p = Process(target=cam_loop, args=(stop_event, args.inwidth, args.inheight, args.outwidth, args.outheight))
+    p.start()
 
-    read_cam()
-    print("App execution successful")
+    try:
+        # Wait for child process
+        while p.is_alive():
+            p.join(timeout=0.5)
+    except KeyboardInterrupt:
+        stop_event.set()
+        print("Ctrl+C pressed, terminating camera process...", flush=True)
+        p.terminate()
+        p.join()
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+if __name__ == "__main__":
+    main()
+
