@@ -105,6 +105,8 @@ add_library(${TARGET_NAME} SHARED
   ml-postprocess-easy-ocr-detector.cc
 )
 
+target_compile_options(${TARGET_NAME} PRIVATE -Wno-error=overloaded-virtual)
+
 target_include_directories(${TARGET_NAME} PUBLIC
   ${OPEN_CV_INCLUDE_DIRS}
 )
