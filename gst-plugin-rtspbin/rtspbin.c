@@ -222,6 +222,7 @@ static void
 gst_rtsp_bin_deinit_server (GstRtspBin * rtspbin)
 {
   GstRTSPMountPoints *mounts;
+  GList *list = NULL;
 
   GST_INFO_OBJECT (rtspbin, "Disconnecting existing clients");
 
@@ -231,8 +232,10 @@ gst_rtsp_bin_deinit_server (GstRtspBin * rtspbin)
   g_object_unref (mounts);
 
   // Filter existing clients and remove them
-  gst_rtsp_server_client_filter (rtspbin->server,
+  list = gst_rtsp_server_client_filter (rtspbin->server,
       gst_rtsp_bin_client_filter, NULL);
+  if (list)
+    GST_WARNING_OBJECT (rtspbin, "Failed to shut down all clients");
 
   if (rtspbin->server) {
     g_clear_pointer (&(rtspbin->server), gst_object_unref);
