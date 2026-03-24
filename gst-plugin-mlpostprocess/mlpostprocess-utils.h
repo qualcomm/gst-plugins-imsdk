@@ -22,9 +22,6 @@
 #define DISPLACEMENT_THRESHOLD      0.7F
 #define POSITION_THRESHOLD          0.04F
 
-#define SUPPORTED_TENSORS_IDENTATION "                                "
-#define CAPS_IDENTATION              "                                  "
-
 #define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
 #define GST_ML_MODULES_PREFIX "ml-postprocess-"
 
@@ -109,33 +106,6 @@ gst_module_tensors_to_ml_frame (Tensors& tensors, GstMLFrame * mlframe);
  **/
 GstCaps *
 gst_ml_caps_from_json (const std::string& json);
-
-/* gst_ml_module_get_type
- *
- * Helper function to get the type of the module.
- *
- * return: None.
- **/
-void
-gst_ml_module_get_type (GstStructure * structure, GString * result);
-
-/* gst_ml_module_get_dimensions
- *
- * Helper function to get the dimensions of the module.
- *
- * return: None.
- **/
-void
-gst_ml_module_get_dimensions (GstStructure * structure, GString * result);
-
-/* gst_ml_module_parse_caps
- *
- * Helper function to parse module caps.
- *
- * return: char string.
- **/
-gchar *
-gst_ml_module_parse_caps (const GstCaps * caps);
 
 /* gst_ml_enumarate_modules
  *

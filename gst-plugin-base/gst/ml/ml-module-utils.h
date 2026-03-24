@@ -15,6 +15,17 @@
 G_BEGIN_DECLS
 
 /**
+ * gst_ml_caps_to_string:
+ * @caps: A #GstCaps of type neural-network/tensors
+ *
+ * Helper function to parse neural-network/tensors caps into human redable string.
+ *
+ * Returns: Human readable string
+ */
+gchar *
+gst_ml_caps_to_string (const GstCaps *caps);
+
+/**
  * gst_ml_stage_get_unique_index:
  *
  * Get an available unique sequentially increasing number.

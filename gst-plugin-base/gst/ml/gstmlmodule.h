@@ -9,6 +9,7 @@
 #include <gst/ml/ml-info.h>
 #include <gst/ml/ml-frame.h>
 #include <gst/ml/gstmlmeta.h>
+#include <gst/ml/ml-module-utils.h>
 
 G_BEGIN_DECLS
 

@@ -7,11 +7,112 @@
 
 #include <gst/utils/common-utils.h>
 
+#define SUPPORTED_TENSORS_IDENTATION "                                "
+#define CAPS_IDENTATION              "                                  "
+
 // Global table for storing registered indeces of ML stages.
 static GHashTable *ml_stage_table = NULL;
 // Mutex for protecting access to the global table for ML stage indeces.
 G_LOCK_DEFINE_STATIC (ml_stage_mutex);
 
+
+static void
+gst_ml_module_get_type (GstStructure * structure, GString * result)
+{
+  const GValue *list = NULL;
+  guint length = 0, idx = 0;
+
+  if (!gst_structure_has_field (structure, "type")) {
+    GST_WARNING ("No field named 'type' in ml module caps!");
+    return;
+  }
+
+  list = gst_structure_get_value (structure, "type");
+  length = gst_value_list_get_size (list);
+
+  g_string_append_printf (result, "%sType: ", CAPS_IDENTATION);
+
+  for (idx = 0; idx < length; idx++) {
+    const GValue *value = gst_value_list_get_value (list, idx);
+
+    g_string_append (result, g_value_get_string (value));
+
+    if ((idx + 1) < length)
+      g_string_append (result, ", ");
+  }
+
+  g_string_append (result, "\n");
+}
+
+static void
+gst_ml_module_get_dimensions (GstStructure * structure, GString * result)
+{
+  const GValue *dimensions = NULL;
+  guint length = 0, idx = 0;
+
+  if (!gst_structure_has_field (structure, "dimensions")) {
+    GST_WARNING ("No field named 'dimensions' in ml module caps!");
+    return;
+  }
+
+  dimensions = gst_structure_get_value (structure, "dimensions");
+  length = gst_value_array_get_size (dimensions);
+
+  for (idx = 0; idx < length; idx++) {
+    const GValue *array = NULL;
+    guint size = 0, num = 0;
+
+    array = gst_value_array_get_value (dimensions, idx);
+
+    if (array == NULL || !G_VALUE_HOLDS (array, GST_TYPE_ARRAY))
+      continue;
+
+    g_string_append_printf (result, "%sTensor %d: ", CAPS_IDENTATION, idx);
+    size = gst_value_array_get_size (array);
+
+    for (num = 0; num < size; num++) {
+      const GValue *value = gst_value_array_get_value (array, num);
+
+      if (value == NULL)
+        continue;
+
+      if (G_VALUE_HOLDS (value, GST_TYPE_INT_RANGE)) {
+        gint min_value = gst_value_get_int_range_min (value);
+        gint max_value = gst_value_get_int_range_max (value);
+
+        g_string_append_printf (result, "%d-%d", min_value, max_value);
+      } else {
+        g_string_append_printf (result, "%d", g_value_get_int (value));
+      }
+
+      if ((num + 1) < size)
+        g_string_append (result, ", ");
+    }
+
+    g_string_append (result, "\n");
+  }
+}
+
+gchar *
+gst_ml_caps_to_string (const GstCaps *caps)
+{
+  GstStructure *structure = NULL;
+  GString *result = g_string_new ("");
+  guint size = gst_caps_get_size (caps);
+  guint idx = 0;
+
+  g_string_append_printf (result, "\n%sSupported tensors:\n",
+      SUPPORTED_TENSORS_IDENTATION);
+
+  for (idx = 0; idx < size; idx++) {
+    structure = gst_caps_get_structure (caps, idx);
+
+    gst_ml_module_get_type (structure, result);
+    gst_ml_module_get_dimensions (structure, result);
+  }
+
+  return g_string_free (result, FALSE);
+}
 
 gint8
 gst_ml_stage_get_unique_index (void)
