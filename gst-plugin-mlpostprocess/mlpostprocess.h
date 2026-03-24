@@ -37,10 +37,9 @@
 
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
-#include <gst/ml/ml-module-utils.h>
 
-#include "modules/qti-ml-post-process.h"
-#include "modules/qti-json-parser.h"
+#include "ml-post-process-utils.h"
+#include "ml-post-process-engine.h"
 
 G_BEGIN_DECLS
 
@@ -57,53 +56,47 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_POST_PROCESS))
 #define GST_ML_POST_PROCESS_CAST(obj) ((GstMLPostProcess *)(obj))
 
-#define GST_ML_GET_DETECTION_PREDICTIONS(predictions) \
-  std::any_cast<DetectionPrediction>(predictions)
-
 typedef struct _GstMLPostProcess GstMLPostProcess;
 typedef struct _GstMLPostProcessClass GstMLPostProcessClass;
 
+// Convient pointer to either module or signal post-process function.
+typedef gboolean (*GstMLProcess) \
+    (GstMLPostProcess*, guint, GstMLFrame*, GstStructure*, gpointer);
+
 struct _GstMLPostProcess {
-  GstBaseTransform     parent;
+  GstBaseTransform parent;
 
-  /// Input video info.
-  GstVideoInfo         *vinfo;
   /// Input ML info.
-  GstMLInfo            *mlinfo;
-
-  /// Output ML info.
-  GstMLInfo            *outmlinfo;
-
-  /// Output mode (video, text or tensor)
-  guint                mode;
-
+  GstMLInfo        *mlinfo;
+  /// Output Video info.
+  GstVideoInfo     *vinfo;
   /// Buffer pools.
-  GstBufferPool        *outpool;
+  GstBufferPool    *outpool;
 
   /// The ID of this stage of ML inference.
-  guint                stage_id;
+  guint            stage_id;
 
-  /// Module handle.
-  gpointer             handle;
-
-  /// Module interface functions.
-  IModule              *module;
-
+  /// Output mode (Video, Text or Tensors)
+  guint            outmode;
   /// Post processing type.
-  GQuark               type;
-
+  GQuark           type;
+  /// Post process module module engine.
+  GstMLEngine      *engine;
   /// Array with ML params for each batch.
-  GPtrArray            *mlparams;
+  GPtrArray        *mlparams;
 
-  // Stashed ML boxes used fot stabilization
-  std::vector<DetectionPrediction> *stashedmlboxes;
+  // Stashed ML predictions used fot stabilization
+  GList            *stashedpredictions;
+
+  /// Processing function chosen based on post-process type.
+  GstMLProcess     process;
 
   /// Properties.
-  gint                 mdlenum;
-  gchar                *labels;
-  guint                n_results;
-  gchar                *settings;
-  gboolean             bbox_stabilization;
+  gint             mdlenum;
+  gchar            *labels;
+  guint            n_results;
+  gchar            *settings;
+  gboolean         stabilization;
 };
 
 struct _GstMLPostProcessClass {

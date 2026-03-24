@@ -103,8 +103,8 @@ typedef std::vector<Plane> Planes;
 /** VideoFrame:
  * @width: Width in pixels.
  * @height: Height in pixels.
- * @bits: The number of bits used to pack data items.
- * @n_components: The number of components in the video format.
+ * @bits: The number of bits used to pack data items. (not used)
+ * @n_components: The number of components in the video format. (not used)
  * @format: Color format.
  * @planes: Plane specific information.
  *
@@ -122,8 +122,11 @@ struct VideoFrame {
       : width(0), height(0), bits(0), n_components(0),
         format(VideoFormat::kGRAY8), planes(0) {};
 
-  VideoFrame(uint32_t width, uint32_t height, uint32_t bits, uint32_t n_components,
-      VideoFormat format, Planes& planes)
+  VideoFrame(uint32_t width, uint32_t height, VideoFormat format, Planes& planes)
+      : width(width), height(height), format(format), planes(planes) {};
+
+  VideoFrame(uint32_t width, uint32_t height, uint32_t bits,
+             uint32_t n_components, VideoFormat format, Planes& planes)
       : width(width), height(height), bits(bits), n_components(n_components),
         format(format), planes(planes) {};
 };
@@ -202,14 +205,21 @@ struct Tensor {
   float                 qoffset;
 
   Tensor()
-      : type(TensorType::kUint8), name("unknown"), dimensions(0), data(nullptr),
-        qscale(1.0), qoffset(0.0) {};
+      : type(TensorType::kUint8),
+        name("unknown"),
+        dimensions(0),
+        data(nullptr),
+        qscale(1.0),
+        qoffset(0.0) {};
 
-  Tensor(TensorType type, std::string name,
-         std::vector<uint32_t>& dimensions, void* data,
-         float qscale, float qoffset)
-      : type(type), name(name), dimensions(dimensions), data(data),
-        qscale(qscale), qoffset(qoffset) {};
+  Tensor(TensorType type, std::string name,std::vector<uint32_t>& dimensions,
+         void* data, float qscale, float qoffset)
+      : type(type),
+        name(name),
+        dimensions(dimensions),
+        data(data),
+        qscale(qscale),
+        qoffset(qoffset) {};
 };
 
 // Variable vector of tensor structures.
@@ -236,7 +246,7 @@ struct AudioClassification {
   std::optional<Dictionary> xtraparams;
 
   AudioClassification()
-      : name(), confidence(0) {};
+      : name("unknown"), confidence(0) {};
 
   AudioClassification(std::string name, float confidence)
       : name(name), confidence(confidence) {};
@@ -267,7 +277,7 @@ struct ImageClassification {
   std::optional<Dictionary> xtraparams;
 
   ImageClassification()
-      : name(), confidence(0) {};
+      : name("unknown"), confidence(0) {};
 
   ImageClassification(std::string name, float confidence)
       : name(name), confidence(confidence) {};
@@ -300,7 +310,7 @@ struct Keypoint {
   std::optional<uint32_t> color;
 
   Keypoint()
-      : name(), x(0), y(0), confidence(0.0) {};
+      : name("unknown"), x(0), y(0), confidence(0.0) {};
 
   Keypoint(std::string name, float x, float y, float confidence)
       : name(name), x(x), y(y), confidence(confidence) {};
@@ -350,7 +360,7 @@ struct PoseEstimation {
   std::optional<Dictionary>    xtraparams;
 
   PoseEstimation()
-      : name(), confidence(0), keypoints() {};
+      : name("unknown"), confidence(0), keypoints() {};
 
   PoseEstimation(std::string name, float confidence, Keypoints& keypoints)
       : name(name), confidence(confidence), keypoints(keypoints) {};
@@ -394,7 +404,7 @@ struct ObjectDetection {
   std::optional<Dictionary> xtraparams;
 
   ObjectDetection()
-      : name(), confidence(0), left(0), top(0), right(0), bottom(0) {};
+      : name("unknown"), confidence(0), left(0), top(0), right(0), bottom(0) {};
 
   ObjectDetection(float left, float top, float right, float bottom)
       : left(left), top(top), right(right), bottom(bottom) {};

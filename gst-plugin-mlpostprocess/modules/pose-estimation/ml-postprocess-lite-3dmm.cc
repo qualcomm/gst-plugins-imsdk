@@ -31,13 +31,13 @@ static const std::string kModuleCaps = R"(
     {
       "format": ["FLOAT32"],
       "dimensions": [
-        [1, 512], [1, 265],
+        [1, 512], [1, 265]
       ]
     },
     {
       "format": ["FLOAT32"],
       "dimensions": [
-        [1, 265],
+        [1, 265]
       ]
     }
   ]
