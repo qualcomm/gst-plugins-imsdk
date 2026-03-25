@@ -155,8 +155,6 @@ target_compile_definitions(${GST_QTI_ML_TFLITE} PRIVATE
 target_include_directories(${GST_QTI_ML_TFLITE} PRIVATE
   ${GST_INCLUDE_DIRS}
   ${TARGET_INCS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_ML_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_ML_TFLITE} PRIVATE

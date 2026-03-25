@@ -7,8 +7,6 @@ add_library(${GST_QTI_ML_MODULE} SHARED
 
 target_include_directories(${GST_QTI_ML_MODULE} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_ML_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_ML_MODULE} PRIVATE
@@ -33,8 +31,6 @@ add_library(${GST_QTI_ML_MODULE} SHARED
 
 target_include_directories(${GST_QTI_ML_MODULE} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_ML_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_ML_MODULE} PRIVATE
@@ -59,8 +55,6 @@ add_library(${GST_QTI_ML_MODULE} SHARED
 
 target_include_directories(${GST_QTI_ML_MODULE} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_ML_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_ML_MODULE} PRIVATE

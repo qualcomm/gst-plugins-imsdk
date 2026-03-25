@@ -41,8 +41,6 @@ add_library(${GST_QTI_ML_DEMUX} SHARED
 
 target_include_directories(${GST_QTI_ML_DEMUX} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_ML_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_ML_DEMUX} PRIVATE

@@ -51,8 +51,6 @@ target_include_directories(${GST_QTI_OBJTRACKER_ALGO} INTERFACE
 
 target_include_directories(${GST_QTI_OBJTRACKER} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
 )
 
 target_compile_definitions(${GST_QTI_OBJTRACKER} PRIVATE

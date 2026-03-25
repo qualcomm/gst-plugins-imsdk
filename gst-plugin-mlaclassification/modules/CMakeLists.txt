@@ -7,8 +7,6 @@ add_library(${GST_QTI_ML_MODULE} SHARED
 
 target_include_directories(${GST_QTI_ML_MODULE} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_ML_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
 )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")

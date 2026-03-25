@@ -52,8 +52,6 @@ add_library(${GST_CV_OPTCLFLOW} SHARED
 
 target_include_directories(${GST_CV_OPTCLFLOW} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_MEM_INCLUDE_DIRS}
 )
 
 target_compile_definitions(${GST_CV_OPTCLFLOW} PRIVATE

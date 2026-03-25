@@ -57,8 +57,6 @@ target_compile_definitions(${GST_QTI_CV_IMGPYRAMID} PRIVATE
 
 target_include_directories(${GST_QTI_CV_IMGPYRAMID} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_MEM_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_CV_IMGPYRAMID} PRIVATE

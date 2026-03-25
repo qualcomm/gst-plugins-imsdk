@@ -10,7 +10,6 @@ pkg_check_modules(GST_QCOM_VIDEO
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
 )
 
 target_compile_definitions(${GST_EXAMPLE_BIN} PRIVATE
