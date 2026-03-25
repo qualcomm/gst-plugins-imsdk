@@ -46,7 +46,6 @@ add_library(${GST_SMART_VENC_BIN} SHARED
 
 target_include_directories(${GST_SMART_VENC_BIN} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_SMART_VENC_BIN} PRIVATE

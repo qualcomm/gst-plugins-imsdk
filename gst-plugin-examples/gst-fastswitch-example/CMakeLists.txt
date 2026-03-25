@@ -15,7 +15,6 @@ add_executable(${GST_EXAMPLE_BIN}
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE

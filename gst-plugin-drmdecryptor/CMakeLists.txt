@@ -48,7 +48,6 @@ add_library(${GST_QTI_DRM_DECRYPTOR} SHARED
 
 target_include_directories(${GST_QTI_DRM_DECRYPTOR} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_ML_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_DRM_DECRYPTOR} PRIVATE

@@ -47,9 +47,6 @@ add_library(${GST_QTI_METAMUX} SHARED
 
 target_include_directories(${GST_QTI_METAMUX} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
-  ${GST_QCOM_CV_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_METAMUX} PRIVATE

@@ -50,8 +50,6 @@ add_library(${GST_QTI_ML_META_PARSER} SHARED
 
 target_include_directories(${GST_QTI_ML_META_PARSER} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
 )
 
 target_compile_definitions(${GST_QTI_ML_META_PARSER} PRIVATE

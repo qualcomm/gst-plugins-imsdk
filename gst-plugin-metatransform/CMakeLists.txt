@@ -42,7 +42,6 @@ add_library(${GST_QTI_META_TRANSFORM} SHARED
 
 target_include_directories(${GST_QTI_META_TRANSFORM} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_META_TRANSFORM} PRIVATE

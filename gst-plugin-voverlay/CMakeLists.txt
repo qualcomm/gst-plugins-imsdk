@@ -60,10 +60,6 @@ target_compile_definitions(${GST_QTI_OVERLAY} PRIVATE
 
 target_include_directories(${GST_QTI_OVERLAY} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
-  ${GST_QCOM_ALLOC_INCLUDE_DIRS}
-  ${GST_QCOM_CV_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_OVERLAY} PRIVATE

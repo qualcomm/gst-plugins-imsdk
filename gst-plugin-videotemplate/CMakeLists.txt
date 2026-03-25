@@ -51,8 +51,6 @@ target_compile_definitions(${GST_QTI_VIDEO_TEMPLATE} PRIVATE
 
 target_include_directories(${GST_QTI_VIDEO_TEMPLATE} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${GST_QCOM_UTILS_INCLUDE_DIRS}
-  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_VIDEO_TEMPLATE} PRIVATE
