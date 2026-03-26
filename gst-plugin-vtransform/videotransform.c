@@ -42,6 +42,7 @@
 #include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/utils/common-utils.h>
+#include <gst/video/gstvideooriginmeta.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
@@ -492,6 +493,7 @@ gst_video_transform_prepare_output_buffer (GstBaseTransform * base,
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (base);
   GstBufferPool *pool = vtrans->outpool;
   gboolean passthrough = FALSE, writable = TRUE, success = FALSE;
+  GstVideoOriginMeta *origin_meta;
 
   // Check whether passthrough should be true/false based on parameters.
   gst_video_transform_determine_passthrough (vtrans);
@@ -535,6 +537,35 @@ gst_video_transform_prepare_output_buffer (GstBaseTransform * base,
     GST_ELEMENT_WARNING (vtrans, STREAM, NOT_IMPLEMENTED,
         ("could not copy metadata"), (NULL));
   }
+
+  // Check ininfo validity before adding origin meta
+  if (vtrans->ininfo == NULL) {
+    GST_ERROR_OBJECT (vtrans, "ininfo is NULL, cannot add origin meta");
+    gst_buffer_unref (*outbuffer);
+    *outbuffer = NULL;
+    return GST_FLOW_ERROR;
+  }
+
+  // Validate that ininfo contains valid dimensions
+  if (vtrans->ininfo->width == 0 || vtrans->ininfo->height == 0) {
+    GST_ERROR_OBJECT (vtrans,
+        "ininfo has invalid dimensions (%dx%d), cannot add origin meta",
+        vtrans->ininfo->width, vtrans->ininfo->height);
+    gst_buffer_unref (*outbuffer);
+    *outbuffer = NULL;
+    return GST_FLOW_ERROR;
+  }
+
+  origin_meta = gst_buffer_add_video_origin_meta (*outbuffer,
+      vtrans->ininfo->width, vtrans->ininfo->height);
+  if (origin_meta == NULL) {
+    GST_ERROR_OBJECT (vtrans, "failed to add video frame origin meta");
+    gst_buffer_unref (*outbuffer);
+    *outbuffer = NULL;
+    return GST_FLOW_ERROR;
+  }
+
+  origin_meta->crop = vtrans->crop;
 
   return GST_FLOW_OK;
 }

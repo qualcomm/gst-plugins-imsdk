@@ -8,6 +8,7 @@ set(TARGET_NAME gstqtivideobase)
 
 add_library(${TARGET_NAME} SHARED
   gstimagepool.c
+  gstvideooriginmeta.c
   gstvideoclassificationmeta.c
   gstvideolandmarksmeta.c
   video-converter-engine.c
@@ -20,6 +21,7 @@ add_library(${TARGET_NAME} SHARED
 
 set(TARGET_HEADERS
   gstimagepool.h
+  gstvideooriginmeta.h
   gstvideoclassificationmeta.h
   gstvideolandmarksmeta.h
   video-converter-engine.h
