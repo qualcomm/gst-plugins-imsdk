@@ -85,6 +85,32 @@ gst_ml_info_free (GstMLInfo * info)
 }
 
 gboolean
+gst_ml_info_set_tensor (GstMLInfo * info, guint index, GstMLType type,
+    guint n_dimensions, guint dimensions[GST_ML_TENSOR_MAX_DIMS])
+{
+  g_return_val_if_fail (info != NULL, FALSE);
+  g_return_val_if_fail (index < GST_ML_MAX_TENSORS, FALSE);
+  g_return_val_if_fail (index <= info->n_tensors, FALSE);
+  g_return_val_if_fail (type != GST_ML_TYPE_UNKNOWN, FALSE);
+
+  if (info->type == GST_ML_TYPE_UNKNOWN)
+    info->type = type;
+
+  if (info->type != type) {
+    GST_ERROR ("Invalid type for tensor %u! Expected %s but received %s!",
+        index, gst_ml_type_to_string (info->type), gst_ml_type_to_string (type));
+    return TRUE;
+  }
+
+  info->n_dimensions[index] = n_dimensions;
+  memcpy (info->tensors[index], dimensions, sizeof (guint) * GST_ML_TENSOR_MAX_DIMS);
+
+  info->n_tensors += (index == info->n_tensors) ? 1 : 0;
+
+  return TRUE;
+}
+
+gboolean
 gst_ml_info_from_caps (GstMLInfo * info, const GstCaps * caps)
 {
   GstStructure *structure;

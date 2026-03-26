@@ -79,6 +79,10 @@ GST_API void
 gst_ml_info_free (GstMLInfo * info);
 
 GST_API gboolean
+gst_ml_info_set_tensor (GstMLInfo * info, guint index, GstMLType type,
+                        guint n_dimensions, guint dimensions[GST_ML_TENSOR_MAX_DIMS]);
+
+GST_API gboolean
 gst_ml_info_from_caps (GstMLInfo * info, const GstCaps  * caps);
 
 GST_API GstCaps *
