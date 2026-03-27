@@ -131,23 +131,8 @@ def create_pipeline(pipeline, args):
     ]
     link_elements(link_order, elements)
 
-def is_linux():
-    try:
-        with open("/etc/os-release") as f:
-            for line in f:
-                if "Linux" in line:
-                    return True
-    except FileNotFoundError:
-        return False
-    return False
-
 def main():
     """Main function to set up and run the GStreamer pipeline."""
-
-    # Set the environment
-    if is_linux():
-        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     # Initialize GStreamer
     Gst.init(None)
