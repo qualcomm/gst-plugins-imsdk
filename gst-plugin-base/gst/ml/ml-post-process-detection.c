@@ -232,6 +232,67 @@ gst_ml_detection_intersection_score (const GstMLDetection * l_detection,
   return intersection / (l_area + r_area - intersection);
 }
 
+GstStructure *
+gst_ml_detection_to_structure (GstMLDetection * detection)
+{
+  GstStructure *structure = NULL;
+  gchar *name = NULL;
+  GValue array = G_VALUE_INIT, value = G_VALUE_INIT;
+  guint idx = 0;
+
+  // Replace empty spaces otherwise subsequent stream parse call will fail.
+  name = g_strdup (g_quark_to_string (detection->name));
+  name = g_strdelimit (name, " ", '.');
+
+  structure = gst_structure_new (name, "confidence", G_TYPE_DOUBLE,
+      detection->confidence, "color", G_TYPE_UINT, detection->color, NULL);
+
+  g_value_init (&array, GST_TYPE_ARRAY);
+  g_value_init (&value, G_TYPE_FLOAT);
+
+  g_value_set_float (&value, detection->left);
+  gst_value_array_append_value (&array, &value);
+
+  g_value_set_float (&value, detection->top);
+  gst_value_array_append_value (&array, &value);
+
+  g_value_set_float (&value, (detection->right - detection->left));
+  gst_value_array_append_value (&array, &value);
+
+  g_value_set_float (&value, (detection->bottom - detection->top));
+  gst_value_array_append_value (&array, &value);
+
+  gst_structure_take_value (structure, "rectangle", &array);
+  g_value_unset (&value);
+
+  if ((detection->landmarks != NULL) && (detection->landmarks->len != 0)) {
+    g_value_init (&array, GST_TYPE_ARRAY);
+
+    for (idx = 0; idx < detection->landmarks->len; idx++) {
+      GstMLKeypoint *keypoint =
+          &(g_array_index (detection->landmarks, GstMLKeypoint, idx));
+
+      g_value_init (&value, GST_TYPE_STRUCTURE);
+      g_value_take_boxed (&value, gst_ml_keypoint_to_structure (keypoint));
+
+      gst_value_array_append_and_take_value (&array, &value);
+    }
+
+    gst_structure_take_value (structure, "landmarks", &array);
+  }
+
+  if (detection->xtraparams != NULL) {
+    g_value_init (&value, GST_TYPE_STRUCTURE);
+    g_value_take_boxed (&value, g_steal_pointer (&detection->xtraparams));
+    gst_structure_take_value (structure, "xtraparams", &value);
+  }
+
+  g_free (name);
+  gst_ml_detection_reset (detection);
+
+  return structure;
+}
+
 GstMLDetections*
 gst_ml_detections_new (void)
 {

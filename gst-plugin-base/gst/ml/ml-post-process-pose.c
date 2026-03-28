@@ -156,6 +156,70 @@ gst_ml_pose_affine_transform (GstMLPose * pose, gdouble matrix[3][3])
   }
 }
 
+GstStructure *
+gst_ml_pose_to_structure (GstMLPose * pose)
+{
+  GstStructure *structure = NULL;
+  gchar *name = NULL;
+  GValue array = G_VALUE_INIT, value = G_VALUE_INIT, connection = G_VALUE_INIT;
+  guint idx = 0, length = 0;
+
+  // Replace empty spaces otherwise subsequent stream parse call will fail.
+  name = g_strdup (g_quark_to_string (pose->name));
+  name = g_strdelimit (name, " ", '.');
+
+  structure = gst_structure_new (name, "confidence", G_TYPE_DOUBLE,
+      pose->confidence, NULL);
+
+  g_value_init (&array, GST_TYPE_ARRAY);
+  length = (pose->keypoints != NULL) ? pose->keypoints->len : 0;
+
+  for (idx = 0; idx < length; idx++) {
+    GstMLKeypoint *keypoint =
+        &(g_array_index (pose->keypoints, GstMLKeypoint, idx));
+
+    g_value_init (&value, GST_TYPE_STRUCTURE);
+    g_value_take_boxed (&value, gst_ml_keypoint_to_structure (keypoint));
+
+    gst_value_array_append_and_take_value (&array, &value);
+  }
+
+  gst_structure_take_value (structure, "keypoints", &array);
+
+  g_value_init (&array, GST_TYPE_ARRAY);
+  length = (pose->links != NULL) ? pose->links->len : 0;
+
+  for (idx = 0; idx < length; idx++) {
+    GstMLKeypointLink *link =
+        &(g_array_index (pose->links, GstMLKeypointLink, idx));
+
+    g_value_init (&connection, GST_TYPE_ARRAY);
+
+    g_value_init (&value, G_TYPE_STRING);
+    g_value_set_string (&value, g_quark_to_string (link->l_kp.name));
+    gst_value_array_append_and_take_value (&connection, &value);
+
+    g_value_init (&value, G_TYPE_STRING);
+    g_value_set_string (&value, g_quark_to_string (link->r_kp.name));
+    gst_value_array_append_and_take_value (&connection, &value);
+
+    gst_value_array_append_and_take_value (&array, &connection);
+  }
+
+  gst_structure_take_value (structure, "connections", &array);
+
+  if (pose->xtraparams != NULL) {
+    g_value_init (&value, GST_TYPE_STRUCTURE);
+    g_value_take_boxed (&value, g_steal_pointer (&pose->xtraparams));
+    gst_structure_take_value (structure, "xtraparams", &value);
+  }
+
+  g_free (name);
+  gst_ml_pose_reset (pose);
+
+  return structure;
+}
+
 GstMLPoses*
 gst_ml_poses_new (void)
 {

@@ -92,7 +92,7 @@ struct _GstMLKeypointLink {
  *
  * Copy a GstMLKeypoint structure.
  *
- * Returns: (transfer full): a new #GstMLKeypoint.
+ * Returns: (transfer full): A new #GstMLKeypoint.
  */
 GST_API GstMLKeypoint *
 gst_ml_keypoint_copy (const GstMLKeypoint * keypoint);
@@ -133,12 +133,21 @@ GST_API void
 gst_ml_keypoint_affine_transform (GstMLKeypoint * keypoint, gdouble matrix[3][3]);
 
 /**
+ * gst_ml_keypoint_to_structure:
+ * @keypoint: A #GstMLKeypoint
+ *
+ * Converts GstMLKeypoint to a GstStructure representation.
+ */
+GST_API GstStructure *
+gst_ml_keypoint_to_structure (GstMLKeypoint * keypoint);
+
+/**
  * gst_ml_keypoint_link_copy:
  * @link: A #GstMLKeypointLink
  *
  * Copy a GstMLKeypointLink structure.
  *
- * Returns: (transfer full): a new #GstMLKeypointLink.
+ * Returns: (transfer full): A new #GstMLKeypointLink.
  */
 GST_API GstMLKeypointLink *
 gst_ml_keypoint_link_copy (const GstMLKeypointLink * link);

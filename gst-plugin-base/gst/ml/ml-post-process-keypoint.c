@@ -102,6 +102,26 @@ gst_ml_keypoint_affine_transform (GstMLKeypoint * keypoint, gdouble matrix[3][3]
   keypoint->y = point.y;
 }
 
+GstStructure *
+gst_ml_keypoint_to_structure (GstMLKeypoint * keypoint)
+{
+  GstStructure *structure = NULL;
+  gchar *name = NULL;
+
+  // Replace empty spaces otherwise subsequent stream parse call will fail.
+  name = g_strdup (g_quark_to_string (keypoint->name));
+  name = g_strdelimit (name, " ", '.');
+
+  structure = gst_structure_new (name, "confidence", G_TYPE_DOUBLE,
+      keypoint->confidence, "x", G_TYPE_DOUBLE, keypoint->x, "y", G_TYPE_DOUBLE,
+      keypoint->y, "color", G_TYPE_UINT, keypoint->color, NULL);
+
+  g_free (name);
+  memset (keypoint, 0, sizeof (GstMLKeypoint));
+
+  return structure;
+}
+
 GstMLKeypointLink*
 gst_ml_keypoint_link_copy (const GstMLKeypointLink * link)
 {

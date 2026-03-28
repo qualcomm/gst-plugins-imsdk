@@ -44,6 +44,8 @@ G_BEGIN_DECLS
 // Non-maximum Suppression (NMS) threshold (50%), corresponding to 2/3 overlap.
 #define GST_ML_DETECTION_NMS_THRESHOLD 0.5F
 
+#define GST_ML_DETECTIONS_CAST(obj)      ((GstMLDetections*)(obj))
+
 typedef struct _GstMLDetection GstMLDetection;
 typedef struct _GstMLDetections GstMLDetections;
 
@@ -105,7 +107,7 @@ gst_ml_detection_reset (GstMLDetection * detection);
  *
  * Copy a GstMLDetection structure.
  *
- * Returns: (transfer full): a new #GstMLDetection.
+ * Returns: (transfer full): A new #GstMLDetection.
  */
 GST_API GstMLDetection *
 gst_ml_detection_copy (const GstMLDetection * detection);
@@ -146,6 +148,15 @@ GST_API void
 gst_ml_detection_affine_transform (GstMLDetection * detection, gdouble matrix[3][3]);
 
 /**
+ * gst_ml_detection_to_structure:
+ * @detection: A #GstMLDetection
+ *
+ * Converts GstMLDetection to a GstStructure representation.
+ */
+GST_API GstStructure *
+gst_ml_detection_to_structure (GstMLDetection * detection);
+
+/**
  * gst_ml_detection_intersection_score:
  * @l_detecton: Left (or First) #GstMLDetection entry.
  * @r_detecton: Right (or Second) #GstMLDetection entry.
@@ -163,7 +174,7 @@ gst_ml_detection_intersection_score (const GstMLDetection * l_detecton,
  *
  * Allocate a new #GstMLDetections that is also initialized.
  *
- * Returns: (transfer full): a new #GstMLDetections.
+ * Returns: (transfer full): A new #GstMLDetections.
  */
 GST_API GstMLDetections*
 gst_ml_detections_new (void);
@@ -174,7 +185,7 @@ gst_ml_detections_new (void);
  *
  * Allocate a new #GstMLDetections with @size elements preallocated.
  *
- * Returns: (transfer full): a new #GstMLDetections.
+ * Returns: (transfer full): A new #GstMLDetections.
  */
 
 GST_API GstMLDetections*
@@ -210,7 +221,7 @@ gst_ml_detections_unref (GstMLDetections * detections);
  *
  * Copy a GstMLDetections structure.
  *
- * Returns: (transfer full): a new #GstMLDetections.
+ * Returns: (transfer full): A new #GstMLDetections.
  */
 GST_API GstMLDetections *
 gst_ml_detections_copy (const GstMLDetections * detections);

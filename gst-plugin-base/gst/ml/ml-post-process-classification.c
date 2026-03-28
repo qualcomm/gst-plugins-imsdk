@@ -105,6 +105,35 @@ gst_ml_classification_free (GstMLClassification * classification)
   g_slice_free (GstMLClassification, classification);
 }
 
+GstStructure *
+gst_ml_classification_to_structure (GstMLClassification * classification)
+{
+  GstStructure *structure = NULL;
+  gchar *name = NULL;
+
+  // Replace empty spaces otherwise subsequent stream parse call will fail.
+  name = g_strdup (g_quark_to_string (classification->name));
+  name = g_strdelimit (name, " ", '.');
+
+  structure = gst_structure_new (name, "confidence", G_TYPE_DOUBLE,
+      classification->confidence, "color", G_TYPE_UINT, classification->color,
+      NULL);
+
+  if (classification->xtraparams != NULL) {
+    GValue value = G_VALUE_INIT;
+
+    g_value_init (&value, GST_TYPE_STRUCTURE);
+    g_value_take_boxed (&value, g_steal_pointer (&classification->xtraparams));
+
+    gst_structure_take_value (structure, "xtraparams", &value);
+  }
+
+  g_free (name);
+  gst_ml_classification_reset (classification);
+
+  return structure;
+}
+
 GstMLClassifications*
 gst_ml_classifications_new (void)
 {

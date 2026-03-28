@@ -39,6 +39,8 @@
 
 G_BEGIN_DECLS
 
+#define GST_ML_CLASSIFICATIONS_CAST(obj)      ((GstMLClassifications*)(obj))
+
 typedef struct _GstMLClassification GstMLClassification;
 typedef struct _GstMLClassifications GstMLClassifications;
 
@@ -87,7 +89,7 @@ gst_ml_classification_reset (GstMLClassification * classification);
  *
  * Copy a GstMLClassification structure.
  *
- * Returns: (transfer full): a new #GstMLClassification.
+ * Returns: (transfer full): A new #GstMLClassification.
  */
 GST_API GstMLClassification *
 gst_ml_classification_copy (const GstMLClassification * classification);
@@ -103,11 +105,23 @@ GST_API void
 gst_ml_classification_free (GstMLClassification * classification);
 
 /**
+ * gst_ml_classification_to_structure:
+ * @classification: A #GstMLClassification
+ *
+ * Converts GstMLClassification to a GstStructure representation.
+ * All internal fields are reset and allocated memory freed.
+ *
+ * Returns: (transfer full): A new #GstStructure.
+ */
+GST_API GstStructure *
+gst_ml_classification_to_structure (GstMLClassification * classification);
+
+/**
  * gst_ml_classifications_new: (constructor)
  *
  * Allocate a new #GstMLClassifications that is also initialized.
  *
- * Returns: (transfer full): a new #GstMLClassifications.
+ * Returns: (transfer full): A new #GstMLClassifications.
  */
 GST_API GstMLClassifications*
 gst_ml_classifications_new (void);
@@ -118,7 +132,7 @@ gst_ml_classifications_new (void);
  *
  * Allocate a new #GstMLClassifications with @size elements preallocated.
  *
- * Returns: (transfer full): a new #GstMLClassifications.
+ * Returns: (transfer full): A new #GstMLClassifications.
  */
 
 GST_API GstMLClassifications*
@@ -154,7 +168,7 @@ gst_ml_classifications_unref (GstMLClassifications * classifications);
  *
  * Copy a GstMLClassifications structure.
  *
- * Returns: (transfer full): a new #GstMLClassifications.
+ * Returns: (transfer full): A new #GstMLClassifications.
  */
 GST_API GstMLClassifications *
 gst_ml_classifications_copy (const GstMLClassifications * classifications);

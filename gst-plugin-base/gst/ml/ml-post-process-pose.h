@@ -40,6 +40,8 @@
 
 G_BEGIN_DECLS
 
+#define GST_ML_POSES_CAST(obj)      ((GstMLPoses*)(obj))
+
 typedef struct _GstMLPose GstMLPose;
 typedef struct _GstMLPoses GstMLPoses;
 
@@ -91,7 +93,7 @@ gst_ml_pose_reset (GstMLPose * pose);
  *
  * Copy a GstMLPose structure.
  *
- * Returns: (transfer full): a new #GstMLPose.
+ * Returns: (transfer full): A new #GstMLPose.
  */
 GST_API GstMLPose *
 gst_ml_pose_copy (const GstMLPose * pose);
@@ -131,11 +133,20 @@ GST_API void
 gst_ml_pose_affine_transform (GstMLPose * pose, gdouble matrix[3][3]);
 
 /**
+ * gst_ml_pose_to_structure:
+ * @pose: A #GstMLPose
+ *
+ * Converts GstMLPose to a GstStructure representation.
+ */
+GST_API GstStructure *
+gst_ml_pose_to_structure (GstMLPose * pose);
+
+/**
  * gst_ml_poses_new: (constructor)
  *
  * Allocate a new #GstMLPoses that is also initialized.
  *
- * Returns: (transfer full): a new #GstMLPoses.
+ * Returns: (transfer full): A new #GstMLPoses.
  */
 GST_API GstMLPoses*
 gst_ml_poses_new (void);
@@ -146,7 +157,7 @@ gst_ml_poses_new (void);
  *
  * Allocate a new #GstMLPoses with @size elements preallocated.
  *
- * Returns: (transfer full): a new #GstMLPoses.
+ * Returns: (transfer full): A new #GstMLPoses.
  */
 
 GST_API GstMLPoses*
@@ -183,7 +194,7 @@ gst_ml_poses_unref (GstMLPoses * poses);
  *
  * Copy a GstMLPoses structure.
  *
- * Returns: (transfer full): a new #GstMLPoses.
+ * Returns: (transfer full): A new #GstMLPoses.
  */
 GST_API GstMLPoses *
 gst_ml_poses_copy (const GstMLPoses * poses);
