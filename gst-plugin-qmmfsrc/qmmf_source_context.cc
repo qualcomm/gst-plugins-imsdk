@@ -3444,6 +3444,9 @@ void
 gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     GValue * value)
 {
+  if (context == NULL)
+    return;
+
   ::qmmf::recorder::Recorder *recorder = context->recorder;
 
   switch (param_id) {
