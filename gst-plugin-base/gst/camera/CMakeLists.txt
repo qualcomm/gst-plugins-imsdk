@@ -31,7 +31,6 @@ target_include_directories(${TARGET_NAME} INTERFACE
 
 target_link_libraries(${TARGET_NAME} PRIVATE
   ${GST_LIBRARIES}
-  ${GST_ALLOC_LIBRARIES}
   qmmf_camera_metadata
 )
 

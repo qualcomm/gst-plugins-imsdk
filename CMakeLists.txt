@@ -13,12 +13,16 @@ set(GST_PLUGINS_QTI_OSS_INSTALL_MEDIA "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_D
 
 option(ENABLE_GST_IMSDK_PLUGINS "Enable IMSDK Plugins" OFF)
 
+option(ENABLE_GST_PLUGIN_BASE "Enable gst-plugin-base libraries" ${ENABLE_GST_IMSDK_PLUGINS})
+option(ENABLE_GST_PLUGIN_CAMERA_BASE "Enable gst-plugin-base camera libraries" ${ENABLE_GST_IMSDK_PLUGINS})
 option(ENABLE_GST_CAMERA_PLUGINS "Enable Camera Plugins" OFF) # not enabled in opensource mainline
 option(ENABLE_GST_EXT_SOFTWARE_PLUGINS "Enable Software plugins depends on external software" ${ENABLE_GST_IMSDK_PLUGINS})
 option(ENABLE_GST_MESSAGING_PLUGINS "Enable Messaging plugins" ${ENABLE_GST_IMSDK_PLUGINS})
 option(ENABLE_GST_ML_PLUGINS "Enable ML Plugins" ${ENABLE_GST_IMSDK_PLUGINS})
+option(ENABLE_GST_QAIRT_PLUGINS "Enable QAIRT Plugins" ${ENABLE_GST_IMSDK_PLUGINS})
 option(ENABLE_GST_VIDEOPROC_PLUGINS "Enable Video processing plugins" ${ENABLE_GST_IMSDK_PLUGINS})
 option(ENABLE_GST_SOFTWARE_PLUGINS "Enable Software plugins" ${ENABLE_GST_IMSDK_PLUGINS})
+option(ENABLE_GST_PLUGIN_SMARTVENCBIN "Enable gst-plugin-smartvencbin" ${ENABLE_GST_IMSDK_PLUGINS})
 
 # Camera plugins
 option(ENABLE_GST_PLUGIN_CAMIMGREPROC "Enable gst-plugin-camimgreproc" ${ENABLE_GST_CAMERA_PLUGINS})
@@ -40,14 +44,16 @@ option(ENABLE_GST_PLUGIN_MLDEMUX "Enable gst-plugin-mldemux" ${ENABLE_GST_ML_PLU
 option(ENABLE_GST_PLUGIN_MLMETAEXTRACTOR "Enable gst-plugin-mlmetaextractor" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLMETAPARSER "Enable gst-plugin-mlmetaparser" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLPOSTPROCESS "Enable gst-plugin-mlpostprocess" ${ENABLE_GST_ML_PLUGINS})
-option(ENABLE_GST_PLUGIN_MLQNN "Enable gst-plugin-mlqnn" ${ENABLE_GST_ML_PLUGINS})
-option(ENABLE_GST_PLUGIN_MLSNPE "Enable gst-plugin-mlsnpe" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLTFLITE "Enable gst-plugin-mltflite" OFF) # not enabled in opensource mainline
 option(ENABLE_GST_PLUGIN_MLONNX "Enable gst-plugin-mlonnx" OFF)
 option(ENABLE_GST_PLUGIN_MLTOOLS "Enable gst-plugin-mltools" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLVCONVERTER "Enable gst-plugin-mlvconverter" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_OBJTRACKER "Enable gst-plugin-objtracker" ${ENABLE_GST_ML_PLUGINS})
 option(ENABLE_GST_PLUGIN_RESTRICTED_ZONE "Enable gst-plugin-restricted-zone" ${ENABLE_GST_ML_PLUGINS})
+
+# QAIRT Plugins
+option(ENABLE_GST_PLUGIN_MLQNN "Enable gst-plugin-mlqnn" ${ENABLE_GST_QAIRT_PLUGINS})
+option(ENABLE_GST_PLUGIN_MLSNPE "Enable gst-plugin-mlsnpe" ${ENABLE_GST_QAIRT_PLUGINS})
 
 # Video Processing plugins
 option(ENABLE_GST_PLUGIN_VCOMPOSER "Enable gst-plugin-vcomposer" ${ENABLE_GST_VIDEOPROC_PLUGINS})
@@ -58,7 +64,6 @@ option(ENABLE_GST_PLUGIN_VTRANSFORM "Enable gst-plugin-vtransform" ${ENABLE_GST_
 # Software Plugins
 option(ENABLE_GST_PLUGIN_BATCH "Enable gst-plugin-batch" ${ENABLE_GST_SOFTWARE_PLUGINS})
 option(ENABLE_GST_PLUGIN_RTSPBIN "Enable gst-plugin-rtspbin" ${ENABLE_GST_SOFTWARE_PLUGINS})
-option(ENABLE_GST_PLUGIN_SMARTVENCBIN "Enable gst-plugin-smartvencbin" ${ENABLE_GST_SOFTWARE_PLUGINS})
 option(ENABLE_GST_PLUGIN_SOCKET "Enable gst-plugin-socket" ${ENABLE_GST_SOFTWARE_PLUGINS})
 option(ENABLE_GST_PLUGIN_VIDEOTEMPLATE "Enable gst-plugin-videotemplate" ${ENABLE_GST_SOFTWARE_PLUGINS})
 
@@ -94,8 +99,29 @@ option(ENABLE_GST_PLUGIN_OVERLAY "Enable gst-plugin-overlay" OFF)
 # === Enable exclude from all for internal dependncies ===
 set(ENABLE_EXCLUDE_FROM_ALL "EXCLUDE_FROM_ALL")
 
-# Base is common for majority of the plugins, hence enabled by default
-add_subdirectory(gst-plugin-base)
+# Common base libraries
+if(ENABLE_GST_PLUGIN_BASE)
+  message(STATUS "Enabling gst-plugin-base")
+  add_subdirectory(gst-plugin-base)
+else()
+  # Camera base library
+  if(ENABLE_GST_PLUGIN_CAMERA_BASE)
+    # When building camera base independently (without other base libraries),
+    # replicate the minimal common configurations normally provided by gst-plugin-base
+
+    find_package(PkgConfig REQUIRED)
+
+    pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+
+    # Define path to gst-plugins-base tree for header includes
+    set(QTI_PLUGINS_BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/gst-plugin-base)
+
+    # Define the path to the common pkg-config template file used by all base libraries
+    set(BASE_COMMON_PC_IN ${CMAKE_CURRENT_SOURCE_DIR}/gst-plugin-base/gst/common.pc.in)
+
+    add_subdirectory(gst-plugin-base/gst/camera)
+  endif()
+endif()
 
 # Helper function to add sub-dir when option set
 function(add_plugin_if option_var plugin_dir)
@@ -143,9 +169,11 @@ add_plugin_if(ENABLE_GST_PLUGIN_VTRANSFORM      gst-plugin-vtransform)
 # Software Plugins
 add_plugin_if(ENABLE_GST_PLUGIN_BATCH           gst-plugin-batch)
 add_plugin_if(ENABLE_GST_PLUGIN_RTSPBIN         gst-plugin-rtspbin)
-add_plugin_if(ENABLE_GST_PLUGIN_SMARTVENCBIN    gst-plugin-smartvencbin)
 add_plugin_if(ENABLE_GST_PLUGIN_SOCKET          gst-plugin-socket)
 add_plugin_if(ENABLE_GST_PLUGIN_VIDEOTEMPLATE   gst-plugin-videotemplate)
+
+# Software Plugins (prop)
+add_plugin_if(ENABLE_GST_PLUGIN_SMARTVENCBIN    gst-plugin-smartvencbin)
 
 # Sample Apps and Test Framework
 add_plugin_if(ENABLE_GST_PLUGIN_EXAMPLES        gst-plugin-examples)
