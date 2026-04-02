@@ -222,7 +222,7 @@ g_hash_table_free_glists (gpointer key, gpointer data, gpointer userdata)
 static guint
 gst_mlmeta_extractor_add_class_structs_to_list (GstMLMetaExtractor * extractor,
     GList * cmeta_list, gint parent_id, guint current_idx, guint n_entries,
-    guint timestamp, GValue * output_list)
+    GstClockTime timestamp, GValue * output_list)
 {
   GstStructure *structure = NULL;
   GList *list = NULL;
@@ -304,7 +304,7 @@ gst_mlmeta_extractor_add_class_structs_to_list (GstMLMetaExtractor * extractor,
 static guint
 gst_mlmeta_extractor_add_pose_structs_to_list (GstMLMetaExtractor * extractor,
     GList * pmeta_list, gint parent_id, guint current_idx, guint n_entries,
-    guint timestamp, GValue * output_list)
+    GstClockTime timestamp, GValue * output_list)
 {
   GstVideoRegionOfInterestMeta * parent_meta = NULL;
   GstStructure *structure = NULL;
@@ -455,7 +455,7 @@ gst_mlmeta_extractor_add_pose_structs_to_list (GstMLMetaExtractor * extractor,
 static guint
 gst_mlmeta_extractor_add_detection_structs_to_list (GstMLMetaExtractor *extractor,
     GList * roimeta_list, gint parent_id, guint current_idx, guint n_entries,
-    guint timestamp, GValue * output_list)
+    GstClockTime timestamp, GValue * output_list)
 {
   GstVideoRegionOfInterestMeta *parent_meta = NULL;
   GstStructure *structure = NULL;
@@ -655,7 +655,7 @@ gst_mlmeta_extractor_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   gchar *output_string = NULL;
   gint string_len = 0;
   gint n_entries = 0, seq_index = 1;
-  guint timestamp = GST_BUFFER_PTS (inbuffer);
+  GstClockTime timestamp = GST_BUFFER_PTS (inbuffer);
 
   GST_TRACE_OBJECT (extractor, "Received %" GST_PTR_FORMAT, inbuffer);
 
