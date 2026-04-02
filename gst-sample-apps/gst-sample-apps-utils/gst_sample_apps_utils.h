@@ -538,6 +538,14 @@ cleanup_gst (void * first_elem, ...);
 gboolean
 is_camera_available ();
 
+// To indentify whether camx is available or not
+gboolean
+is_camx_present (void);
+
+// libcamersrc and qtiqmmfsrc implementation
+GstElement *
+create_camera_source_bin (const gchar * bin_name);
+
 G_END_DECLS
 
 #endif //GST_SAMPLE_APPS_UTILS_H

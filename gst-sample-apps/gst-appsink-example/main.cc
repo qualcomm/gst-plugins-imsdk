@@ -19,7 +19,7 @@
  * gst-appsink-example --help
  *
  * *********************************************************
- * Pipeline for appsink: qtiqmmfsrc->capsfilter->appsink
+ * Pipeline for appsink: camera_source_bin -> capsfilter -> appsink
  * *********************************************************
  */
 
@@ -73,7 +73,6 @@ gst_app_context_new ()
 {
   // Allocate memory for the new context
   GstAppSinkContext *ctx = (GstAppSinkContext *) g_new0 (GstAppSinkContext, 1);
-
   // If memory allocation failed, print an error message and return NULL
   if (NULL == ctx) {
     g_printerr ("\n Unable to create App Context");
@@ -86,6 +85,7 @@ gst_app_context_new ()
   ctx->plugins = NULL;
   ctx->width = DEFAULT_WIDTH;
   ctx->height = DEFAULT_HEIGHT;
+
   return ctx;
 }
 
@@ -93,7 +93,7 @@ gst_app_context_new ()
  * Signal that a new sample is available:
  *
  * @param appsink element that emitted the signal
- * @param No description available
+ * @param userdata No description available
  */
 static GstFlowReturn
 new_sample (GstElement * sink, gpointer userdata)
@@ -101,6 +101,8 @@ new_sample (GstElement * sink, gpointer userdata)
   GstSample *sample = NULL;
   GstBuffer *buffer = NULL;
   GstMapInfo info;
+
+  (void) userdata;
 
   // New sample is available, retrieve the buffer from the sink.
   g_signal_emit_by_name (sink, "pull-sample", &sample);
@@ -111,7 +113,8 @@ new_sample (GstElement * sink, gpointer userdata)
   }
 
   // retrieve the buffer
-  if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
+  buffer = gst_sample_get_buffer (sample);
+  if (buffer == NULL) {
     g_printerr ("\n Pulled buffer is NULL!");
     gst_sample_release (sample);
     return GST_FLOW_ERROR;
@@ -142,28 +145,31 @@ new_sample (GstElement * sink, gpointer userdata)
 static void
 gst_app_context_free (GstAppSinkContext * appctx)
 {
-  // If the plugins list is not empty, unlink and remove all elements
-   if (appctx->plugins != NULL) {
-    GstElement *element_curr = (GstElement *) appctx->plugins->data;
-    GstElement *element_next;
 
+  // If the plugins list is not empty, unlink and remove all elements
+  if (appctx->plugins != NULL) {
+    GstElement *element_curr = (GstElement *) appctx->plugins->data;
+    GstElement *element_next = NULL;
     GList *list = appctx->plugins->next;
+
     for (; list != NULL; list = list->next) {
       element_next = (GstElement *) list->data;
       gst_element_unlink (element_curr, element_next);
       gst_bin_remove (GST_BIN (appctx->pipeline), element_curr);
       element_curr = element_next;
     }
+
     gst_bin_remove (GST_BIN (appctx->pipeline), element_curr);
+
     // Free the plugins list
     g_list_free (appctx->plugins);
     appctx->plugins = NULL;
   }
 
   // If specific pointer is not NULL, unref it
-
   if (appctx->mloop != NULL) {
     g_main_loop_unref (appctx->mloop);
+
     appctx->mloop = NULL;
   }
 
@@ -171,7 +177,6 @@ gst_app_context_free (GstAppSinkContext * appctx)
     gst_object_unref (appctx->pipeline);
     appctx->pipeline = NULL;
   }
-
   if (appctx != NULL)
     g_free (appctx);
 }
@@ -179,7 +184,7 @@ gst_app_context_free (GstAppSinkContext * appctx)
 /**
  * Create GST pipeline involves 3 main steps
  * 1. Create all elements/GST Plugins
- * 2. Set Paramters for each plugin
+ * 2. Set Parameters for each plugin
  * 3. Link plugins to create GST pipeline
  *
  * @param appctx Application Context object.
@@ -187,15 +192,28 @@ gst_app_context_free (GstAppSinkContext * appctx)
 static gboolean
 create_pipe (GstAppSinkContext * appctx)
 {
-  // Declare the elements of the pipeline
-  GstElement *qtiqmmfsrc, *capsfilter, *appsink;
-  GstCaps *filtercaps;
+  GstElement *camera_src_bin = NULL;
+  GstElement *capsfilter = NULL;
+  GstElement *appsink = NULL;
+  GstElement *element = NULL;
+  GstCaps *filtercaps = NULL;
   gboolean ret = FALSE;
+
   appctx->plugins = NULL;
 
-  // Create camera source and the element capability
-  qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
+  // Create source bin and capsfilter
+  camera_src_bin =
+      create_camera_source_bin ("camera_source_bin");
   capsfilter = gst_element_factory_make ("capsfilter", "capsfilter");
+  appsink = gst_element_factory_make ("appsink", "appsink");
+
+  if (!camera_src_bin || !capsfilter || !appsink) {
+      g_printerr ("\nFailed to create one or more pipeline elements.\n");
+      g_clear_object (&camera_src_bin);
+      g_clear_object (&capsfilter);
+      g_clear_object (&appsink);
+      return FALSE;
+  }
 
   filtercaps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "NV12",
@@ -210,31 +228,39 @@ create_pipe (GstAppSinkContext * appctx)
   gst_caps_unref (filtercaps);
 
   // creating the appsink element and setting the properties
-  appsink = gst_element_factory_make ("appsink", "appsink");
-  g_object_set (G_OBJECT (appsink), "name", "sink", NULL);
-  g_object_set (G_OBJECT (appsink), "emit-signals", true, NULL);
+  g_object_set (G_OBJECT (appsink),
+      "name", "sink",
+      "emit-signals", TRUE,
+      NULL);
 
-  gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
-      appsink, NULL);
+  gst_bin_add_many (GST_BIN (appctx->pipeline),
+      camera_src_bin, capsfilter, appsink, NULL);
 
   g_print ("\n Linking appsink elements ..\n");
 
-  ret = gst_element_link_many (qtiqmmfsrc, capsfilter, appsink, NULL);
+  ret = gst_element_link_many (camera_src_bin, capsfilter, appsink, NULL);
   if (!ret) {
     g_printerr ("\n Pipeline elements cannot be linked. Exiting.\n");
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
-        capsfilter, appsink, NULL);
+    gst_bin_remove_many (GST_BIN (appctx->pipeline),
+        camera_src_bin, capsfilter, appsink, NULL);
     return FALSE;
   }
 
   // get the element with name from pipeline
-  GstElement *element = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "sink");
+  element = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "sink");
+  if (element == NULL) {
+    g_printerr ("\n Failed to get appsink element by name.\n");
+    gst_bin_remove_many (GST_BIN (appctx->pipeline),
+        camera_src_bin, capsfilter, appsink, NULL);
+    return FALSE;
+  }
 
   // signal connect for the new_sample
   g_signal_connect (element, "new-sample", G_CALLBACK (new_sample), NULL);
+  gst_object_unref (element);
 
   // Append all elements to the plugins list
-  appctx->plugins = g_list_append (appctx->plugins, qtiqmmfsrc);
+  appctx->plugins = g_list_append (appctx->plugins, camera_src_bin);
   appctx->plugins = g_list_append (appctx->plugins, capsfilter);
   appctx->plugins = g_list_append (appctx->plugins, appsink);
 
@@ -245,7 +271,7 @@ create_pipe (GstAppSinkContext * appctx)
 }
 
 gint
-main (gint argc, gchar *argv[])
+main (gint argc, gchar * argv[])
 {
   GOptionContext *ctx = NULL;
   GMainLoop *mloop = NULL;
@@ -264,11 +290,11 @@ main (gint argc, gchar *argv[])
 
   // Configure input parameters
   GOptionEntry entries[] = {
-      {"width", 'w', 0, G_OPTION_ARG_INT, &appctx->width,
-       "Supported camera width", "-Default width:1280"},
-      {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height,
-       "Supported camera height", "-Default height:720"},
-      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
+    {"width", 'w', 0, G_OPTION_ARG_INT, &appctx->width,
+        "Supported camera width", "-Default width:1280"},
+    {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height,
+        "Supported camera height", "-Default height:720"},
+    {NULL, 0, 0, (GOptionArg) 0, NULL, NULL, NULL}
   };
 
   // Parse command line entries.
@@ -286,13 +312,16 @@ main (gint argc, gchar *argv[])
       g_printerr ("\n Failed to parse command line options: %s!\n",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
+      gst_app_context_free (appctx);
       return -1;
     } else if (!success && (NULL == error)) {
       g_printerr ("\n Initializing: Unknown error!\n");
+      gst_app_context_free (appctx);
       return -1;
     }
   } else {
     g_printerr ("\n Failed to create options context!\n");
+    gst_app_context_free (appctx);
     return -1;
   }
 
@@ -304,7 +333,8 @@ main (gint argc, gchar *argv[])
   // Create the pipeline
   pipeline = gst_pipeline_new ("pipeline");
   if (!pipeline) {
-    g_printerr ("\n failed to create pipeline.\n");
+    g_printerr ("\n Failed to create pipeline.\n");
+    gst_app_context_free (appctx);
     return -1;
   }
 
@@ -313,13 +343,14 @@ main (gint argc, gchar *argv[])
   // Build the pipeline
   ret = create_pipe (appctx);
   if (!ret) {
-    g_printerr ("\n failed to create GST pipe.\n");
+    g_printerr ("\n Failed to create GST pipe.\n");
     gst_app_context_free (appctx);
     return -1;
   }
 
   // Initialize main loop.
-  if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
+  mloop = g_main_loop_new (NULL, FALSE);
+  if (mloop == NULL) {
     g_printerr ("\n Failed to create Main loop!\n");
     gst_app_context_free (appctx);
     return -1;
@@ -327,7 +358,8 @@ main (gint argc, gchar *argv[])
   appctx->mloop = mloop;
 
   // Retrieve reference to the pipeline's bus.
-  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
+  bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline));
+  if (bus == NULL) {
     g_printerr ("\n Failed to retrieve pipeline bus!\n");
     gst_app_context_free (appctx);
     return -1;
@@ -335,8 +367,8 @@ main (gint argc, gchar *argv[])
 
   // Watch for messages on the pipeline's bus
   gst_bus_add_signal_watch (bus);
-  g_signal_connect (bus, "message::state-changed", G_CALLBACK (state_changed_cb),
-      pipeline);
+  g_signal_connect (bus, "message::state-changed",
+      G_CALLBACK (state_changed_cb), pipeline);
   g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
   g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), mloop);
   g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), mloop);
@@ -355,15 +387,19 @@ main (gint argc, gchar *argv[])
         g_source_remove (intrpt_watch_id);
       gst_app_context_free (appctx);
       return -1;
+
     case GST_STATE_CHANGE_NO_PREROLL:
       g_print ("\n Pipeline is live and does not need PREROLL.\n");
       break;
+
     case GST_STATE_CHANGE_ASYNC:
       g_print ("\n Pipeline is PREROLLING ...\n");
       break;
+
     case GST_STATE_CHANGE_SUCCESS:
       g_print ("\n Pipeline state change was successful\n");
       break;
+
   }
 
   // start the main loop
