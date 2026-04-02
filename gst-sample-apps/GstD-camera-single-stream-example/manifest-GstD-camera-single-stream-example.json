@@ -1,0 +1,8 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "GstD-camera-single-stream-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "A menu‑driven camera application using GstD (GStreamer Daemon) to create and control a single camera pipeline with configurable resolution. Supports live preview, MP4 recording, and raw YUV dumping with clean pipeline lifecycle management."
+}
