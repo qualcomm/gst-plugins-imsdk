@@ -134,6 +134,13 @@ typedef struct GstQmmfSrcResolutionRange {
   guint min_height;
 } GstQmmfSrcResolutionRange;
 
+typedef gint(*PerfHintFunc)(gint hint, const char* pkg, gint duration, gint type);
+
+#define PERF_HINT_NO_TYPE                           -1
+#define POWER_HINT_ID_GST_BOOST                     0x00001400
+
+gboolean gst_qmmf_boost_with_perflock(const gint duration_ms);
+
 // Extension to the GstVideoFormat for supporting bayer formats.
 typedef enum {
   GST_BAYER_FORMAT_BGGR = GST_BAYER_FORMAT_OFFSET,
