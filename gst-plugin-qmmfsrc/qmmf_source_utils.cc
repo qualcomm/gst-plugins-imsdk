@@ -36,6 +36,7 @@
 #include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 #include <qmmf-sdk/qmmf_camera_metadata.h>
 #include <qmmf_source_context.h>
+#include <dlfcn.h>
 
 // Declare Qmmf buffer pool
 G_DEFINE_TYPE(GstQmmfBufferPool, gst_qmmf_buffer_pool, GST_TYPE_BUFFER_POOL);
@@ -1563,4 +1564,48 @@ static void
 gst_qmmf_buffer_pool_init (GstQmmfBufferPool * pool)
 {
   GST_DEBUG ("Initializing pool!");
+}
+
+gboolean
+gst_qmmf_boost_with_perflock(const gint duration_ms)
+{
+  gint ret;
+  void* hLibrary;
+  PerfHintFunc perf_hint;
+
+  if (duration_ms <= 0)
+  {
+    GST_WARNING("Invalid perflock duration: %d ms", duration_ms);
+    return FALSE;
+  }
+
+  hLibrary = dlopen("libqti-perfd-client.so", RTLD_NOW | RTLD_LOCAL);
+  if (hLibrary == NULL)
+  {
+    GST_INFO("Failed to load perflock library: %s", dlerror());
+    return FALSE;
+  }
+
+  perf_hint = (PerfHintFunc)dlsym(hLibrary, "perf_hint");
+  if (perf_hint == NULL)
+  {
+    GST_WARNING("Failed to find perf_hint symbol: %s", dlerror());
+
+    dlclose(hLibrary);
+    return FALSE;
+  }
+
+  ret = perf_hint(POWER_HINT_ID_GST_BOOST, NULL, duration_ms, PERF_HINT_NO_TYPE);
+  if (ret < 0)
+  {
+    GST_WARNING("Perflock perf_hint failed with ret: %d", ret);
+  }
+  else
+  {
+    GST_INFO("Perflock perf_hint success with ret: %d", ret);
+  }
+
+  dlclose(hLibrary);
+
+  return ret >= 0;
 }

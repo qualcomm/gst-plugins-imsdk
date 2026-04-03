@@ -1730,6 +1730,7 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
    // Initializes a new qmmfsrc GstDebugCategory with the given properties.
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_debug, "qtiqmmfsrc", 0, "QTI QMMF Source");
 
+  gst_qmmf_boost_with_perflock (1000);
   gst_qmmf_context_get_static_meta ();
 
   gobject->set_property = GST_DEBUG_FUNCPTR (qmmfsrc_set_property);
