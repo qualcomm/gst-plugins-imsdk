@@ -75,6 +75,7 @@
     GST_TYPE_ML_ONNX_EXECUTION_PROVIDER, DEFAULT_OPT_EXECUTION_PROVIDER)
 #define GET_OPT_QNN_BACKEND_PATH(s) get_opt_string (s, \
     GST_ML_ONNX_ENGINE_OPT_QNN_BACKEND_PATH)
+#define QNN_PROVIDER_LIB_PATH "libonnxruntime_providers_qnn.so"
 #define GET_OPT_QNN_HTP_PERFORMANCE_MODE(s) get_opt_enum (s, \
     GST_ML_ONNX_ENGINE_OPT_QNN_HTP_PERFORMANCE_MODE, \
     GST_TYPE_ML_ONNX_HTP_PERFORMANCE_MODE, DEFAULT_OPT_HTP_PERFORMANCE_MODE)
@@ -111,6 +112,10 @@ struct _GstMLOnnxEngine
   // Scale and offset values for dequantization
   gdouble    offsets[GST_ML_MAX_TENSORS];
   gdouble    scales[GST_ML_MAX_TENSORS];
+
+  // TRUE if libonnxruntime_providers_qnn_abi was registered via
+  // RegisterExecutionProviderLibrary and must be unregistered on free.
+  gboolean   qnn_lib_registered;
 };
 
 static GstDebugCategory *
@@ -680,9 +685,65 @@ gst_ml_onnx_engine_new (GstStructure * settings)
     {
       const gchar *backend_path = GET_OPT_QNN_BACKEND_PATH (engine->settings);
 
-      if (backend_path == NULL || strlen(backend_path) == 0) {
+      if (backend_path == NULL || strlen (backend_path) == 0) {
         GST_ERROR ("QNN execution provider requires a valid backend path. "
             "Please set the 'backend-path' property.");
+        api->ReleaseSessionOptions (session_options);
+        gst_ml_onnx_engine_free (engine);
+        return NULL;
+      }
+
+      // Register libonnxruntime_providers_qnn_abi.so with the OrtEnv so that
+      // ORT can discover the QNN EP devices it provides.
+      status = api->RegisterExecutionProviderLibrary (engine->env,
+          "QNN", QNN_PROVIDER_LIB_PATH);
+      if (status) {
+        const char *errmsg = api->GetErrorMessage (status);
+        if (errmsg && strstr (errmsg, "already registered")) {
+          GST_INFO ("QNN provider library already registered, reusing: %s",
+              QNN_PROVIDER_LIB_PATH);
+          api->ReleaseStatus (status);
+          status = NULL;
+        } else {
+          GST_ERROR ("Failed to register QNN provider library '%s': %s",
+              QNN_PROVIDER_LIB_PATH, errmsg);
+          api->ReleaseStatus (status);
+          api->ReleaseSessionOptions (session_options);
+          gst_ml_onnx_engine_free (engine);
+          return NULL;
+        }
+      } else {
+        engine->qnn_lib_registered = TRUE;
+        GST_INFO ("Registered QNN provider library: %s", QNN_PROVIDER_LIB_PATH);
+      }
+
+      // Enumerate EP devices exposed by the registered library.
+      const OrtEpDevice* const* ep_devices = NULL;
+      size_t num_ep_devices = 0;
+      status = api->GetEpDevices (engine->env, &ep_devices, &num_ep_devices);
+      if (status) {
+        GST_ERROR ("Failed to get EP devices: %s",
+            api->GetErrorMessage (status));
+        api->ReleaseStatus (status);
+        api->ReleaseSessionOptions (session_options);
+        gst_ml_onnx_engine_free (engine);
+        return NULL;
+      }
+
+      // Collect all QNN EP devices.
+      std::vector<const OrtEpDevice*> qnn_devices;
+      for (size_t i = 0; i < num_ep_devices; i++) {
+        const char *ep_name = api->EpDevice_EpName (ep_devices[i]);
+        if (ep_name &&
+            (strcmp (ep_name, "QNN") == 0 ||
+             strcmp (ep_name, "QNNExecutionProvider") == 0)) {
+          qnn_devices.push_back (ep_devices[i]);
+        }
+      }
+
+      if (qnn_devices.empty ()) {
+        GST_ERROR ("No QNN EP devices found after registering '%s'",
+            QNN_PROVIDER_LIB_PATH);
         api->ReleaseSessionOptions (session_options);
         gst_ml_onnx_engine_free (engine);
         return NULL;
@@ -719,20 +780,21 @@ gst_ml_onnx_engine_new (GstStructure * settings)
           break;
       }
 
-      // QNN execution provider configuration
-      // Using SessionOptionsAppendExecutionProvider with QNN provider name
-      const char* qnn_provider_options_keys[] = {
+      const char* qnn_option_keys[] = {
           "backend_path", "htp_performance_mode"};
-      const char* qnn_provider_options_values[] = {
+      const char* qnn_option_vals[] = {
           backend_path, htp_perf_mode_str};
 
       GST_INFO ("QNN backend path: %s, HTP performance mode: %s",
           backend_path, htp_perf_mode_str);
 
-      status = api->SessionOptionsAppendExecutionProvider (session_options,
-          "QNN", qnn_provider_options_keys, qnn_provider_options_values, 2);
+      // Attach the QNN EP to the session options using the new V2 API.
+      status = api->SessionOptionsAppendExecutionProvider_V2 (
+          session_options, engine->env,
+          qnn_devices.data (), qnn_devices.size (),
+          qnn_option_keys, qnn_option_vals, 2);
       if (status) {
-        GST_WARNING ("Failed to set QNN execution provider: %s",
+        GST_WARNING ("Failed to append QNN execution provider: %s",
             api->GetErrorMessage (status));
         api->ReleaseStatus (status);
       } else {
@@ -1026,6 +1088,19 @@ gst_ml_onnx_engine_free (GstMLOnnxEngine * engine)
 
   if (engine->session)
     api->ReleaseSession (engine->session);
+
+  // Unregister the QNN provider library only after the session that used it
+  // has been released.
+  if (engine->qnn_lib_registered && engine->env) {
+    OrtStatus *status =
+        api->UnregisterExecutionProviderLibrary (engine->env, "QNN");
+    if (status) {
+      GST_WARNING ("Failed to unregister QNN provider library: %s",
+          api->GetErrorMessage (status));
+      api->ReleaseStatus (status);
+    }
+    engine->qnn_lib_registered = FALSE;
+  }
 
   if (engine->env)
     api->ReleaseEnv (engine->env);

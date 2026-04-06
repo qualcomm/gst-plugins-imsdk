@@ -39,15 +39,6 @@ if(NOT HAVE_ONNXPROTO_H)
   message(FATAL_ERROR "ONNX Proto headers not found.")
 endif()
 
-# Find qnn execution provider library
-find_library(QNNPROVIDERS_LIB onnxruntime_providers_qnn
-  PATHS ${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}
-  NO_DEFAULT_PATH
-)
-if(NOT QNNPROVIDERS_LIB)
-  message(FATAL_ERROR "QNN Providers library not found.")
-endif()
-
 # Find ONNX proto library
 find_library(ONNX_PROTO_LIB onnx_proto
   PATHS ${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}
@@ -64,7 +55,6 @@ list(APPEND GST_QTI_ML_ONNX_SRC
 
 list(APPEND TARGET_LIBRARIES
   ${ONNXRUNTIME_LIBRARIES}
-  ${QNNPROVIDERS_LIB}
 )
 
 # Add ONNX proto library if found
