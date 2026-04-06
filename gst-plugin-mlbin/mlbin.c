@@ -571,8 +571,6 @@ gst_ml_bin_init (GstMLBin * mlbin)
 
   gst_element_add_pad (GST_ELEMENT_CAST (mlbin), pad);
   gst_object_unref (template);
-
-  g_warning ("Currently image-segmentation post-process modules are not supported!");
 }
 
 static gboolean

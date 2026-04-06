@@ -42,6 +42,12 @@ gst_ml_predictions_list_append (GValue * list, const GQuark mltype,
   } else if (GST_IS_POSE (mltype)) {
     structure = gst_structure_new_empty ("PoseEstimation");
     gst_structure_take_value (structure, "poses", results);
+  } else if (GST_IS_SEGMENTATION (mltype)) {
+    structure = gst_structure_new_empty ("Segmentation");
+    gst_structure_take_value (structure, "masks", results);
+  } else if (GST_IS_DEPTH_MAP (mltype)) {
+    structure = gst_structure_new_empty ("Depth");
+    gst_structure_take_value (structure, "maps", results);
   }
 
   value = gst_structure_get_value (mlparam, "timestamp");
@@ -321,6 +327,52 @@ gst_cairo_draw_link (cairo_t * context, GstMLKeypointLink * link,
   cairo_stroke (context);
 
   return (cairo_status (context) == CAIRO_STATUS_SUCCESS) ? TRUE : FALSE;
+}
+
+gboolean
+gst_cairo_draw_mask (cairo_t * context, const guint32 * colormask, guint n_rows,
+    guint n_columns, GstVideoRegionOfInterestMeta * roimeta)
+{
+  cairo_surface_t *surface = NULL;
+  guint8 *rawdata = NULL;
+  guint top = 0, bottom = 0, left = 0, right = 0;
+  guint row = 0, column = 0, num = 0, rawidx = 0, stride = 0;
+
+  surface = cairo_get_target (context);
+  g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
+
+  rawdata = cairo_image_surface_get_data (surface);
+  stride = cairo_image_surface_get_stride (surface);
+
+  GST_TRACE ("Mask [%u, %u] Region [%u %u %u %u]", n_columns, n_rows,
+      roimeta->x, roimeta->y, roimeta->w, roimeta->h);
+
+  // Update the image region as the mask may be smaller then the model input.
+  roimeta->w = n_columns;
+  roimeta->h = n_rows;
+
+  left = roimeta->x;
+  top = roimeta->y;
+  right = roimeta->x + roimeta->w;
+  bottom = roimeta->y + roimeta->h;
+
+  for (row = top; row < bottom; row++) {
+    rawidx = (row * stride) + (left * 4);
+
+    for (column = left; column < right; column++, rawidx += 4, num++) {
+      rawdata[rawidx] = GST_COLOR_RED (colormask[num]);
+      rawdata[rawidx + 1] = GST_COLOR_GREEN (colormask[num]);
+      rawdata[rawidx + 2] = GST_COLOR_BLUE (colormask[num]);
+      rawdata[rawidx + 3] = GST_COLOR_ALPHA (colormask[num]);
+    }
+  }
+
+  // Notify cairo that the surface was modified.
+  cairo_surface_mark_dirty (surface);
+
+  GST_TRACE ("Updated Mask Region [%u %u %u %u]", roimeta->x, roimeta->y,
+      roimeta->w, roimeta->h);
+  return TRUE;
 }
 
 GstVideoRegionOfInterestMeta *

@@ -15,6 +15,7 @@ include_directories(
 add_subdirectory(audio-classification)
 add_subdirectory(image-classification)
 add_subdirectory(image-segmentation)
+add_subdirectory(depth-estimation)
 add_subdirectory(object-detection)
 add_subdirectory(pose-estimation)
 add_subdirectory(super-resolution)

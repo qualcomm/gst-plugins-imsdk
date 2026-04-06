@@ -70,7 +70,7 @@ G_DEFINE_TYPE (GstMLPostProcess, gst_ml_post_process, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_MIN_BUFFERS             2
 #define DEFAULT_MAX_BUFFERS             10
 #define DEFAULT_VIDEO_WIDTH             320
-#define DEFAULT_VIDEO_HEIGHT            240
+#define DEFAULT_VIDEO_HEIGHT            320
 
 enum
 {
@@ -88,6 +88,8 @@ enum
   SIGNAL_AUDIO_CLASSIFICATIONS,
   SIGNAL_DETECTIONS,
   SIGNAL_POSES,
+  SIGNAL_SEGMENTATIONS,
+  SIGNAL_DEPTH_MAPS,
   SIGNAL_TENSORS,
   LAST_SIGNAL
 };
@@ -171,6 +173,18 @@ gst_ml_post_process_signal_get_type (GstMLPostProcess * postprocess)
 
   if (connected)
     return GST_POSE_TYPE;
+
+  connected = g_signal_has_handler_pending (postprocess,
+      signals[SIGNAL_SEGMENTATIONS], 0, FALSE);
+
+  if (connected)
+    return GST_SEGMENTATION_TYPE;
+
+  connected = g_signal_has_handler_pending (postprocess,
+      signals[SIGNAL_DEPTH_MAPS], 0, FALSE);
+
+  if (connected)
+    return GST_DEPTH_MAP_TYPE;
 
   connected = g_signal_has_handler_pending (postprocess,
       signals[SIGNAL_TENSORS], 0, FALSE);
@@ -403,6 +417,102 @@ gst_ml_poses_visualize (GstMLPoses * predictions, GstStructure * mlparam,
   return success;
 }
 
+static inline void
+gst_ml_segmentations_serialize (GstMLSegmentations * predictions,
+    guint stage_id, GstStructure * mlparam, GValue * list)
+{
+  GstStructure *structure = NULL;
+  guint idx = 0, sequence_idx = 0, id = 0;
+
+  if (gst_structure_has_field (mlparam, "sequence-index"))
+    gst_structure_get_uint (mlparam, "sequence-index", &sequence_idx);
+
+  for (idx = 0; idx < gst_ml_segmentations_size (predictions); idx++) {
+    GstMLSegmentation *entry = gst_ml_segmentations_entry (predictions, idx);
+
+    structure = gst_ml_segmentation_to_structure (entry);
+    id = GST_META_ID (stage_id, sequence_idx, idx);
+    gst_value_array_append_and_take_ml_structure (list, id, structure);
+  }
+}
+
+static inline gboolean
+gst_ml_segmentations_visualize (GstMLSegmentations * predictions,
+    GstStructure * mlparam, GstVideoFrame * vframe)
+{
+  cairo_surface_t *surface = NULL;
+  cairo_t *context = NULL;
+  GstVideoRegionOfInterestMeta *roimeta = NULL;
+  guint idx = 0, length = 0;
+  gboolean success = TRUE;
+
+  roimeta = gst_buffer_setup_image_region (vframe->buffer, mlparam);
+
+  success = gst_cairo_draw_setup (vframe, &surface, &context);
+  g_return_val_if_fail (success, FALSE);
+
+  length = gst_ml_segmentations_size (predictions);
+
+  for (idx = 0; (idx < length) && success; idx++) {
+    GstMLSegmentation *entry = gst_ml_segmentations_entry (predictions, idx);
+
+    success = gst_cairo_draw_mask (context,
+        GST_UINT32_PTR_CAST (entry->colors->data), entry->n_rows,
+        entry->n_columns, roimeta);
+  }
+
+  gst_cairo_draw_cleanup (surface, context);
+  return success;
+}
+
+static inline void
+gst_ml_depth_maps_serialize (GstMLDepthMaps * predictions,
+    guint stage_id, GstStructure * mlparam, GValue * list)
+{
+  GstStructure *structure = NULL;
+  guint idx = 0, sequence_idx = 0, id = 0;
+
+  if (gst_structure_has_field (mlparam, "sequence-index"))
+    gst_structure_get_uint (mlparam, "sequence-index", &sequence_idx);
+
+  for (idx = 0; idx < gst_ml_depth_maps_size (predictions); idx++) {
+    GstMLDepthMap *entry = gst_ml_depth_maps_entry (predictions, idx);
+
+    structure = gst_ml_depth_map_to_structure (entry);
+    id = GST_META_ID (stage_id, sequence_idx, idx);
+    gst_value_array_append_and_take_ml_structure (list, id, structure);
+  }
+}
+
+static inline gboolean
+gst_ml_depth_maps_visualize (GstMLDepthMaps * predictions,
+    GstStructure * mlparam, GstVideoFrame * vframe)
+{
+  cairo_surface_t *surface = NULL;
+  cairo_t *context = NULL;
+  GstVideoRegionOfInterestMeta *roimeta = NULL;
+  guint idx = 0, length = 0;
+  gboolean success = TRUE;
+
+  roimeta = gst_buffer_setup_image_region (vframe->buffer, mlparam);
+
+  success = gst_cairo_draw_setup (vframe, &surface, &context);
+  g_return_val_if_fail (success, FALSE);
+
+  length = gst_ml_depth_maps_size (predictions);
+
+  for (idx = 0; (idx < length) && success; idx++) {
+    GstMLDepthMap *entry = gst_ml_depth_maps_entry (predictions, idx);
+
+    success = gst_cairo_draw_mask (context,
+        GST_UINT32_PTR_CAST (entry->colors->data), entry->n_rows,
+        entry->n_columns, roimeta);
+  }
+
+  gst_cairo_draw_cleanup (surface, context);
+  return success;
+}
+
 static void
 gst_ml_post_process_detection_stabilization (GstMLPostProcess * postprocess,
     guint batch_idx, GstMLDetections * predictions)
@@ -535,6 +645,70 @@ gst_ml_post_process_signal_poses (GstMLPostProcess * postprocess,
 
 cleanup:
   g_clear_pointer (&predictions, gst_ml_poses_unref);
+  return success;
+}
+
+static gboolean
+gst_ml_post_process_signal_segmentations (GstMLPostProcess * postprocess,
+    guint batch_idx, GstMLFrame * mlframe, GstStructure * mlparam, gpointer output)
+{
+  GstMLSegmentations *predictions = gst_ml_segmentations_new ();
+  guint stage_id = postprocess->stage_id;
+  gboolean success = FALSE;
+
+  g_signal_emit (postprocess, signals[SIGNAL_SEGMENTATIONS], 0, mlframe,
+      mlparam, predictions, &success);
+
+  if (!success) {
+    GST_ERROR_OBJECT (postprocess, "Failed to process batch %u!", batch_idx);
+    goto cleanup;
+  }
+
+  if (gst_ml_segmentations_size (predictions) > postprocess->n_results)
+    gst_ml_segmentations_resize (predictions, postprocess->n_results);
+
+  if (postprocess->outmode == GST_OUTPUT_MODE_VIDEO) {
+    GstVideoFrame *vframe = (GstVideoFrame *) output;
+    success = gst_ml_segmentations_visualize (predictions, mlparam, vframe);
+  } else if (postprocess->outmode == GST_OUTPUT_MODE_TEXT) {
+    GValue *value = (GValue *) output;
+    gst_ml_segmentations_serialize (predictions, stage_id, mlparam, value);
+  }
+
+cleanup:
+  g_clear_pointer (&predictions, gst_ml_segmentations_unref);
+  return success;
+}
+
+static gboolean
+gst_ml_post_process_signal_depth_maps (GstMLPostProcess * postprocess,
+    guint batch_idx, GstMLFrame * mlframe, GstStructure * mlparam, gpointer output)
+{
+  GstMLDepthMaps *predictions = gst_ml_depth_maps_new ();
+  guint stage_id = postprocess->stage_id;
+  gboolean success = FALSE;
+
+  g_signal_emit (postprocess, signals[SIGNAL_DEPTH_MAPS], 0, mlframe,
+      mlparam, predictions, &success);
+
+  if (!success) {
+    GST_ERROR_OBJECT (postprocess, "Failed to process batch %u!", batch_idx);
+    goto cleanup;
+  }
+
+  if (gst_ml_depth_maps_size (predictions) > postprocess->n_results)
+    gst_ml_depth_maps_resize (predictions, postprocess->n_results);
+
+  if (postprocess->outmode == GST_OUTPUT_MODE_VIDEO) {
+    GstVideoFrame *vframe = (GstVideoFrame *) output;
+    success = gst_ml_depth_maps_visualize (predictions, mlparam, vframe);
+  } else if (postprocess->outmode == GST_OUTPUT_MODE_TEXT) {
+    GValue *value = (GValue *) output;
+    gst_ml_depth_maps_serialize (predictions, stage_id, mlparam, value);
+  }
+
+cleanup:
+  g_clear_pointer (&predictions, gst_ml_depth_maps_unref);
   return success;
 }
 
@@ -951,8 +1125,7 @@ gst_ml_post_process_transform_caps (GstBaseTransform * base,
 
       // Segmentation and Super Resolution do not support text outputs.
       if (gst_structure_has_name (structure, "text/x-raw") &&
-          (GST_IS_SEGMENTATION (postprocess->type) ||
-              GST_IS_SUPER_RESOLUTION (postprocess->type)))
+          GST_IS_SUPER_RESOLUTION (postprocess->type))
         continue;
 
       // Make a copy that will be modified.
@@ -1022,9 +1195,8 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
     gst_structure_get_uint (stucture, "stage-id", &(postprocess->stage_id));
     GST_DEBUG_OBJECT (postprocess, "Queried stage ID: %u", postprocess->stage_id);
 
-    // Get the width and height for output video caps in case of segmentation.
-    if (GST_IS_SEGMENTATION (postprocess->type) &&
-        gst_ml_structure_has_source_dimensions (stucture))
+    // Get the width and height of model input image tensor as possible output.
+    if (gst_ml_structure_has_source_dimensions (stucture))
       gst_ml_structure_get_source_dimensions (stucture, &width, &height);
   } else {
     // TODO: Temporary workaround. Need to be addressed proerly.
@@ -1051,7 +1223,7 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
 
   if (gst_structure_has_name (output, "video/x-raw")) {
     gint par_n = 0, par_d = 0;
-    gboolean is_text_mask = FALSE;
+    gboolean islabels = FALSE;
 
     // Fixate output PAR if not already fixated..
     value = gst_structure_get_value (output, "pixel-aspect-ratio");
@@ -1067,7 +1239,7 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
 
     GST_DEBUG_OBJECT (postprocess, "Output PAR fixed to: %d/%d", par_n, par_d);
 
-    is_text_mask = GST_IS_IMAGE_CLASSIFICATION (postprocess->type) ||
+    islabels = GST_IS_IMAGE_CLASSIFICATION (postprocess->type) ||
         GST_IS_AUDIO_CLASSIFICATION (postprocess->type);
 
     // For super-resolution expect the tensor resolution as video resolution.
@@ -1090,6 +1262,10 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
 
       width = g_value_get_int (gst_value_array_get_value (value, 2));
       height = g_value_get_int (gst_value_array_get_value (value, 1));
+    } else if (!GST_IS_SEGMENTATION (postprocess->type) &&
+               !GST_IS_DEPTH_MAP (postprocess->type)) {
+      // Reset the width and height from query for non-segmentation post-process.
+      width = height = 0;
     }
 
     // Retrieve the output width and height.
@@ -1100,7 +1276,7 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
           "supported with current post-process type!");
       return NULL;
     } else if ((NULL == value) || !gst_value_is_fixed (value)) {
-      if ((width == 0) && is_text_mask)
+      if ((width == 0) && islabels)
         width = GST_ROUND_UP_4 (DEFAULT_FONT_SIZE * MAX_TEXT_LENGTH * 3 / 5);
       else if (width == 0)
         width = DEFAULT_VIDEO_WIDTH;
@@ -1117,7 +1293,7 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
           "supported with current post-process type!");
       return NULL;
     } else if ((NULL == value) || !gst_value_is_fixed (value)) {
-      if ((height == 0) && is_text_mask)
+      if ((height == 0) && islabels)
         height = GST_ROUND_UP_4 (DEFAULT_FONT_SIZE * postprocess->n_results);
       else if (height == 0)
         height = DEFAULT_VIDEO_HEIGHT;
@@ -1264,6 +1440,10 @@ gst_ml_video_post_process_change_state (GstElement * element,
           postprocess->process = gst_ml_post_process_signal_detections;
         else if (GST_IS_POSE (postprocess->type))
           postprocess->process = gst_ml_post_process_signal_poses;
+        else if (GST_IS_SEGMENTATION (postprocess->type))
+          postprocess->process = gst_ml_post_process_signal_segmentations;
+        else if (GST_IS_DEPTH_MAP (postprocess->type))
+          postprocess->process = gst_ml_post_process_signal_depth_maps;
         else if (GST_IS_TENSOR (postprocess->type))
           postprocess->process = gst_ml_post_process_signal_tensors;
 
@@ -1498,6 +1678,16 @@ gst_ml_post_process_class_init (GstMLPostProcessClass * klass)
           G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
           0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_ML_FRAME,
           GST_TYPE_STRUCTURE, GST_TYPE_ML_POSES);
+  signals[SIGNAL_SEGMENTATIONS] =
+      g_signal_new ("process-segmentation", G_TYPE_FROM_CLASS (klass),
+          G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
+          0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_ML_FRAME,
+          GST_TYPE_STRUCTURE, GST_TYPE_ML_SEGMENTATIONS);
+  signals[SIGNAL_DEPTH_MAPS] =
+      g_signal_new ("process-depth-estimation", G_TYPE_FROM_CLASS (klass),
+          G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
+          0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 3, GST_TYPE_ML_FRAME,
+          GST_TYPE_STRUCTURE, GST_TYPE_ML_DEPTH_MAPS);
   signals[SIGNAL_TENSORS] =
       g_signal_new ("process-tensors", G_TYPE_FROM_CLASS (klass),
           G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,

@@ -752,6 +752,144 @@ gst_ml_poses_visualize (std::vector<PoseEstimation>& predictions,
   return success;
 }
 
+static inline void
+gst_ml_segmentations_serialize (std::vector<Segmentation>& predictions,
+    guint stage_id, GstStructure * mlparam, GValue * list)
+{
+  GstMLSegmentation segmentation = {};
+  guint sequence_idx = 0, size = 0;
+  gchar *string = NULL;
+
+  if (gst_structure_has_field (mlparam, "sequence-index"))
+    gst_structure_get_uint (mlparam, "sequence-index", &sequence_idx);
+
+  for (size_t idx = 0; idx < predictions.size(); idx++) {
+    auto& entry = predictions[idx];
+
+    segmentation.n_rows = entry.n_rows;
+    segmentation.n_columns = entry.n_columns;
+    segmentation.xtraparams = gst_ml_xtraparams_translate (entry.xtraparams);
+
+    GstStructure *structure = gst_ml_segmentation_to_structure (&segmentation);
+    GValue value = G_VALUE_INIT;
+
+    GArray *labels =
+        g_array_sized_new (FALSE, FALSE, sizeof (GQuark), entry.labels.size());
+    g_array_set_size (labels, entry.labels.size());
+
+    for (guint num = 0; num < labels->len; num++) {
+      const gchar *label = entry.labels[num].c_str();
+      g_array_index (labels, GQuark, num) = g_quark_from_string (label);
+    }
+
+    size = entry.n_rows * entry.n_columns * sizeof(GQuark);
+    string = g_base64_encode (reinterpret_cast<guchar*>(labels->data), size);
+    g_array_free (labels, TRUE);
+
+    g_value_init (&value, G_TYPE_STRING);
+    g_value_take_string (&value, string);
+    gst_structure_take_value (structure, "labels", &value);
+
+    size = entry.n_rows * entry.n_columns * sizeof(uint32_t);
+    string = g_base64_encode (reinterpret_cast<guchar*>(entry.colors.data()), size);
+
+    g_value_init (&value, G_TYPE_STRING);
+    g_value_take_string (&value, string);
+    gst_structure_take_value (structure, "colors", &value);
+
+    guint32 id = GST_META_ID (stage_id, sequence_idx, idx);
+    gst_value_array_append_and_take_ml_structure (list, id, structure);
+  }
+}
+
+static inline gboolean
+gst_ml_segmentations_visualize (std::vector<Segmentation>& predictions,
+    GstStructure * mlparam, GstVideoFrame * vframe)
+{
+  cairo_surface_t* surface = NULL;
+  cairo_t* context = NULL;
+
+  GstVideoRegionOfInterestMeta *roimeta =
+      gst_buffer_setup_image_region (vframe->buffer, mlparam);
+
+  gboolean success = gst_cairo_draw_setup (vframe, &surface, &context);
+  g_return_val_if_fail (success, FALSE);
+
+  for (size_t idx = 0; (idx < predictions.size()) && success; idx++) {
+    auto& entry = predictions[idx];
+
+    success = gst_cairo_draw_mask (context, entry.colors.data(),
+        entry.n_rows, entry.n_columns, roimeta);
+  }
+
+  gst_cairo_draw_cleanup (surface, context);
+  return success;
+}
+
+static inline void
+gst_ml_depth_maps_serialize (std::vector<DepthMap>& predictions,
+    guint stage_id, GstStructure * mlparam, GValue * list)
+{
+  GstMLDepthMap depthmap = {};
+  guint sequence_idx = 0, size = 0;
+  gchar *string = NULL;
+
+  if (gst_structure_has_field (mlparam, "sequence-index"))
+    gst_structure_get_uint (mlparam, "sequence-index", &sequence_idx);
+
+  for (size_t idx = 0; idx < predictions.size(); idx++) {
+    auto& entry = predictions[idx];
+
+    depthmap.n_rows = entry.n_rows;
+    depthmap.n_columns = entry.n_columns;
+    depthmap.xtraparams = gst_ml_xtraparams_translate (entry.xtraparams);
+
+    GstStructure *structure = gst_ml_depth_map_to_structure (&depthmap);
+    GValue value = G_VALUE_INIT;
+
+    size = entry.n_rows * entry.n_columns * sizeof(double);
+    string = g_base64_encode (reinterpret_cast<guchar*>(entry.values.data()), size);
+
+    g_value_init (&value, G_TYPE_STRING);
+    g_value_take_string (&value, string);
+    gst_structure_take_value (structure, "values", &value);
+
+    size = entry.n_rows * entry.n_columns * sizeof(uint32_t);
+    string = g_base64_encode (reinterpret_cast<guchar*>(entry.colors.data()), size);
+
+    g_value_init (&value, G_TYPE_STRING);
+    g_value_take_string (&value, string);
+    gst_structure_take_value (structure, "colors", &value);
+
+    guint32 id = GST_META_ID (stage_id, sequence_idx, idx);
+    gst_value_array_append_and_take_ml_structure (list, id, structure);
+  }
+}
+
+static inline gboolean
+gst_ml_depth_maps_visualize (std::vector<DepthMap>& predictions,
+    GstStructure * mlparam, GstVideoFrame * vframe)
+{
+  cairo_surface_t* surface = NULL;
+  cairo_t* context = NULL;
+
+  GstVideoRegionOfInterestMeta *roimeta =
+      gst_buffer_setup_image_region (vframe->buffer, mlparam);
+
+  gboolean success = gst_cairo_draw_setup (vframe, &surface, &context);
+  g_return_val_if_fail (success, FALSE);
+
+  for (size_t idx = 0; (idx < predictions.size()) && success; idx++) {
+    auto& entry = predictions[idx];
+
+    success = gst_cairo_draw_mask (context, entry.colors.data(),
+        entry.n_rows, entry.n_columns, roimeta);
+  }
+
+  gst_cairo_draw_cleanup (surface, context);
+  return success;
+}
+
 static void
 gst_ml_engine_detections_stabilization (GstMLEngine * engine, guint batch_idx,
     std::vector<ObjectDetection>& predictions)
@@ -902,6 +1040,66 @@ gst_ml_engine_segmentation (GstMLEngine * engine, guint batch_idx,
 {
   Tensors tensors = gst_ml_frame_translate (mlframe);
   Dictionary params = gst_ml_param_structure_translate (mlparam);
+  std::any data = std::make_any<std::vector<Segmentation>>();
+
+  if (!engine->submodule->Process(tensors, params, data)) {
+    GST_ERROR ("Failed to process batch %u!", batch_idx);
+    return FALSE;
+  }
+
+  auto& predictions = std::any_cast<std::vector<Segmentation>&>(data);
+
+  // Limit the number of prediction entries if necessary.
+  if (predictions.size() > engine->n_results)
+    predictions.resize(engine->n_results);
+
+  if (engine->outmode == GST_OUTPUT_MODE_VIDEO) {
+    GstVideoFrame *vframe = reinterpret_cast<GstVideoFrame*>(output);
+    return gst_ml_segmentations_visualize (predictions, mlparam, vframe);
+  } else if (engine->outmode == GST_OUTPUT_MODE_TEXT) {
+    GValue *list = reinterpret_cast<GValue*>(output);
+    gst_ml_segmentations_serialize (predictions, engine->stage_id, mlparam, list);
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_ml_engine_depth_estimation (GstMLEngine * engine, guint batch_idx,
+    GstMLFrame * mlframe, GstStructure * mlparam, gpointer output)
+{
+  Tensors tensors = gst_ml_frame_translate (mlframe);
+  Dictionary params = gst_ml_param_structure_translate (mlparam);
+  std::any data = std::make_any<std::vector<DepthMap>>();
+
+  if (!engine->submodule->Process(tensors, params, data)) {
+    GST_ERROR ("Failed to process batch %u!", batch_idx);
+    return FALSE;
+  }
+
+  auto& predictions = std::any_cast<std::vector<DepthMap>&>(data);
+
+  // Limit the number of prediction entries if necessary.
+  if (predictions.size() > engine->n_results)
+    predictions.resize(engine->n_results);
+
+  if (engine->outmode == GST_OUTPUT_MODE_VIDEO) {
+    GstVideoFrame *vframe = reinterpret_cast<GstVideoFrame*>(output);
+    return gst_ml_depth_maps_visualize (predictions, mlparam, vframe);
+  } else if (engine->outmode == GST_OUTPUT_MODE_TEXT) {
+    GValue *list = reinterpret_cast<GValue*>(output);
+    gst_ml_depth_maps_serialize (predictions, engine->stage_id, mlparam, list);
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_ml_engine_super_resolution (GstMLEngine * engine, guint batch_idx,
+    GstMLFrame * mlframe, GstStructure * mlparam, gpointer output)
+{
+  Tensors tensors = gst_ml_frame_translate (mlframe);
+  Dictionary params = gst_ml_param_structure_translate (mlparam);
 
   GstVideoFrame *vframe = reinterpret_cast<GstVideoFrame*>(output);
   std::any data = gst_video_frame_translate (vframe);
@@ -1004,8 +1202,10 @@ gst_ml_engine_new (const gchar * name)
     engine->process = gst_ml_engine_pose_estimation;
   else if (GST_IS_SEGMENTATION (engine->type))
     engine->process = gst_ml_engine_segmentation;
+  else if (GST_IS_DEPTH_MAP (engine->type))
+    engine->process = gst_ml_engine_depth_estimation;
   else if (GST_IS_SUPER_RESOLUTION (engine->type))
-    engine->process = gst_ml_engine_segmentation;
+    engine->process = gst_ml_engine_super_resolution;
   else if (GST_IS_TENSOR (engine->type))
     engine->process = gst_ml_engine_tensors_reshape;
 

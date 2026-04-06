@@ -13,6 +13,8 @@
 #include <gst/ml/ml-post-process-classification.h>
 #include <gst/ml/ml-post-process-detection.h>
 #include <gst/ml/ml-post-process-pose.h>
+#include <gst/ml/ml-post-process-segmentation.h>
+#include <gst/ml/ml-post-process-depth-map.h>
 #include <gst/video/video-utils.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
@@ -30,6 +32,8 @@ G_BEGIN_DECLS
     g_quark_from_static_string ("pose-estimation")
 #define GST_SEGMENTATION_TYPE \
     g_quark_from_static_string ("image-segmentation")
+#define GST_DEPTH_MAP_TYPE \
+    g_quark_from_static_string ("depth-estimation")
 #define GST_SUPER_RESOLUTION_TYPE \
     g_quark_from_static_string ("super-resolution")
 #define GST_TENSOR_TYPE \
@@ -40,6 +44,7 @@ G_BEGIN_DECLS
 #define GST_IS_DETECTION(type)            (type == GST_DETECTION_TYPE)
 #define GST_IS_POSE(type)                 (type == GST_POSE_TYPE)
 #define GST_IS_SEGMENTATION(type)         (type == GST_SEGMENTATION_TYPE)
+#define GST_IS_DEPTH_MAP(type)            (type == GST_DEPTH_MAP_TYPE)
 #define GST_IS_SUPER_RESOLUTION(type)     (type == GST_SUPER_RESOLUTION_TYPE)
 #define GST_IS_TENSOR(type)               (type == GST_TENSOR_TYPE)
 
@@ -177,6 +182,22 @@ gst_cairo_draw_keypoint (cairo_t * context, GstMLKeypoint * keypoint,
 gboolean
 gst_cairo_draw_link (cairo_t * context, GstMLKeypointLink * link,
                      GstVideoRegionOfInterestMeta * roimeta);
+
+/**
+ * gst_cairo_draw_mask:
+ * @context: Cairo context
+ * @colormask: Raw color mask.
+ * @n_rows: Number of rows in the mask.
+ * @n_columns: Number of columns in the mask.
+ * @roimeta: Video region in which to draw the keypoint
+ *
+ * Helper function for drawing a mask using cairo.
+ *
+ * Return: TRUE on success or FALSE on failure.
+ */
+gboolean
+gst_cairo_draw_mask (cairo_t * context, const guint32 * colormask, guint n_rows,
+                     guint n_columns, GstVideoRegionOfInterestMeta * roimeta);
 
 /**
  * gst_buffer_setup_image_region:

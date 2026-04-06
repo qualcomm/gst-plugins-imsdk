@@ -97,24 +97,25 @@ GST_API GstMLDepthMaps*
 gst_ml_depth_maps_new_sized (guint size);
 
 /**
- * gst_ml_depth_maps_ref:
- * @depthmaps: A #GstMLDepthMaps
+ * gst_ml_depth_maps_ref: (skip)
+ * @depthmaps: (transfer none): A #GstMLDepthMaps
  *
  * Atomically increments the reference count of @depthmaps by one.
  * This function is thread-safe and may be called from any thread.
  *
- * Returns: (transfer full): The passed in `GstMLDepthMaps`
+ * Returns: (transfer none): A pointer to the object passed in @depthmaps
  */
 GST_API GstMLDepthMaps*
 gst_ml_depth_maps_ref (GstMLDepthMaps * depthmaps);
 
 /**
- * gst_ml_depth_maps_unref:
- * @depthmaps: (transfer full):  A #GstMLDepthMaps
+ * gst_ml_depth_maps_unref: (skip)
+ * @depthmaps: (transfer none): A #GstMLDepthMaps
  *
  * Atomically decrements the reference count of @depthmaps by one. If the
  * reference count drops to 0, the GstMLDepthMaps apreviously allocated with
  * gst_ml_depth_maps_new() or gst_ml_depth_maps_copy() will be deallocated.
+ *
  * This function is thread-safe and may be called from any thread.
  */
 GST_API void

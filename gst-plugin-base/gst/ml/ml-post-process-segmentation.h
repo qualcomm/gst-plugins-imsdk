@@ -96,24 +96,25 @@ GST_API GstMLSegmentations*
 gst_ml_segmentations_new_sized (guint size);
 
 /**
- * gst_ml_segmentations_ref:
- * @segmentations: A #GstMLSegmentations
+ * gst_ml_segmentations_ref: (skip)
+ * @segmentations: (transfer none): A #GstMLSegmentations
  *
  * Atomically increments the reference count of @segmentations by one.
  * This function is thread-safe and may be called from any thread.
  *
- * Returns: (transfer full): The passed in `GstMLSegmentations`
+ * Returns: (transfer none): A pointer to the object passed in @segmentations
  */
 GST_API GstMLSegmentations*
 gst_ml_segmentations_ref (GstMLSegmentations * segmentations);
 
 /**
- * gst_ml_segmentations_unref:
- * @segmentations: (transfer full):  A #GstMLSegmentations
+ * gst_ml_segmentations_unref: (skip)
+ * @segmentations: (transfer none): A #GstMLSegmentations
  *
  * Atomically decrements the reference count of @segmentations by one. If the
  * reference count drops to 0, the GstMLSegmentations apreviously allocated with
  * gst_ml_segmentations_new() or gst_ml_segmentations_copy() will be deallocated.
+ *
  * This function is thread-safe and may be called from any thread.
  */
 GST_API void

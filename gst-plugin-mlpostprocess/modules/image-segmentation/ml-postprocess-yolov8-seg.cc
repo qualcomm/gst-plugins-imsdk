@@ -9,11 +9,6 @@
 #include <cmath>
 #include <algorithm>
 
-#define EXTRACT_RED_COLOR(color)   ((color >> 24) & 0xFF)
-#define EXTRACT_GREEN_COLOR(color) ((color >> 16) & 0xFF)
-#define EXTRACT_BLUE_COLOR(color)  ((color >> 8) & 0xFF)
-#define EXTRACT_ALPHA_COLOR(color) ((color) & 0xFF)
-
 static const float kNMSIntersectionTreshold = 0.5;
 static const float kDefaultThreshold        = 0.70;
 
@@ -167,18 +162,9 @@ int32_t Module::NonMaxSuppression(ObjectDetections &objects,
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
-  auto& frame = std::any_cast<VideoFrame&>(output);
+  auto& segmentations = std::any_cast<std::vector<Segmentation>&>(output);
+  auto& region = std::any_cast<Region&>(mlparams["input-tensor-region"]);
   auto& resolution = std::any_cast<Resolution&>(mlparams["input-tensor-dimensions"]);
-
-  if ((frame.width != resolution.width) && (frame.height != resolution.height)) {
-    LOG(logger_, kError,
-        "Mismatch between the model input tensor and video frame resolution!");
-    return false;
-  } else if ((frame.format != VideoFormat::kRGBA8888) &&
-             (frame.format != VideoFormat::kRGBX8888)) {
-    LOG(logger_, kError, "Unsupported video format!");
-    return false;
-  }
 
   uint32_t n_channels = tensors[2].dimensions[2];
   uint32_t n_paxels = tensors[2].dimensions[1];
@@ -238,51 +224,57 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
   // Number blocks with witch to do iteration over 5th tensor confidence scores.
   uint32_t n_blocks = is_nchw ? (mlwidth * mlheight) : 1;
-  // Factor with which to multiply the index calculation below for 5th tensor.
-  uint32_t p_idx_factor = is_nchw ? 1 : n_channels;
 
   // Scale factors for avoiding using division and instead use multiplication.
   float wscale = static_cast<float>(mlwidth) / resolution.width;
   float hscale = static_cast<float>(mlheight) / resolution.height;
 
-  uint8_t *outdata = frame.planes[0].data;
+  Segmentation segmentation;
+
+  // Recalculate region dimensions to the mask resolution being processed.
+  uint32_t x = std::lround(region.x * wscale);
+  uint32_t y = std::lround(region.y * hscale);
+
+  segmentation.n_columns = std::lround(region.width * wscale);
+  segmentation.n_rows = std::lround(region.height * hscale);
+
+  segmentation.labels.resize(segmentation.n_columns * segmentation.n_rows);
+  segmentation.colors.resize(segmentation.n_columns * segmentation.n_rows);
 
   for (uint32_t idx = 0; idx < objects.size(); idx++) {
     ObjectDetection& object = objects[idx];
     uint32_t m_idx = mask_matrix_indices[idx];
 
-    uint32_t left = std::lround(object.left);
-    uint32_t top = std::lround(object.top);
-    uint32_t right = std::lround(object.right);
-    uint32_t bottom = std::lround(object.bottom);
+    // Recalculate region dimensions to the mask resolution being processed.
+    uint32_t left = std::lround(object.left * wscale);
+    uint32_t top = std::lround(object.top * hscale);
+    uint32_t right = std::lround(object.right * wscale);
+    uint32_t bottom = std::lround(object.bottom * hscale);
 
     for (uint32_t row = top; row < bottom; row++) {
       for (uint32_t column = left; column < right; column++) {
         // Index of the current paxel in the 5th (protos) tensor.
-        uint32_t p_idx = p_idx_factor *
-            ((std::lround(row * hscale) * mlwidth) + std::lround(column * wscale));
+        uint32_t idx = (is_nchw ? 1 : n_channels) * ((row * mlwidth) + column);
         float confidence = 0.0f;
 
         // Perform matrix multiplication of confidence scores for current paxel.
-        for (uint32_t num = 0; num < n_channels; num++) {
-          confidence += masks[m_idx + num] * protos[p_idx + (num * n_blocks)];
-        }
+        for (uint32_t num = 0; num < n_channels; num++)
+          confidence += masks[m_idx + num] * protos[idx + (num * n_blocks)];
 
         // Apply a sigmoid function in order to normalize the confidence.
         confidence = 1.0f / (1.0f + expf(-confidence));
         // Discard results below the minimum confidence threshold.
         if (confidence < threshold_) continue;
 
-        uint32_t outidx = (row * frame.planes[0].stride) + (column * 4);
+        idx = ((row - x) * mlwidth) + (column - y);
 
-        outdata[outidx] = EXTRACT_RED_COLOR(object.color.value());
-        outdata[outidx + 1] = EXTRACT_GREEN_COLOR(object.color.value());
-        outdata[outidx + 2] = EXTRACT_BLUE_COLOR(object.color.value());
-        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(object.color.value());
+        segmentation.labels[idx] = object.name;
+        segmentation.colors[idx] = object.color.value_or(0xFF0000FF);
       }
     }
   }
 
+  segmentations.push_back(std::move(segmentation));
   return true;
 }
 

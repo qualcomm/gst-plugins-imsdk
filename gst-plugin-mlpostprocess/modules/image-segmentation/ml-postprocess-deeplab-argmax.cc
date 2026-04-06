@@ -38,11 +38,6 @@
 #include <cmath>
 #include <algorithm>
 
-#define EXTRACT_RED_COLOR(color)   ((color >> 24) & 0xFF)
-#define EXTRACT_GREEN_COLOR(color) ((color >> 16) & 0xFF)
-#define EXTRACT_BLUE_COLOR(color)  ((color >> 8) & 0xFF)
-#define EXTRACT_ALPHA_COLOR(color) ((color) & 0xFF)
-
 /* kModuleCaps
 *
 * Description of the supported caps and the type of the module.
@@ -91,45 +86,37 @@ bool Module::Configure(const std::string& labels_file,
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
-  auto& frame = std::any_cast<VideoFrame&>(output);
+  auto& segmentations = std::any_cast<std::vector<Segmentation>&>(output);
   auto& region = std::any_cast<Region&>(mlparams["input-tensor-region"]);
   auto& resolution = std::any_cast<Resolution&>(mlparams["input-tensor-dimensions"]);
 
-  if ((frame.width != resolution.width) && (frame.height != resolution.height)) {
-    LOG(logger_, kError,
-        "Mismatch between the model input tensor and video frame resolution!");
-    return false;
-  } else if ((frame.format != VideoFormat::kRGBA8888) &&
-             (frame.format != VideoFormat::kRGBX8888)) {
-    LOG(logger_, kError, "Unsupported video format!");
-    return false;
-  }
-
   auto indata = reinterpret_cast<const float *>(tensors.front().data);
-  uint8_t *outdata = frame.planes[0].data;
 
   uint32_t mlwidth = tensors.front().dimensions[2];
   uint32_t mlheight = tensors.front().dimensions[1];
   // The 4th tensor dimension represents multiple the class scores per paxel.
-  uint32_t n_scores =
-      (tensors.front().dimensions.size() != 4) ? 1 : tensors.front().dimensions[3];
-
-  uint32_t left = region.x;
-  uint32_t top = region.y;
-  uint32_t right = region.x + region.width;
-  uint32_t bottom = region.y + region.height;
+  uint32_t n_scores = (tensors.front().dimensions.size() != 4) ?
+      1 : tensors.front().dimensions[3];
 
   // Scale factors for avoiding using division and instead use multiplication.
   float wscale = static_cast<float>(mlwidth) / resolution.width;
   float hscale = static_cast<float>(mlheight) / resolution.height;
 
-  for (uint32_t row = top; row < bottom; row++) {
-    uint32_t outidx = (row * frame.planes[0].stride) + (left * 4);
+  // Recalculate region dimensions to the tensor resolution being processed.
+  uint32_t left = std::lround(region.x * wscale);
+  uint32_t top = std::lround(region.y * hscale);
+  uint32_t right = std::lround((region.x + region.width) * wscale);
+  uint32_t bottom = std::lround((region.y + region.height) * hscale);
 
-    for (uint32_t column = left; column < right; column++, outidx += 4) {
+  Segmentation segmentation;
+
+  segmentation.n_rows = bottom - top;
+  segmentation.n_columns = right - left;
+
+  for (uint32_t row = top; row < bottom; row++) {
+    for (uint32_t column = left; column < right; column++) {
       // Calculate the source index.
-      uint32_t inidx = n_scores *
-          (std::lround(row * hscale) * mlwidth) + std::lround(column * wscale);
+      uint32_t inidx = (row * mlwidth * n_scores) + column;
 
       // Initialize the class ID value.
       uint32_t id = inidx;
@@ -141,15 +128,12 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       // If there is no 4th dimension the tensor paxel contains the class ID.
       id = (n_scores == 1) ? indata[id] : (id - inidx);
 
-      uint32_t color = labels_parser_.GetColor(id);
-
-      outdata[outidx] = EXTRACT_RED_COLOR(color);
-      outdata[outidx + 1] = EXTRACT_GREEN_COLOR(color);
-      outdata[outidx + 2] = EXTRACT_BLUE_COLOR(color);
-      outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(color);
+      segmentation.labels.push_back(labels_parser_.GetLabel(id));
+      segmentation.colors.push_back(labels_parser_.GetColor(id));
     }
   }
 
+  segmentations.push_back(std::move(segmentation));
   return true;
 }
 
