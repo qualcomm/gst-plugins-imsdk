@@ -426,6 +426,70 @@ typedef std::vector<ObjectDetection> ObjectDetections;
 // Information describing a group of prediction results from the same tensor batch.
 typedef std::vector<ObjectDetections> DetectionPrediction;
 
+/**
+ * Segmentation:
+ * @labels: List of class labels for each index in the segmentation mask.
+ * @colors: Colors for each index in the segmentation mask.
+ * @n_rows: Number of rows in the segmentation mask.
+ * @n_columns: Number of columns in the segmentation mask.
+ * @xtraparams: Optional additional parameters in #Dictionary which the user
+ *              can export from the submodule and be passed downstream.
+ *
+ * Information describing prediction result from image segmentation models.
+ * All fields are mandatory and need to be filled by the submodule.
+ */
+struct Segmentation {
+  std::vector<std::string>  labels;
+  std::vector<uint32_t>     colors;
+
+  uint32_t                  n_rows;
+  uint32_t                  n_columns;
+
+  std::optional<Dictionary> xtraparams;
+
+  Segmentation()
+      : labels(), colors(), n_rows(0), n_columns(0) {};
+
+  Segmentation(std::vector<std::string>& labels, std::vector<uint32_t>& colors,
+               uint32_t n_rows, uint32_t n_columns)
+      : labels(labels), colors(colors), n_rows(n_rows), n_columns(n_columns) {};
+};
+
+// Variable vector of image segmentation structures.
+typedef std::vector<Segmentation> Segmentations;
+
+/**
+ * DepthMap:
+ * @values: List of depth values for each index in the map.
+ * @colors: Colors for each index in the map.
+ * @n_rows: Number of rows in the map.
+ * @n_columns: Number of columns in the map.
+ * @xtraparams: Optional additional parameters in #Dictionary which the user
+ *              can export from the submodule and be passed downstream.
+ *
+ * Information describing prediction result from image depth models.
+ * All fields are mandatory and need to be filled by the submodule.
+ */
+struct DepthMap {
+  std::vector<double>       values;
+  std::vector<uint32_t>     colors;
+
+  uint32_t                  n_rows;
+  uint32_t                  n_columns;
+
+  std::optional<Dictionary> xtraparams;
+
+  DepthMap()
+      : values(), colors(), n_rows(0), n_columns(0) {};
+
+  DepthMap(std::vector<double>& values, std::vector<uint32_t>& colors,
+           uint32_t n_rows, uint32_t n_columns)
+      : values(values), colors(colors), n_rows(n_rows), n_columns(n_columns) {};
+};
+
+// Variable vector of image depth structures.
+typedef std::vector<DepthMap> DepthMaps;
+
 /** IModule
  *
  * ML post-processing module interface.
@@ -478,7 +542,8 @@ class IModule {
    *    Audio Classification: Variable vector of AudioClassPrediction.
    *    Object Detection: Variable vector of DetectionPrediction.
    *    Pose Estimation: Variable vector of PosePrediction.
-   *    Image Segmentation: Image mask represented by VideoFrame.
+   *    Image Segmentation: Variable vector of Segmentation.
+   *    Image Depth Map: Variable vector of DepthMap.
    *    Super Resolution: Scaled image represented by VideoFrame.
    *    Tensor Generation: Tensor output represented by Tensors.
    *

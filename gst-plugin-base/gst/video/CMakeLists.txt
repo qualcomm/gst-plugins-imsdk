@@ -11,6 +11,8 @@ add_library(${TARGET_NAME} SHARED
   gstvideooriginmeta.c
   gstvideoclassificationmeta.c
   gstvideolandmarksmeta.c
+  gstvideosegmentationmeta.c
+  gstvideodepthmeta.c
   video-converter-engine.c
   video-utils.c
   $<$<BOOL:${HAVE_ADRENO_C2D2_H}>:c2d-video-converter.c>
@@ -24,6 +26,8 @@ set(TARGET_HEADERS
   gstvideooriginmeta.h
   gstvideoclassificationmeta.h
   gstvideolandmarksmeta.h
+  gstvideosegmentationmeta.h
+  gstvideodepthmeta.h
   video-converter-engine.h
   video-utils.h
 )
@@ -129,6 +133,10 @@ if(GIR_SCANNER AND GIR_COMPILER AND PYTHON_SITEPACKAGES_DIR)
     ${CMAKE_CURRENT_SOURCE_DIR}/gstvideoclassificationmeta.c
     ${CMAKE_CURRENT_SOURCE_DIR}/gstvideolandmarksmeta.h
     ${CMAKE_CURRENT_SOURCE_DIR}/gstvideolandmarksmeta.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstvideosegmentationmeta.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstvideosegmentationmeta.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstvideodepthmeta.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstvideodepthmeta.c
     ${CMAKE_CURRENT_SOURCE_DIR}/gstimagepool.h
     ${CMAKE_CURRENT_SOURCE_DIR}/gstimagepool.c
     DEPENDS ${TARGET_NAME}

@@ -24,6 +24,8 @@ add_library(${TARGET_NAME} SHARED
   ml-post-process-keypoint.c
   ml-post-process-detection.c
   ml-post-process-pose.c
+  ml-post-process-segmentation.c
+  ml-post-process-depth-map.c
 )
 
 set(TARGET_HEADERS
@@ -44,6 +46,8 @@ set(TARGET_HEADERS
   ml-post-process-keypoint.h
   ml-post-process-detection.h
   ml-post-process-pose.h
+  ml-post-process-segmentation.h
+  ml-post-process-depth-map.h
 )
 
 set_target_properties(${TARGET_NAME} PROPERTIES
@@ -139,6 +143,10 @@ if(GIR_SCANNER AND GIR_COMPILER AND PYTHON_SITEPACKAGES_DIR)
     ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-pose.h
     ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-pose.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-segmentation.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-segmentation.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-depth-map.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-depth-map.c
     DEPENDS ${TARGET_NAME}
             GstQtiVideo-1.0
   )
