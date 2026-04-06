@@ -216,6 +216,19 @@ GST_API GArray *
 g_array_copy (GArray * array);
 #endif // GLIB_MAJOR_VERSION < 2 || (GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION < 62)
 
+/**
+ * g_param_spec_copy:
+ * @param: An existing #GParamSpec from which the values are extracted.
+ * @prefix: String which will be prepended to the name of the new #GParamSpec.
+ *          If @prefix is NULL, the original name of #GParamSpec will be used.
+ *
+ * Copy the data from @param, based on its value type.
+ *
+ * Returns: (transfer full): A new #GParamSpec
+ **/
+GST_API GParamSpec *
+g_param_spec_copy (GParamSpec * param, const gchar * prefix);
+
 G_END_DECLS
 
 #endif /* __GST_QTI_COMMON_UTILS_H__ */
