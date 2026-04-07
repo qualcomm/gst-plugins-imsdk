@@ -21,6 +21,8 @@
 #include <gst/cv/gstcvmeta.h>
 #include <gst/video/gstvideoclassificationmeta.h>
 #include <gst/video/gstvideolandmarksmeta.h>
+#include <gst/video/gstvideosegmentationmeta.h>
+#include <gst/video/gstvideodepthmeta.h>
 
 #define GST_CAT_DEFAULT gst_metamux_debug
 GST_DEBUG_CATEGORY (gst_metamux_debug);
@@ -515,6 +517,154 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
 }
 
 static void
+gst_metamux_process_segmentation_metadata (GstMetaMux * muxer,
+    GstBuffer * buffer, GstStructure * structure)
+{
+  GstVideoSegmentationMeta *meta = NULL;
+  GstVideoRegionOfInterestMeta *roimeta = NULL;
+  GArray *colormask = NULL, *labels = NULL;
+  const GValue *masks = NULL, *value = NULL;
+  GstStructure *entry = NULL;
+  gpointer data = NULL;
+  guint idx = 0, length = 0, n_rows = 0, n_columns = 0;
+  gsize size = 0;
+
+  // If result is derived from a ROI, attach this result to that ROI meta.
+  if ((value = gst_structure_get_value (structure, "parent-id")) != NULL) {
+    roimeta = gst_buffer_get_video_region_of_interest_meta_id (buffer,
+        g_value_get_int (value));
+  }
+
+  masks = gst_structure_get_value (structure, "masks");
+
+  if ((length = gst_value_array_get_size (masks)) == 0)
+    return;
+
+  if (!gst_buffer_is_writable (buffer)) {
+    GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
+        "not writable!", buffer);
+    return;
+  }
+
+  for (idx = 0; idx < length; idx++) {
+    value = gst_value_array_get_value (masks, idx);
+    entry = GST_STRUCTURE (g_value_get_boxed (value));
+
+    // Get the labels mask.
+    data = g_base64_decode (gst_structure_get_string (entry, "labels"), &size);
+
+    if (data == NULL || size == 0) {
+      GST_WARNING_OBJECT (muxer, "Failed to decode the 'labels' field!");
+      continue;
+    }
+
+    size /= sizeof (GQuark);
+    labels = g_array_new_take (data, size, FALSE, sizeof (GQuark));
+
+    // Get the color mask for each label.
+    data = g_base64_decode (gst_structure_get_string (entry, "colors"), &size);
+
+    if (data != NULL && size != 0) {
+      size /= sizeof (guint32);
+      colormask = g_array_new_take (data, size, FALSE, sizeof (guint32));
+    }
+
+    // Geth the number of rows and columns in the mask.
+    gst_structure_get_uint (entry, "columns", &n_columns);
+    gst_structure_get_uint (entry, "rows", &n_rows);
+
+    meta = gst_buffer_add_video_segmentation_meta (buffer, labels, colormask,
+        n_columns, n_rows);
+    gst_structure_get_uint (entry, "id", &(meta->id));
+
+    // Check if result is not derived from ROI, overwrite the parent_id field.
+    meta->parent_id = (roimeta != NULL) ? roimeta->id : (-1);
+
+    if ((value = gst_structure_get_value (entry, "xtraparams")) != NULL) {
+      GstStructure *xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
+      meta->xtraparams = gst_structure_copy (xtraparams);
+    }
+
+    GST_TRACE_OBJECT (muxer, "Attached 'VideoSegmentation' meta with ID[0x%X] "
+        "and parent ID[0x%X] to buffer %p", meta->id, meta->parent_id, buffer);
+  }
+}
+
+static void
+gst_metamux_process_depth_metadata (GstMetaMux * muxer, GstBuffer * buffer,
+    GstStructure * structure)
+{
+  GstVideoDepthMeta *meta = NULL;
+  GstVideoRegionOfInterestMeta *roimeta = NULL;
+  GArray *colormask = NULL, *depthvals = NULL;
+  const GValue *maps = NULL, *value = NULL;
+  GstStructure *entry = NULL;
+  gpointer data = NULL;
+  guint idx = 0, length = 0, n_rows = 0, n_columns = 0;
+  gsize size = 0;
+
+  // If result is derived from a ROI, attach this result to that ROI meta.
+  if ((value = gst_structure_get_value (structure, "parent-id")) != NULL) {
+    roimeta = gst_buffer_get_video_region_of_interest_meta_id (buffer,
+        g_value_get_int (value));
+  }
+
+  maps = gst_structure_get_value (structure, "maps");
+
+  if ((length = gst_value_array_get_size (maps)) == 0)
+    return;
+
+  if (!gst_buffer_is_writable (buffer)) {
+    GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
+        "not writable!", buffer);
+    return;
+  }
+
+  for (idx = 0; idx < length; idx++) {
+    value = gst_value_array_get_value (maps, idx);
+    entry = GST_STRUCTURE (g_value_get_boxed (value));
+
+    // Get the depth values.
+    data = g_base64_decode (gst_structure_get_string (entry, "values"), &size);
+
+    if (data == NULL || size == 0) {
+      GST_WARNING_OBJECT (muxer, "Failed to decode the 'values' field!");
+      continue;
+    }
+
+    size /= sizeof (gdouble);
+    depthvals = g_array_new_take (data, size, FALSE, sizeof (gdouble));
+
+    // Get the color mask for each depth value.
+    data = g_base64_decode (gst_structure_get_string (entry, "colors"), &size);
+
+    if (data != NULL && size != 0) {
+      size /= sizeof (guint32);
+      colormask = g_array_new_take (data, size, FALSE, sizeof (guint32));
+    }
+
+    // Geth the number of rows and columns in the depth map.
+    gst_structure_get_uint (entry, "columns", &n_columns);
+    gst_structure_get_uint (entry, "rows", &n_rows);
+
+    meta = gst_buffer_add_video_depth_meta (buffer, depthvals, colormask,
+        n_columns, n_rows);
+    gst_structure_get_uint (entry, "id", &(meta->id));
+
+    // Check if result is not derived from ROI, overwrite the parent_id field.
+    meta->parent_id = (roimeta != NULL) ? roimeta->id : (-1);
+
+    if ((value = gst_structure_get_value (entry, "xtraparams")) != NULL) {
+      GstStructure *xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
+      meta->xtraparams = gst_structure_copy (xtraparams);
+    }
+
+    GST_TRACE_OBJECT (muxer, "Attached 'VideoDepth' meta with ID[0x%X] "
+        "and parent ID[0x%X] to buffer %p", meta->id, meta->parent_id, buffer);
+  }
+}
+
+static void
 gst_metamux_process_classification_metadata (GstMetaMux * muxer,
     GstBuffer * buffer, GstStructure * structure)
 {
@@ -663,6 +813,10 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
         gst_metamux_process_detection_metadata (muxer, buffer, structure);
       else if (gst_structure_has_name (structure, "PoseEstimation"))
         gst_metamux_process_landmarks_metadata (muxer, buffer, structure);
+      else if (gst_structure_has_name (structure, "Segmentation"))
+        gst_metamux_process_segmentation_metadata (muxer, buffer, structure);
+      else if (gst_structure_has_name (structure, "Depth"))
+        gst_metamux_process_depth_metadata (muxer, buffer, structure);
       else if (gst_structure_has_name (structure, "ImageClassification"))
         gst_metamux_process_classification_metadata (muxer, buffer, structure);
       else if (gst_structure_has_name (structure, "Text"))

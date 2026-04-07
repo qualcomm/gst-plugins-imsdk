@@ -202,7 +202,25 @@ gst_buffer_get_protection_meta_id (GstBuffer * buffer, const gchar * name);
 GST_API void
 gst_buffer_copy_protection_meta (GstBuffer * destination, GstBuffer * source);
 
-#if GLIB_MAJOR_VERSION < 2 || (GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION < 62)
+#if !GLIB_CHECK_VERSION(2, 76, 0)
+/**
+ * g_array_new_take:
+ * @data: an array of elements of @size
+ * @len: the number of elements in @data
+ * @clear: if true, `GArray` elements should be automatically cleared
+ *         to 0 when they are allocated
+ * @size: the size of each element in bytes
+ *
+ * Simple replacement for g_array_new_take() in glib version < 2.76
+ * TODO: Remove when only glib version >= 2.76 is used.
+ *
+ * Returns: A new array.
+ **/
+GST_API GArray *
+g_array_new_take (gpointer data, gsize len, gboolean clear, gsize size);
+#endif // GLIB_CHECK_VERSION(2, 76, 0)
+
+#if !GLIB_CHECK_VERSION(2, 62, 0)
 /**
  * g_array_copy:
  * @array: A #GArray.
@@ -210,11 +228,11 @@ gst_buffer_copy_protection_meta (GstBuffer * destination, GstBuffer * source);
  * Simple replacement for g_array_copy() in glib version < 2.62
  * TODO: Remove when only glib version >= 2.62 is used.
  *
- * Returns: A copy of of the array.
+ * Returns: A copy of the array.
  **/
 GST_API GArray *
 g_array_copy (GArray * array);
-#endif // GLIB_MAJOR_VERSION < 2 || (GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION < 62)
+#endif // GLIB_CHECK_VERSION(2, 62, 0)
 
 /**
  * g_param_spec_copy:
