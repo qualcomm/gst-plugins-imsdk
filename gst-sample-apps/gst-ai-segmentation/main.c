@@ -218,7 +218,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstPad *vcomposer_sink[2];
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
-  gdouble alpha_value;
   gchar element_name[128];
   GValue position = G_VALUE_INIT;
   GValue dimension = G_VALUE_INIT;
@@ -726,14 +725,12 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   g_object_set_property (G_OBJECT (vcomposer_sink[0]), "dimensions",
       &dimension);
 
+  // Set the alpha channel value for object segmentation.
+  g_object_set (vcomposer_sink[1], "alpha", 0.5, NULL);
+
   g_value_unset (&position);
   g_value_unset (&dimension);
   gst_object_unref (vcomposer_sink[0]);
-
-  // Set the alpha channel value for object segmentation.
-  alpha_value = 0.5;
-  g_object_set (vcomposer_sink[1], "alpha", &alpha_value, NULL);
-
   gst_object_unref (vcomposer_sink[1]);
 
   return TRUE;
