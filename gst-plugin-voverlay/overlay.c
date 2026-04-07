@@ -18,11 +18,6 @@
 #include <cairo/cairo.h>
 #include <gst/video/gstimagepool.h>
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-#include <sys/ioctl.h>
-#include <linux/dma-buf.h>
-#endif // HAVE_LINUX_DMA_BUF_H
-
 GST_DEBUG_CATEGORY (gst_overlay_debug);
 #define GST_CAT_DEFAULT gst_overlay_debug
 
@@ -456,10 +451,10 @@ gst_overlay_update_rectangle_dimensions (GstVOverlay * overlay,
 {
   gint width = 0, height = 0, num = 0, denum = 0;
 
-  // Calculate the aspect ratio of the bounding box rectangle.
+  // Calculate the aspect ratio of the rectangle.
   gst_util_fraction_multiply (rectangle->w, rectangle->h, 1, 1, &num, &denum);
 
-  // Initial values for bounding box width and height, used adjustment.
+  // Initial values for width and height used for adjustment.
   width = GST_VIDEO_INFO_WIDTH (vinfo);
   height = GST_VIDEO_INFO_HEIGHT (vinfo);
 
@@ -468,10 +463,10 @@ gst_overlay_update_rectangle_dimensions (GstVOverlay * overlay,
     width = rectangle->w;
     height = rectangle->h;
   } else if ((rectangle->w > width) && (rectangle->h <= height)) {
-    // Height is set to the width of the frame, adjust width with aspect ratio.
+    // Width is set to the width of the frame, adjust height with aspect ratio.
     height = gst_util_uint64_scale_int (width, denum, num);
   } else if ((rectangle->w <= width) && (rectangle->h > height)) {
-    // Width is set to the width of the frame, adjust height with aspect ratio.
+    // Height is set to the height of the frame, adjust width with aspect ratio.
     width = gst_util_uint64_scale_int (height, num, denum);
   } else if ((rectangle->w > width) && (rectangle->h > height)) {
     if (num > denum)
@@ -483,7 +478,7 @@ gst_overlay_update_rectangle_dimensions (GstVOverlay * overlay,
   GST_TRACE_OBJECT (overlay, "Adjusted dimensions %dx%d --> %dx%d",
       rectangle->w, rectangle->h, width, height);
 
-  // Set the adjusted bounding box dimensions.
+  // Set the adjusted dimensions.
   rectangle->w = width;
   rectangle->h = height;
 
@@ -679,6 +674,50 @@ gst_overlay_handle_landmarks_entry (GstVOverlay * overlay, cairo_t * context,
       destination->x, destination->y, destination->w, destination->h);
 
   return success;
+}
+
+static gboolean
+gst_overlay_handle_colormask_entry (GstVOverlay * overlay, cairo_t * context,
+    GstVideoBlit * blit, GArray * colormask, guint n_columns, guint n_rows)
+{
+  cairo_surface_t *surface = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
+  guint8 *rawdata = NULL;
+  gint row = 0, column = 0, rawidx = 0, stride = 0;
+  gdouble wscale = 0, hscale = 0;
+
+  gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
+  destination = &(blit->destination);
+
+  surface = cairo_get_target (context);
+  g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
+
+  rawdata = cairo_image_surface_get_data (surface);
+  stride = cairo_image_surface_get_stride (surface);
+
+  gst_util_fraction_to_double (n_columns, source.w, &wscale);
+  gst_util_fraction_to_double (n_rows, source.h, &hscale);
+
+  for (row = 0; row < source.h; row++, rawidx = (row * stride)) {
+    for (column = 0; column < source.w; column++, rawidx += 4) {
+      guint num = ((guint)(row * wscale) * n_columns) + (column * hscale);
+      guint32 color = g_array_index (colormask, guint32, num);
+
+      rawdata[rawidx] = GST_COLOR_RED (color);
+      rawdata[rawidx + 1] = GST_COLOR_GREEN (color);
+      rawdata[rawidx + 2] = GST_COLOR_BLUE (color);
+      rawdata[rawidx + 3] = GST_COLOR_ALPHA (color);
+    }
+  }
+
+  // Notify cairo that the surface was modified.
+  cairo_surface_mark_dirty (surface);
+
+  GST_TRACE_OBJECT (overlay, "Mask [%u %u] Source/Destination: [%d %d %d %d] "
+      "-> [%d %d %d %d]", n_columns, n_rows, source.x, source.y, source.w,
+      source.h, destination->x, destination->y, destination->w, destination->h);
+
+  return TRUE;
 }
 
 static gboolean
@@ -1166,9 +1205,8 @@ gst_overlay_video_blit_initialize (GstVOverlay * overlay, guint ovltype,
 {
   GstBufferPool *pool = NULL;
   GstVideoInfo *info = NULL;
-  GstVideoMeta *meta = NULL;
   GstBuffer *buffer = NULL;
-  gboolean success = TRUE;
+  GstVideoMeta *vmeta = NULL;
 
   pool = overlay->ovlpools[ovltype];
   info = overlay->ovlinfos[ovltype];
@@ -1185,13 +1223,12 @@ gst_overlay_video_blit_initialize (GstVOverlay * overlay, guint ovltype,
   }
 
   blit->mask = (GST_VCE_MASK_SOURCE | GST_VCE_MASK_DESTINATION);
+  vmeta = gst_buffer_get_video_meta (buffer);
 
-  meta = gst_buffer_get_video_meta (buffer);
-
-  success = gst_video_info_modify_with_meta (info, meta);
-
-  if (!success)
-    GST_ERROR_OBJECT (overlay, "Failed to derive info from meta");
+  if (!gst_video_info_modify_with_meta (info, vmeta)) {
+    GST_ERROR_OBJECT (overlay, "Failed to modify info with video meta");
+    return FALSE;
+  }
 
   blit->buffer = buffer;
   blit->info = info;
@@ -1219,6 +1256,8 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
   GstVideoFrame frame = {0,};
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   GstVideoLandmarksMeta *lmkmeta = NULL;
+  GstVideoSegmentationMeta *segmeta = NULL;
+  GstVideoDepthMeta *depthmeta = NULL;
   GstVideoClassificationMeta *classmeta = NULL;
   GstVideoBlit *blit = NULL;
   GstStructure *objparam = NULL;
@@ -1243,14 +1282,12 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
 
     success = gst_overlay_video_blit_initialize (overlay,
         GST_OVERLAY_TYPE_DETECTION, blit);
-
     g_return_val_if_fail (success, FALSE);
 
     success = gst_cairo_draw_setup (blit, &frame, &surface, &context);
     g_return_val_if_fail (success, FALSE);
 
-    success &= gst_overlay_handle_detection_entry (overlay, context, blit,
-        roimeta);
+    success &= gst_overlay_handle_detection_entry (overlay, context, blit, roimeta);
 
     // Process all landmarks metas derived from this ROI in the same blit.
     while ((submeta = gst_buffer_iterate_meta_filtered (outbuffer, &substate,
@@ -1263,6 +1300,34 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
       success &= gst_overlay_handle_landmarks_entry (overlay, context, blit,
           lmkmeta->keypoints, lmkmeta->links);
       haslndmrks = TRUE;
+    }
+
+    substate = NULL;
+
+    // Process all segmentation metas derived from this ROI in the same blit.
+    while ((submeta = gst_buffer_iterate_meta_filtered (outbuffer, &substate,
+                GST_VIDEO_SEGMENTATION_META_API_TYPE)) != NULL) {
+      segmeta = GST_VIDEO_SEGMENTATION_META_CAST (submeta);
+
+      if (segmeta->parent_id != roimeta->id)
+        continue;
+
+      success &= gst_overlay_handle_colormask_entry (overlay, context, blit,
+          segmeta->colormask, segmeta->n_columns, segmeta->n_rows);
+    }
+
+    substate = NULL;
+
+    // Process all video depth metas derived from this ROI in the same blit.
+    while ((submeta = gst_buffer_iterate_meta_filtered (outbuffer, &substate,
+                GST_VIDEO_DEPTH_META_API_TYPE)) != NULL) {
+      depthmeta = GST_VIDEO_DEPTH_META_CAST (submeta);
+
+      if (depthmeta->parent_id != roimeta->id)
+        continue;
+
+      success &= gst_overlay_handle_colormask_entry (overlay, context, blit,
+          depthmeta->colormask, depthmeta->n_columns, depthmeta->n_rows);
     }
 
     substate = NULL;
@@ -1289,6 +1354,7 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
 
     success = gst_overlay_video_blit_initialize(overlay,
         GST_OVERLAY_TYPE_CLASSIFICATION, blit);
+    g_return_val_if_fail (success, FALSE);
 
     success = gst_cairo_draw_setup (blit, &frame, &surface, &context);
     g_return_val_if_fail (success, FALSE);
@@ -1466,6 +1532,122 @@ gst_overlay_draw_landmarks_entries (GstVOverlay * overlay,
 
     success &= gst_overlay_handle_landmarks_entry (overlay, context, blit,
         lmkmeta->keypoints, lmkmeta->links);
+    gst_cairo_draw_cleanup (&frame, surface, context);
+
+    // Increase the index with the number of populated blit objects.
+    *index += 1;
+  }
+
+  if (!success) {
+    GST_ERROR_OBJECT (overlay, "Failed to process meta %u!", (*index));
+    return FALSE;
+  }
+
+  return success;
+}
+
+static gboolean
+gst_overlay_draw_segmentation_entries (GstVOverlay * overlay,
+    GstVideoComposition * composition, guint * index)
+{
+  GstBuffer *outbuffer = composition->buffer;
+  GstVideoSegmentationMeta *segmeta = NULL;
+  GstVideoBlit *blit = NULL;
+  GstVideoRectangle source = {0};
+  GstVideoFrame frame = {0,};
+  GstMeta *meta = NULL;
+  gpointer state = NULL;
+  gboolean success = TRUE;
+
+  while ((meta = gst_buffer_iterate_meta_filtered (outbuffer, &state,
+              GST_VIDEO_SEGMENTATION_META_API_TYPE)) != NULL) {
+    cairo_surface_t *surface = NULL;
+    cairo_t *context = NULL;
+
+    segmeta = GST_VIDEO_SEGMENTATION_META_CAST (meta);
+
+    // Derived metas will be handled inside the detection entry function.
+    if (gst_buffer_has_valid_parent_meta (outbuffer, segmeta->parent_id))
+      continue;
+
+    blit = &(composition->blits[*index]);
+
+    success = gst_overlay_video_blit_initialize (overlay,
+        GST_OVERLAY_TYPE_SEGMENTATION, blit);
+    g_return_val_if_fail (success, FALSE);
+
+    gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
+
+    source.w = segmeta->n_columns;
+    source.h = segmeta->n_rows;
+
+    // Adjust segmentation rectangle so that it fits inside the overlay frame.
+    gst_overlay_update_rectangle_dimensions (overlay, blit->info, &source);
+    gst_video_quadrilateral_from_rectangle (&(blit->source), &source);
+
+    success = gst_cairo_draw_setup (blit, &frame, &surface, &context);
+    g_return_val_if_fail (success, FALSE);
+
+    success &= gst_overlay_handle_colormask_entry (overlay, context, blit,
+        segmeta->colormask, segmeta->n_columns, segmeta->n_rows);
+    gst_cairo_draw_cleanup (&frame, surface, context);
+
+    // Increase the index with the number of populated blit objects.
+    *index += 1;
+  }
+
+  if (!success) {
+    GST_ERROR_OBJECT (overlay, "Failed to process meta %u!", (*index));
+    return FALSE;
+  }
+
+  return success;
+}
+
+static gboolean
+gst_overlay_draw_depthmap_entries (GstVOverlay * overlay,
+    GstVideoComposition * composition, guint * index)
+{
+  GstBuffer *outbuffer = composition->buffer;
+  GstVideoDepthMeta *depthmeta = NULL;
+  GstVideoBlit *blit = NULL;
+  GstVideoRectangle source = {0};
+  GstVideoFrame frame = {0,};
+  GstMeta *meta = NULL;
+  gpointer state = NULL;
+  gboolean success = TRUE;
+
+  while ((meta = gst_buffer_iterate_meta_filtered (outbuffer, &state,
+              GST_VIDEO_DEPTH_META_API_TYPE)) != NULL) {
+    cairo_surface_t *surface = NULL;
+    cairo_t *context = NULL;
+
+    depthmeta = GST_VIDEO_DEPTH_META_CAST (meta);
+
+    // Derived metas will be handled inside the detection entry function.
+    if (gst_buffer_has_valid_parent_meta (outbuffer, depthmeta->parent_id))
+      continue;
+
+    blit = &(composition->blits[*index]);
+
+    success = gst_overlay_video_blit_initialize (overlay,
+        GST_OVERLAY_TYPE_DEPTH_MAP, blit);
+    g_return_val_if_fail (success, FALSE);
+
+    gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
+
+    source.w = depthmeta->n_columns;
+    source.h = depthmeta->n_rows;
+
+    // Adjust depth map rectangle so that it fits inside the overlay frame.
+    gst_overlay_update_rectangle_dimensions (overlay, blit->info, &source);
+    gst_video_quadrilateral_from_rectangle (&(blit->source), &source);
+
+    success = gst_cairo_draw_setup (blit, &frame, &surface, &context);
+    g_return_val_if_fail (success, FALSE);
+
+    success &= gst_overlay_handle_colormask_entry (overlay, context, blit,
+        depthmeta->colormask, depthmeta->n_columns, depthmeta->n_rows);
     gst_cairo_draw_cleanup (&frame, surface, context);
 
     // Increase the index with the number of populated blit objects.
@@ -1757,6 +1939,10 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
   composition->n_blits += gst_buffer_get_n_meta (outbuffer,
       GST_VIDEO_LANDMARKS_META_API_TYPE);
   composition->n_blits += gst_buffer_get_n_meta (outbuffer,
+      GST_VIDEO_SEGMENTATION_META_API_TYPE);
+  composition->n_blits += gst_buffer_get_n_meta (outbuffer,
+      GST_VIDEO_DEPTH_META_API_TYPE);
+  composition->n_blits += gst_buffer_get_n_meta (outbuffer,
       GST_CV_OPTCLFLOW_META_API_TYPE);
 
   // For classification the number of blits depend on the number of labels.
@@ -1788,6 +1974,14 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
     goto cleanup;
 
   success = gst_overlay_draw_landmarks_entries (overlay, composition, &index);
+  if (!success)
+    goto cleanup;
+
+  success = gst_overlay_draw_segmentation_entries (overlay, composition, &index);
+  if (!success)
+    goto cleanup;
+
+  success = gst_overlay_draw_depthmap_entries (overlay, composition, &index);
   if (!success)
     goto cleanup;
 
@@ -1929,7 +2123,9 @@ gst_overlay_set_caps (GstBaseTransform * base, GstCaps * incaps,
     if ((ovltype == GST_OVERLAY_TYPE_BBOX) ||
         (ovltype == GST_OVERLAY_TYPE_DETECTION) ||
         (ovltype == GST_OVERLAY_TYPE_MASK) ||
-        (ovltype == GST_OVERLAY_TYPE_POSE_ESTIMATION)) {
+        (ovltype == GST_OVERLAY_TYPE_POSE_ESTIMATION) ||
+        (ovltype == GST_OVERLAY_TYPE_SEGMENTATION) ||
+        (ovltype == GST_OVERLAY_TYPE_DEPTH_MAP)) {
       // Square resolution of atleast 256 is most optimal.
       width = height = GST_ROUND_UP_128 (MAX (MAX (width, height) / 8, 256));
     } else if (ovltype == GST_OVERLAY_TYPE_IMAGE) {
@@ -2009,6 +2205,7 @@ static GstFlowReturn
 gst_overlay_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
 {
   GstVOverlay *overlay = GST_OVERLAY (base);
+  GstVideoMeta *vmeta = NULL;
   GstVideoComposition composition = GST_VCE_COMPOSITION_INIT;
   GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
@@ -2025,14 +2222,15 @@ gst_overlay_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
     return GST_FLOW_OK;
   }
 
+  vmeta = gst_buffer_get_video_meta (buffer);
+  success = gst_video_info_modify_with_meta (overlay->vinfo, vmeta);
+
+  if (!success) {
+    GST_ERROR_OBJECT (overlay, "Failed to modify info with video meta");
+    return GST_FLOW_ERROR;
+  }
+
   composition.buffer = buffer;
-  const GstVideoMeta *meta = gst_buffer_get_video_meta (buffer);
-
-  success = gst_video_info_modify_with_meta (overlay->vinfo, meta);
-
-  if (!success)
-    GST_WARNING_OBJECT (overlay, "Failed to derive info from meta");
-
   composition.info = overlay->vinfo;
 
   // Extract metadata entries from the buffer and create overlay blit objects.

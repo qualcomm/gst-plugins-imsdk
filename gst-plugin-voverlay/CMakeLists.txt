@@ -26,10 +26,6 @@ pkg_check_modules(GST_QCOM_CV REQUIRED gstreamer-qcom-oss-cv-1.0>=1.0.0)
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-# Check whether DMA header is present.
-include(CheckIncludeFile)
-check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
-
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 
@@ -42,10 +38,6 @@ set(GST_QTI_OVERLAY gstqtivoverlay)
 add_library(${GST_QTI_OVERLAY} SHARED
   overlay.c
   overlayutils.c
-)
-
-target_compile_definitions(${GST_QTI_OVERLAY} PRIVATE
-  $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
 )
 
 target_include_directories(${GST_QTI_OVERLAY} PUBLIC

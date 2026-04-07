@@ -13,6 +13,8 @@
 #include <gst/utils/common-utils.h>
 #include <gst/video/gstvideoclassificationmeta.h>
 #include <gst/video/gstvideolandmarksmeta.h>
+#include <gst/video/gstvideosegmentationmeta.h>
+#include <gst/video/gstvideodepthmeta.h>
 
 G_BEGIN_DECLS
 
@@ -44,6 +46,8 @@ enum
   GST_OVERLAY_TYPE_DETECTION,
   GST_OVERLAY_TYPE_CLASSIFICATION,
   GST_OVERLAY_TYPE_POSE_ESTIMATION,
+  GST_OVERLAY_TYPE_SEGMENTATION,
+  GST_OVERLAY_TYPE_DEPTH_MAP,
   GST_OVERLAY_TYPE_OPTCLFLOW,
   GST_OVERLAY_TYPE_MAX
 };
