@@ -22,7 +22,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 # Check whether CDM libs are present.
 include(CheckIncludeFileCXX)
-check_include_file_cxx("ce_cdm/cdm.h" HAVE_CDM_H)
+check_include_file_cxx("cdm.h" HAVE_CDM_H)
 
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)

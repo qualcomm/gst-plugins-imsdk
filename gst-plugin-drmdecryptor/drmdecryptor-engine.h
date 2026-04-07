@@ -14,7 +14,7 @@
 #include <media/hardware/CryptoAPI.h>
 #include <media/drm/DrmAPI.h>
 #ifdef ENABLE_WIDEVINE
-#include <ce_cdm/cdm.h>
+#include <cdm.h>
 #endif
 
 G_BEGIN_DECLS
