@@ -877,7 +877,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     GstPad *composer_sink[2];
     GValue position = G_VALUE_INIT;
     GValue dimension = G_VALUE_INIT;
-    gdouble alpha_value;
     gint pos_vals[2], dim_vals[2];
 
     // Create 2 composer pads for each pipeline
@@ -919,8 +918,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         break;
       case GST_SEGMENTATION:
         // Set alpha channel value for Segmentation overlay window
-        alpha_value = 0.5;
-        g_object_set (composer_sink[1], "alpha", &alpha_value, NULL);
+        g_object_set (composer_sink[1], "alpha", 0.5, NULL);
         break;
     }
 
