@@ -10,6 +10,8 @@
 #include <gst/ml/ml-post-process-classification.h>
 #include <gst/ml/ml-post-process-detection.h>
 #include <gst/ml/ml-post-process-pose.h>
+#include <gst/ml/ml-post-process-segmentation.h>
+#include <gst/ml/ml-post-process-depth-map.h>
 
 static PyObject *
 _gst_ml_frame_get_memory_view (PyObject * self, PyObject * args)
@@ -727,6 +729,504 @@ _gst_ml_pose_set_xtraparams (PyObject * self, PyObject * args)
   Py_RETURN_NONE;
 }
 
+static PyObject *
+_gst_ml_segmentation_get_labels (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_segmentation_type = NULL;
+  PyObject *py_segmentation = NULL, *py_list = NULL;
+  GstMLSegmentation *segmentation = NULL;
+  guint idx = 0;
+
+  // Look up GstQtiML.Pose parameter
+  py_segmentation_type = pygobject_lookup_class (gst_ml_segmentation_get_type ());
+  if (!PyArg_ParseTuple (args, "O!", py_segmentation_type, &py_segmentation)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  segmentation = pyg_boxed_get (py_segmentation, GstMLSegmentation);
+
+  // Return empty list if no labels
+  if ((segmentation->labels) == NULL || (segmentation->labels->len == 0))
+    Py_RETURN_NONE;
+
+  if ((py_list = PyList_New (segmentation->labels->len)) == NULL) {
+    PyErr_NoMemory ();
+    return NULL;
+  }
+
+  for (idx = 0; idx < segmentation->labels->len; idx++) {
+    const gchar *label = g_quark_to_string (
+        g_array_index (segmentation->labels, GQuark, idx));
+
+    PyList_SET_ITEM (py_list, (Py_ssize_t) idx, PyUnicode_FromString (label));
+  }
+
+  return py_list;
+}
+
+static PyObject *
+_gst_ml_segmentation_set_labels (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_segmentation_type = NULL;
+  PyObject *py_segmentation = NULL, *py_seq = NULL, *sequence = NULL;
+  GstMLSegmentation *segmentation = NULL;
+  GArray *labels = NULL;
+  guint idx = 0, n_entries = 0;
+
+  // Look up GstQtiML.Pose and Sequence|None parameters
+  py_segmentation_type = pygobject_lookup_class (gst_ml_segmentation_get_type ());
+  if (!PyArg_ParseTuple (args, "O!O", py_segmentation_type, &py_segmentation,
+          &py_seq)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  segmentation = pyg_boxed_get (py_segmentation, GstMLSegmentation);
+
+  if (py_seq == Py_None) {
+    g_clear_pointer (&(segmentation->labels), g_array_unref);
+    Py_RETURN_NONE;
+  }
+
+  sequence = PySequence_Fast (py_seq, "labels must be a sequence");
+  if (sequence == NULL)
+    return NULL;
+
+  if ((n_entries = PySequence_Fast_GET_SIZE (sequence)) == 0) {
+    g_clear_pointer (&(segmentation->labels), g_array_unref);
+    goto cleanup;
+  }
+
+  labels = g_array_sized_new (FALSE, FALSE, sizeof (GQuark), n_entries);
+
+  for (idx = 0; idx < n_entries; idx++) {
+    PyObject *py_str = PySequence_Fast_GET_ITEM (sequence, idx);
+    GQuark label = 0;
+
+    if (!PyUnicode_Check (py_str)) {
+      PyErr_SetString (PyExc_TypeError, "value is not string");
+      goto cleanup;
+    }
+
+    label = g_quark_from_string (PyUnicode_AsUTF8 (py_str));
+    g_array_append_val (labels, label);
+  }
+
+  g_clear_pointer (&(segmentation->labels), g_array_unref);
+  segmentation->labels = g_steal_pointer (&(labels));
+
+cleanup:
+  g_clear_pointer (&(labels), g_array_unref);
+  Py_DECREF (sequence);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+_gst_ml_segmentation_get_colors (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_segmentation_type = NULL;
+  PyObject *py_segmentation = NULL, *py_list = NULL, *py_long = NULL;
+  GstMLSegmentation *segmentation = NULL;
+  guint idx = 0;
+
+  // Look up GstQtiML.Pose parameter
+  py_segmentation_type = pygobject_lookup_class (gst_ml_segmentation_get_type ());
+  if (!PyArg_ParseTuple (args, "O!", py_segmentation_type, &py_segmentation)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  segmentation = pyg_boxed_get (py_segmentation, GstMLSegmentation);
+
+  // Return empty list if no color mask
+  if ((segmentation->colors) == NULL || (segmentation->colors->len == 0))
+    Py_RETURN_NONE;
+
+  if ((py_list = PyList_New (segmentation->colors->len)) == NULL) {
+    PyErr_NoMemory ();
+    return NULL;
+  }
+
+  for (idx = 0; idx < segmentation->colors->len; idx++) {
+    py_long = PyLong_FromUnsignedLong (
+        g_array_index (segmentation->colors, guint32, idx));
+
+    PyList_SET_ITEM (py_list, (Py_ssize_t) idx, py_long);
+  }
+
+  return py_list;
+}
+
+static PyObject *
+_gst_ml_segmentation_set_colors (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_segmentation_type = NULL;
+  PyObject *py_segmentation = NULL, *py_seq = NULL, *sequence = NULL;
+  GstMLSegmentation *segmentation = NULL;
+  GArray *colors = NULL;
+  guint idx = 0, n_entries = 0, color = 0;
+
+  // Look up GstQtiML.Pose and Sequence|None parameters
+  py_segmentation_type = pygobject_lookup_class (gst_ml_segmentation_get_type ());
+  if (!PyArg_ParseTuple (args, "O!O", py_segmentation_type, &py_segmentation,
+          &py_seq)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  segmentation = pyg_boxed_get (py_segmentation, GstMLSegmentation);
+
+  if (py_seq == Py_None) {
+    g_clear_pointer (&(segmentation->colors), g_array_unref);
+    Py_RETURN_NONE;
+  }
+
+  sequence = PySequence_Fast (py_seq, "color mask must be a sequence");
+  if (sequence == NULL)
+    return NULL;
+
+  if ((n_entries = PySequence_Fast_GET_SIZE (sequence)) == 0) {
+    g_clear_pointer (&(segmentation->colors), g_array_unref);
+    goto cleanup;
+  }
+
+  colors = g_array_sized_new (FALSE, FALSE, sizeof (guint32), n_entries);
+
+  for (idx = 0; idx < n_entries; idx++) {
+    PyObject *py_long = PySequence_Fast_GET_ITEM (sequence, idx);
+
+    if (!PyLong_Check (py_long)) {
+      PyErr_SetString (PyExc_TypeError, "value is not integer");
+      goto cleanup;
+    }
+
+    color = PyLong_AsLong (py_long);
+    g_array_append_val (colors, color);
+  }
+
+  g_clear_pointer (&(segmentation->colors), g_array_unref);
+  segmentation->colors = g_steal_pointer (&(colors));
+
+cleanup:
+  g_clear_pointer (&(colors), g_array_unref);
+  Py_DECREF (sequence);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+_gst_ml_segmentation_get_xtraparams (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_segmentation_type = NULL;
+  PyObject *py_segmentation = NULL, *py_structure = NULL;
+  GstMLSegmentation *segmentation = NULL;
+
+  // Look up GstQtiML.Pose parameter
+  py_segmentation_type = pygobject_lookup_class (gst_ml_segmentation_get_type ());
+  if (!PyArg_ParseTuple (args, "O!", py_segmentation_type, &py_segmentation)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  segmentation = pyg_boxed_get (py_segmentation, GstMLSegmentation);
+
+  if (segmentation->xtraparams == NULL)
+    Py_RETURN_NONE;
+
+  py_structure = pyg_boxed_new (_gst_structure_type, segmentation->xtraparams,
+      FALSE, FALSE);
+
+  return py_structure;
+}
+
+static PyObject *
+_gst_ml_segmentation_set_xtraparams (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_segmentation_type = NULL;
+  PyObject *py_segmentation = NULL, *py_structure = NULL;
+  GstMLSegmentation *segmentation = NULL;
+  GstStructure *structure = NULL;
+
+  // Look up GstQtiML.Pose and Gst.Structure parameters
+  py_segmentation_type = pygobject_lookup_class (gst_ml_segmentation_get_type ());
+  if (!PyArg_ParseTuple (args, "O!O", py_segmentation_type, &py_segmentation,
+          &py_structure)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  if (py_structure == Py_None) {
+    g_clear_pointer (&(segmentation->xtraparams), gst_structure_free);
+    Py_RETURN_NONE;
+  }
+
+  if (!pyg_boxed_check (py_structure, GST_TYPE_STRUCTURE)) {
+    PyErr_SetString (PyExc_TypeError, "value is not Gst.Structure");
+    return NULL;
+  }
+
+  segmentation = pyg_boxed_get (py_segmentation, GstMLSegmentation);
+  structure = pyg_boxed_get (py_structure, GstStructure);
+
+  if (segmentation->xtraparams == structure)
+    Py_RETURN_NONE;
+
+  g_clear_pointer (&(segmentation->xtraparams), gst_structure_free);
+  segmentation->xtraparams = gst_structure_copy (structure);
+
+  Py_RETURN_NONE;
+}
+
+
+static PyObject *
+_gst_ml_depth_map_get_values (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_depth_map_type = NULL;
+  PyObject *py_depthmap = NULL, *py_list = NULL;
+  GstMLDepthMap *depthmap = NULL;
+  guint idx = 0;
+
+  // Look up GstQtiML.Pose parameter
+  py_depth_map_type = pygobject_lookup_class (gst_ml_depth_map_get_type ());
+  if (!PyArg_ParseTuple (args, "O!", py_depth_map_type, &py_depthmap)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  depthmap = pyg_boxed_get (py_depthmap, GstMLDepthMap);
+
+  // Return empty list if no values
+  if ((depthmap->values) == NULL || (depthmap->values->len == 0))
+    Py_RETURN_NONE;
+
+  if ((py_list = PyList_New (depthmap->values->len)) == NULL) {
+    PyErr_NoMemory ();
+    return NULL;
+  }
+
+  for (idx = 0; idx < depthmap->values->len; idx++) {
+    PyList_SET_ITEM (py_list, (Py_ssize_t) idx,
+        PyFloat_FromDouble (g_array_index (depthmap->values, gdouble, idx)));
+  }
+
+  return py_list;
+}
+
+static PyObject *
+_gst_ml_depth_map_set_values (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_depth_map_type = NULL;
+  PyObject *py_depthmap = NULL, *py_seq = NULL, *sequence = NULL;
+  GstMLDepthMap *depthmap = NULL;
+  GArray *values = NULL;
+  guint idx = 0, n_entries = 0;
+
+  // Look up GstQtiML.Pose and Sequence|None parameters
+  py_depth_map_type = pygobject_lookup_class (gst_ml_depth_map_get_type ());
+  if (!PyArg_ParseTuple (args, "O!O", py_depth_map_type, &py_depthmap, &py_seq)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  depthmap = pyg_boxed_get (py_depthmap, GstMLDepthMap);
+
+  if (py_seq == Py_None) {
+    g_clear_pointer (&(depthmap->values), g_array_unref);
+    Py_RETURN_NONE;
+  }
+
+  sequence = PySequence_Fast (py_seq, "values must be a sequence");
+  if (sequence == NULL)
+    return NULL;
+
+  if ((n_entries = PySequence_Fast_GET_SIZE (sequence)) == 0) {
+    g_clear_pointer (&(depthmap->values), g_array_unref);
+    goto cleanup;
+  }
+
+  values = g_array_sized_new (FALSE, FALSE, sizeof (gdouble), n_entries);
+
+  for (idx = 0; idx < n_entries; idx++) {
+    PyObject *py_float = PySequence_Fast_GET_ITEM (sequence, idx);
+    gdouble depth = 0;
+
+    if (!PyFloat_Check (py_float)) {
+      PyErr_SetString (PyExc_TypeError, "value is not float");
+      goto cleanup;
+    }
+
+    depth = PyFloat_AsDouble (py_float);
+    g_array_append_val (values, depth);
+  }
+
+  g_clear_pointer (&(depthmap->values), g_array_unref);
+  depthmap->values = g_steal_pointer (&(values));
+
+cleanup:
+  g_clear_pointer (&(values), g_array_unref);
+  Py_DECREF (sequence);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+_gst_ml_depth_map_get_colors (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_depth_map_type = NULL;
+  PyObject *py_depthmap = NULL, *py_list = NULL, *py_long = NULL;
+  GstMLDepthMap *depthmap = NULL;
+  guint idx = 0;
+
+  // Look up GstQtiML.Pose parameter
+  py_depth_map_type = pygobject_lookup_class (gst_ml_depth_map_get_type ());
+  if (!PyArg_ParseTuple (args, "O!", py_depth_map_type, &py_depthmap)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  depthmap = pyg_boxed_get (py_depthmap, GstMLDepthMap);
+
+  // Return empty list if no color mask
+  if ((depthmap->colors) == NULL || (depthmap->colors->len == 0))
+    Py_RETURN_NONE;
+
+  if ((py_list = PyList_New (depthmap->colors->len)) == NULL) {
+    PyErr_NoMemory ();
+    return NULL;
+  }
+
+  for (idx = 0; idx < depthmap->colors->len; idx++) {
+    py_long = PyLong_FromUnsignedLong (
+        g_array_index (depthmap->colors, guint32, idx));
+
+    PyList_SET_ITEM (py_list, (Py_ssize_t) idx, py_long);
+  }
+
+  return py_list;
+}
+
+static PyObject *
+_gst_ml_depth_map_set_colors (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_depth_map_type = NULL;
+  PyObject *py_depthmap = NULL, *py_seq = NULL, *sequence = NULL;
+  GstMLDepthMap *depthmap = NULL;
+  GArray *colors = NULL;
+  guint idx = 0, n_entries = 0, color = 0;
+
+  // Look up GstQtiML.Pose and Sequence|None parameters
+  py_depth_map_type = pygobject_lookup_class (gst_ml_depth_map_get_type ());
+  if (!PyArg_ParseTuple (args, "O!O", py_depth_map_type, &py_depthmap,
+          &py_seq)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  depthmap = pyg_boxed_get (py_depthmap, GstMLDepthMap);
+
+  if (py_seq == Py_None) {
+    g_clear_pointer (&(depthmap->colors), g_array_unref);
+    Py_RETURN_NONE;
+  }
+
+  sequence = PySequence_Fast (py_seq, "color mask must be a sequence");
+  if (sequence == NULL)
+    return NULL;
+
+  if ((n_entries = PySequence_Fast_GET_SIZE (sequence)) == 0) {
+    g_clear_pointer (&(depthmap->colors), g_array_unref);
+    goto cleanup;
+  }
+
+  colors = g_array_sized_new (FALSE, FALSE, sizeof (guint32), n_entries);
+
+  for (idx = 0; idx < n_entries; idx++) {
+    PyObject *py_long = PySequence_Fast_GET_ITEM (sequence, idx);
+
+    if (!PyLong_Check (py_long)) {
+      PyErr_SetString (PyExc_TypeError, "value is not integer");
+      goto cleanup;
+    }
+
+    color = PyLong_AsLong (py_long);
+    g_array_append_val (colors, color);
+  }
+
+  g_clear_pointer (&(depthmap->colors), g_array_unref);
+  depthmap->colors = g_steal_pointer (&(colors));
+
+cleanup:
+  g_clear_pointer (&(colors), g_array_unref);
+  Py_DECREF (sequence);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+_gst_ml_depth_map_get_xtraparams (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_depth_map_type = NULL;
+  PyObject *py_depthmap = NULL, *py_structure = NULL;
+  GstMLDepthMap *depthmap = NULL;
+
+  // Look up GstQtiML.Pose parameter
+  py_depth_map_type = pygobject_lookup_class (gst_ml_depth_map_get_type ());
+  if (!PyArg_ParseTuple (args, "O!", py_depth_map_type, &py_depthmap)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  depthmap = pyg_boxed_get (py_depthmap, GstMLDepthMap);
+
+  if (depthmap->xtraparams == NULL)
+    Py_RETURN_NONE;
+
+  py_structure = pyg_boxed_new (_gst_structure_type, depthmap->xtraparams,
+      FALSE, FALSE);
+
+  return py_structure;
+}
+
+static PyObject *
+_gst_ml_depth_map_set_xtraparams (PyObject * self, PyObject * args)
+{
+  PyTypeObject *py_depth_map_type = NULL;
+  PyObject *py_depthmap = NULL, *py_structure = NULL;
+  GstMLDepthMap *depthmap = NULL;
+  GstStructure *structure = NULL;
+
+  // Look up GstQtiML.Pose and Gst.Structure parameters
+  py_depth_map_type = pygobject_lookup_class (gst_ml_depth_map_get_type ());
+  if (!PyArg_ParseTuple (args, "O!O", py_depth_map_type, &py_depthmap,
+          &py_structure)) {
+    PyErr_BadArgument ();
+    return NULL;
+  }
+
+  if (py_structure == Py_None) {
+    g_clear_pointer (&(depthmap->xtraparams), gst_structure_free);
+    Py_RETURN_NONE;
+  }
+
+  if (!pyg_boxed_check (py_structure, GST_TYPE_STRUCTURE)) {
+    PyErr_SetString (PyExc_TypeError, "value is not Gst.Structure");
+    return NULL;
+  }
+
+  depthmap = pyg_boxed_get (py_depthmap, GstMLDepthMap);
+  structure = pyg_boxed_get (py_structure, GstStructure);
+
+  if (depthmap->xtraparams == structure)
+    Py_RETURN_NONE;
+
+  g_clear_pointer (&(depthmap->xtraparams), gst_structure_free);
+  depthmap->xtraparams = gst_structure_copy (structure);
+
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef _gi_gst_qti_functions[] = {
     {"ml_frame_get_memory_view", (PyCFunction) _gst_ml_frame_get_memory_view, METH_VARARGS, NULL},
     {"ml_keypoint_get_name", (PyCFunction) _gst_ml_keypoint_get_name, METH_VARARGS, NULL},
@@ -749,6 +1249,18 @@ static PyMethodDef _gi_gst_qti_functions[] = {
     {"ml_pose_set_links", (PyCFunction) _gst_ml_pose_set_links, METH_VARARGS, NULL},
     {"ml_pose_get_xtraparams", (PyCFunction) _gst_ml_pose_get_xtraparams, METH_VARARGS, NULL},
     {"ml_pose_set_xtraparams", (PyCFunction) _gst_ml_pose_set_xtraparams, METH_VARARGS, NULL},
+    {"ml_segmentation_get_labels", (PyCFunction) _gst_ml_segmentation_get_labels, METH_VARARGS, NULL},
+    {"ml_segmentation_set_labels", (PyCFunction) _gst_ml_segmentation_set_labels, METH_VARARGS, NULL},
+    {"ml_segmentation_get_colors", (PyCFunction) _gst_ml_segmentation_get_colors, METH_VARARGS, NULL},
+    {"ml_segmentation_set_colors", (PyCFunction) _gst_ml_segmentation_set_colors, METH_VARARGS, NULL},
+    {"ml_segmentation_get_xtraparams", (PyCFunction) _gst_ml_segmentation_get_xtraparams, METH_VARARGS, NULL},
+    {"ml_segmentation_set_xtraparams", (PyCFunction) _gst_ml_segmentation_set_xtraparams, METH_VARARGS, NULL},
+    {"ml_depth_map_get_values", (PyCFunction) _gst_ml_depth_map_get_values, METH_VARARGS, NULL},
+    {"ml_depth_map_set_values", (PyCFunction) _gst_ml_depth_map_set_values, METH_VARARGS, NULL},
+    {"ml_depth_map_get_colors", (PyCFunction) _gst_ml_depth_map_get_colors, METH_VARARGS, NULL},
+    {"ml_depth_map_set_colors", (PyCFunction) _gst_ml_depth_map_set_colors, METH_VARARGS, NULL},
+    {"ml_depth_map_get_xtraparams", (PyCFunction) _gst_ml_depth_map_get_xtraparams, METH_VARARGS, NULL},
+    {"ml_depth_map_set_xtraparams", (PyCFunction) _gst_ml_depth_map_set_xtraparams, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}
 };
 

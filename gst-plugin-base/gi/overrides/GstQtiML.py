@@ -206,3 +206,71 @@ class Pose(GstQtiML.Pose):
 
 override(Pose)
 __all__.append("Pose")
+
+
+class Segmentation(GstQtiML.Segmentation):
+    def __str__(self) -> str:
+        string = f"columns: {self.n_columns}, rows: {self.n_rows}"
+        string += f", xtraparams: {self.xtraparams}"
+        return string
+
+    @property
+    def labels(self) -> list:
+        return _gi_gst_qti.ml_segmentation_get_labels(self)
+
+    @labels.setter
+    def labels(self, value) -> None:
+        _gi_gst_qti.ml_segmentation_set_labels(self, value)
+
+    @property
+    def colors(self) -> list:
+        return _gi_gst_qti.ml_segmentation_get_colors(self)
+
+    @colors.setter
+    def colors(self, value) -> None:
+        _gi_gst_qti.ml_segmentation_set_colors(self, value)
+
+    @property
+    def xtraparams(self) -> Gst.Structure:
+        return _gi_gst_qti.ml_segmentation_get_xtraparams(self)
+
+    @xtraparams.setter
+    def xtraparams(self, value: Gst.Structure) -> None:
+        _gi_gst_qti.ml_segmentation_set_xtraparams(self, value)
+
+override(Segmentation)
+__all__.append("Segmentation")
+
+
+class DepthMap(GstQtiML.DepthMap):
+    def __str__(self) -> str:
+        string = f"columns: {self.n_columns}, rows: {self.n_rows}"
+        string += f", xtraparams: {self.xtraparams}"
+        return string
+
+    @property
+    def values(self) -> list:
+        return _gi_gst_qti.ml_depth_map_get_values(self)
+
+    @values.setter
+    def values(self, value) -> None:
+        _gi_gst_qti.ml_depth_map_set_values(self, value)
+
+    @property
+    def colors(self) -> list:
+        return _gi_gst_qti.ml_depth_map_get_colors(self)
+
+    @colors.setter
+    def colors(self, value) -> None:
+        _gi_gst_qti.ml_depth_map_set_colors(self, value)
+
+    @property
+    def xtraparams(self) -> Gst.Structure:
+        return _gi_gst_qti.ml_depth_map_get_xtraparams(self)
+
+    @xtraparams.setter
+    def xtraparams(self, value: Gst.Structure) -> None:
+        _gi_gst_qti.ml_depth_map_set_xtraparams(self, value)
+
+override(DepthMap)
+__all__.append("DepthMap")
