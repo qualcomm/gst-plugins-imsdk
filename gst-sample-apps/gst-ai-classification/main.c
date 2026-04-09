@@ -13,10 +13,18 @@
  * Model for classifying objects and display preview with overlayed AI Model
  * output/classification labels.
  *
- * Pipeline for Gstreamer with Camera:
- * qtiqmmfsrc  -> | qmmfsrc_caps (Preview)    -> qtivcomposer
- *                | qmmfsrc_caps (Inference)  -> Pre-process -> Inference
- *                  ->  Post-process          -> qtivcomposer
+ * For overlay builds, the camera source element used is qtiqmmfsrc.
+ * In non-overlay builds, libcamerasrc is used instead.
+ *
+ * Pipeline for Gstreamer with qtiqmmfsrc:
+ * qtiqmmfsrc -> | qmmfsrc_caps (Preview)    -> qtivcomposer
+ *               | qmmfsrc_caps (Inference)  -> Pre-process -> Inference
+ *                 ->  Post-process          -> qtivcomposer
+ *
+ * Pipeline for Gstreamer with libcamersrc:
+ * libcamerasrc -> qtivtransform -> libcamera_caps -> tee (SPLIT)
+ *          | tee -> qtivcomposer
+ *          |     -> Pre-process -> Inference -> Post-process -> qtivcomposer
  *
  * Pipeline for Gstreamer with File source:
  * filesrc -> qtdemux -> h264parse -> v4l2h264dec -> tee (SPLIT)
@@ -27,6 +35,7 @@
  * rtspsrc -> rtph264depay -> h264parse -> v4l2h264dec -> tee (SPLIT)
  *     | tee -> qtivcomposer
  *     |     -> Pre-process -> Inference -> Post-process -> qtivcomposer
+ *
  * Pipeline for Gstreamer with USB Camera source:
  * v4l2src -> v4l2src_caps -> tee (SPLIT)
  *     | tee -> qtivcomposer
@@ -69,6 +78,8 @@
 #define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
 #define SECONDARY_CAMERA_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_OUTPUT_HEIGHT 720
+#define LIBCAMERA_OUTPUT_WIDTH 1280
+#define LIBCAMERA_OUTPUT_HEIGHT 720
 #define USB_CAMERA_OUTPUT_WIDTH 1280
 #define USB_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
@@ -128,6 +139,7 @@ typedef struct {
   gboolean use_rtsp;
   gboolean use_usb;
   gboolean use_camera;
+  gboolean is_camx_available;
   gint width;
   gint height;
   gint framerate;
@@ -323,8 +335,9 @@ on_pad_added (GstElement * element, GstPad * pad, gpointer data)
 static gboolean
 create_pipe (GstAppContext * appctx, GstAppOptions * options)
 {
-  GstElement *qtiqmmfsrc = NULL, *qmmfsrc_caps = NULL;
-  GstElement *qmmfsrc_caps_preview = NULL;
+  GstElement *camera_source = NULL;
+  GstElement *qmmfsrc_caps = NULL, *qmmfsrc_caps_preview = NULL;
+  GstElement *libcamera_caps = NULL;
   GstElement *queue[QUEUE_COUNT], *tee = NULL;
   GstElement *qtimlvconverter = NULL, *qtimlelement = NULL;
   GstElement *qtimlvclassification = NULL, *classification_filter = NULL;
@@ -350,6 +363,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   gint secondary_camera_height = SECONDARY_CAMERA_OUTPUT_HEIGHT;
   gint inference_width = DEFAULT_INFERENCE_WIDTH;
   gint inference_height = DEFAULT_INFERENCE_HEIGHT;
+  gint libcamera_width = LIBCAMERA_OUTPUT_WIDTH;
+  gint libcamera_height = LIBCAMERA_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
   gint module_id;
   GValue video_type = G_VALUE_INIT;
@@ -420,24 +435,36 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
   } else if (options->use_camera) {
-    // Create qtiqmmfsrc plugin for camera stream
-    qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
-    if (!qtiqmmfsrc) {
-      g_printerr ("Failed to create qtiqmmfsrc\n");
+    // Create qtiqmmfsrc plugin for camera stream, if qtiqmmfsrc is available
+    // Otherwise create libcamerasrc plugin for camera stream
+    camera_source =
+      create_camera_source_bin ("camera_source");
+    if (!camera_source) {
+      g_printerr ("Failed to create camera source plugin\n");
       goto error_clean_elements;
     }
-    // Use capsfilter to define the camera output settings
-    qmmfsrc_caps = gst_element_factory_make ("capsfilter", "qmmfsrc_caps");
+    if (options->is_camx_available) {
+      // Use capsfilter to define the camera output settings
+      qmmfsrc_caps = gst_element_factory_make ("capsfilter", "qmmfsrc_caps");
       if (!qmmfsrc_caps) {
         g_printerr ("Failed to create qmmfsrc_caps\n");
         goto error_clean_elements;
-    }
-    // Use capsfilter to define the camera output settings for preview
-    qmmfsrc_caps_preview = gst_element_factory_make ("capsfilter",
+      }
+      // Use capsfilter to define the camera output settings for preview
+      qmmfsrc_caps_preview = gst_element_factory_make ("capsfilter",
         "qmmfsrc_caps_preview");
-    if (!qmmfsrc_caps_preview) {
-      g_printerr ("Failed to create qmmfsrc_caps_preview\n");
-      goto error_clean_elements;
+      if (!qmmfsrc_caps_preview) {
+        g_printerr ("Failed to create qmmfsrc_caps_preview\n");
+        goto error_clean_elements;
+      }
+    } else {
+      // Use capsfilter to define the libcamera output settings
+      libcamera_caps = gst_element_factory_make ("capsfilter",
+        "libcamera_caps");
+      if (!libcamera_caps) {
+        g_printerr ("Failed to create libcamera_caps\n");
+        goto error_clean_elements;
+      }
     }
   } else if (options->use_usb) {
     // 1. Create v4l2src plugin
@@ -492,9 +519,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
   }
 
-  // Use tee to send same data buffer for file and rtsp use cases
+  // Use tee to send same data buffer for libcamera, file and rtsp use cases
   // one for AI inferencing, one for Display composition
-  if (options->use_rtsp || options->use_file || options->use_usb) {
+  if (!(options->use_camera && options->is_camx_available)) {
     tee = gst_element_factory_make ("tee", "tee");
     if (!tee) {
       g_printerr ("Failed to create tee\n");
@@ -630,34 +657,49 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_caps_unref (filtercaps);
 
   } else if (options->use_camera) {
-    // 2.3 Set user provided Camera ID
-    g_object_set (G_OBJECT (qtiqmmfsrc), "camera", options->camera_type, NULL);
+    if (options->is_camx_available) {
+      g_print("Using qtiqmmfsrc\n");
 
-    // 2.4 Set the capabilities of camera plugin output
-    if (options->camera_type == GST_CAMERA_TYPE_PRIMARY) {
-      filtercaps = gst_caps_new_simple ("video/x-raw",
+      // 2.3 Set user provided Camera ID
+      g_object_set (G_OBJECT (camera_source), "camera", options->camera_type, NULL);
+
+      // 2.4 Set the capabilities of camera plugin output
+      if (options->camera_type == GST_CAMERA_TYPE_PRIMARY) {
+        filtercaps = gst_caps_new_simple ("video/x-raw",
           "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, primary_camera_width,
           "height", G_TYPE_INT, primary_camera_height,
           "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
-    } else {
-      filtercaps = gst_caps_new_simple ("video/x-raw",
+      } else {
+        filtercaps = gst_caps_new_simple ("video/x-raw",
           "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, secondary_camera_width,
           "height", G_TYPE_INT, secondary_camera_height,
           "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
-    }
-    g_object_set (G_OBJECT (qmmfsrc_caps_preview), "caps", filtercaps, NULL);
-    gst_caps_unref (filtercaps);
+      }
+      g_object_set (G_OBJECT (qmmfsrc_caps_preview), "caps", filtercaps, NULL);
+      gst_caps_unref (filtercaps);
 
-    // 2.4 Set the capabilities of camera plugin output for inference
-    filtercaps = gst_caps_new_simple ("video/x-raw",
-        "format", G_TYPE_STRING, "NV12",
-        "width", G_TYPE_INT, inference_width,
-        "height", G_TYPE_INT, inference_height,
-        "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
-    g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
-    gst_caps_unref (filtercaps);
+      // 2.4 Set the capabilities of camera plugin output for inference
+      filtercaps = gst_caps_new_simple ("video/x-raw",
+          "format", G_TYPE_STRING, "NV12",
+          "width", G_TYPE_INT, inference_width,
+          "height", G_TYPE_INT, inference_height,
+          "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
+      g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
+      gst_caps_unref (filtercaps);
+    } else {
+      g_print("Using libcamerasrc\n");
+
+      // 2.4 Set the capabilities of libcamera plugin output
+      filtercaps = gst_caps_new_simple ("video/x-raw",
+          "format", G_TYPE_STRING, "NV12",
+          "width", G_TYPE_INT, libcamera_width,
+          "height", G_TYPE_INT, libcamera_height,
+          "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
+      g_object_set (G_OBJECT (libcamera_caps), "caps", filtercaps, NULL);
+      gst_caps_unref (filtercaps);
+    }
   } else if(options->use_usb) {
     g_object_set (G_OBJECT (v4l2src), "io-mode", "dmabuf", NULL);
     g_object_set (G_OBJECT (v4l2src), "device", options->dev_video, NULL);
@@ -832,8 +874,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_bin_add_many (GST_BIN (appctx->pipeline), rtspsrc,
         rtph264depay, h264parse, v4l2h264dec, v4l2h264dec_caps, tee, NULL);
   } else if (options->use_camera) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
-        qmmfsrc_caps, qmmfsrc_caps_preview, NULL);
+    if (options->is_camx_available) {
+      gst_bin_add_many (GST_BIN (appctx->pipeline), camera_source,
+          qmmfsrc_caps, qmmfsrc_caps_preview, NULL);
+    } else {
+      gst_bin_add_many (GST_BIN (appctx->pipeline), camera_source,
+          libcamera_caps, tee, NULL);
+    }
   } else if (options->use_usb) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2src, v4l2src_caps, tee,
         NULL);
@@ -906,16 +953,24 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         goto error_clean_pipeline;
       }
     }
+  } else if (options->use_camera && !(options->is_camx_available)) {
+    ret = gst_element_link_many (camera_source, libcamera_caps,
+      tee, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for"
+        " libcamera->libcamera_caps\n");
+      goto error_clean_pipeline;
+    }
   } else {
-    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps_preview,
+    ret = gst_element_link_many (camera_source, qmmfsrc_caps_preview,
         queue[2], NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
-          " qmmfsource->preview_capsfilter\n");
+          " qmmfsource->qmmfsrc_caps_preview\n");
       goto error_clean_pipeline;
     }
 
-    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[4], NULL);
+    ret = gst_element_link_many (camera_source, qmmfsrc_caps, queue[4], NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
           " qmmfsource->qmmfsrc_caps\n");
@@ -923,14 +978,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
   }
 
-  if (options->use_rtsp || options->use_file || options->use_usb) {
+  if (!(options->use_camera && options->is_camx_available)) {
     ret = gst_element_link_many (tee, queue[2], qtivcomposer, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
           " tee->qtivcomposer.\n");
       goto error_clean_pipeline;
     }
-  } else if (options->use_camera) {
+  } else if (options->use_camera && options->is_camx_available) {
     ret = gst_element_link_many (queue[2], qtivcomposer, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
@@ -970,7 +1025,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_pipeline;
   }
 
-  if (options->use_rtsp || options->use_file || options->use_usb) {
+  if (!(options->use_camera && options->is_camx_available)) {
     ret = gst_element_link_many (tee, queue[4], qtimlvconverter,
         queue[5], qtimlelement, queue[6], qtimlvclassification,
         classification_filter, queue[7], qtivcomposer, NULL);
@@ -979,7 +1034,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
           " pre proc -> ml framework -> post proc.\n");
       goto error_clean_pipeline;
     }
-  } else if (options->use_camera) {
+  } else if (options->use_camera && options->is_camx_available) {
     ret = gst_element_link_many (queue[4], qtimlvconverter,
         queue[5], qtimlelement, queue[6], qtimlvclassification,
         classification_filter, queue[7], qtivcomposer, NULL);
@@ -1001,8 +1056,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added), queue[0]);
   }
 
-  if (options->use_camera) {
-    qtiqmmfsrc_type = gst_element_get_static_pad (qtiqmmfsrc, "video_0");
+  if (options->use_camera && options->is_camx_available) {
+    qtiqmmfsrc_type = gst_element_get_static_pad (camera_source, "video_0");
     if (!qtiqmmfsrc_type) {
       g_printerr ("video_0 of qtiqmmfsrc couldn't be retrieved\n");
       goto error_clean_pipeline;
@@ -1055,12 +1110,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   return TRUE;
 
 error_clean_elements:
-  cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &qmmfsrc_caps_preview,
+  cleanup_gst (&camera_source, &libcamera_caps,
+      &qmmfsrc_caps, &qmmfsrc_caps_preview,
       &filesrc, &qtdemux, &h264parse, &v4l2h264dec, &v4l2h264dec_caps,
       &rtspsrc, &rtph264depay, &v4l2src, &v4l2src_caps, &tee, &qtimlvconverter,
       &qtimlelement, &qtimlvclassification, &qtivcomposer, &classification_filter,
       &h264parse_enc_file, &waylandsink, &fpsdisplaysink, &filesink, &qtirtspbin,
-      &v4l2h264enc_file, &v4l2h264enc_rtsp, h264parse_enc_rtsp, &mp4mux,
+      &v4l2h264enc_file, &v4l2h264enc_rtsp, &h264parse_enc_rtsp, &mp4mux,
       &qtivtransform, &qtivtransform_capsfilter, &videoconvert, &jpegdec,  NULL);
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_object_unref (queue[i]);
@@ -1106,9 +1162,10 @@ parse_json(gchar * config_file, GstAppOptions * options)
 
   root_obj = json_node_get_object (root);
 
-  gboolean camera_is_available = is_camera_available ();
+  gboolean camx_is_available =
+    is_camx_present ();
 
-  if (camera_is_available) {
+  if (camx_is_available) {
     if (json_object_has_member (root_obj, "camera"))
       options->camera_type = json_object_get_int_member (root_obj, "camera");
   }
@@ -1284,6 +1341,7 @@ main (gint argc, gchar * argv[])
   options.labels_path = DEFAULT_CLASSIFICATION_LABELS;
   options.use_cpu = FALSE, options.use_gpu = FALSE, options.use_dsp = FALSE;
   options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera = FALSE;
+  options.is_camx_available = FALSE;
   options.use_usb = FALSE;
   options.threshold = DEFAULT_THRESHOLD_VALUE;
   options.delegate_type = DEFAULT_SNPE_DELEGATE;
@@ -1310,20 +1368,24 @@ main (gint argc, gchar * argv[])
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
-  gboolean camera_is_available = is_camera_available ();
+  options.is_camx_available = is_camx_present ();
 
   gchar camera_description[255] = {};
 
-  if (camera_is_available) {
+  if (options.is_camx_available) {
     snprintf (camera_description, sizeof (camera_description),
         "camera: 0 or 1\n"
         "      Select (0) for Primary Camera and (1) for secondary one.\n"
+    );
+  } else {
+    snprintf (camera_description, sizeof (camera_description),
+        "NOTE: libcamera is used by default as qtiqmmfsrc is not available.\n"
     );
   }
 
   snprintf (help_description, 4095, "\nExample:\n"
       "  %s --config-file=%s\n"
-      "\nTThis Sample App demonstrates Classification on Stream\n"
+      "\nThis Sample App demonstrates Classification on Stream\n"
       "\nConfig file Fields:\n"
       "  %s"
       "  file-path: \"/PATH\"\n"
@@ -1416,15 +1478,10 @@ main (gint argc, gchar * argv[])
   }
 
   // Check for input source
-  if (camera_is_available) {
-    g_print ("TARGET Can support file source, RTSP source and camera source\n");
+  if (options.is_camx_available) {
+    g_print ("TARGET Can support file source, RTSP source and qtiqmmfsrc\n");
   } else {
-    g_print ("TARGET Can only support file source and RTSP source.\n");
-    if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
-      g_print ("User need to give proper input file as source\n");
-        gst_app_context_free (&appctx, &options, config_file);
-      return -EINVAL;
-    }
+    g_print ("TARGET Can support file source, RTSP source and libcamerasrc\n");
   }
 
   if (options.file_path != NULL) {
@@ -1439,31 +1496,39 @@ main (gint argc, gchar * argv[])
   if (! (options.use_file || (options.camera_type != GST_CAMERA_TYPE_NONE) ||
       options.use_rtsp || options.use_usb == TRUE)) {
     options.use_camera = TRUE;
-    options.camera_type = GST_CAMERA_TYPE_PRIMARY;
-    g_print ("Using PRIMARY camera by default, Not valid camera id selected\n");
+    // For qtiqmmfsrc, default to PRIMARY camera when camera ID is not mentioned
+    if (options.is_camx_available) {
+      options.camera_type = GST_CAMERA_TYPE_PRIMARY;
+      g_print ("Using PRIMARY camera by default, Not valid camera id selected\n");
+    } else {
+        g_print ("Using libcamera by default\n");
+    }
   }
 
   // Checking camera id passed by user.
-  if (options.camera_type < GST_CAMERA_TYPE_NONE ||
-      options.camera_type > GST_CAMERA_TYPE_SECONDARY) {
-    g_printerr ("Invalid Camera ID selected\n"
-        "Available options:\n"
-        "    PRIMARY: %d\n"
-        "    SECONDARY %d\n",
-        GST_CAMERA_TYPE_PRIMARY,
-        GST_CAMERA_TYPE_SECONDARY);
-    gst_app_context_free (&appctx, &options, config_file);
-    return -EINVAL;
-  }
+  // This is only applicable when qtiqmmfsrc is available
+  if (options.is_camx_available) {
+    if (options.camera_type < GST_CAMERA_TYPE_NONE ||
+        options.camera_type > GST_CAMERA_TYPE_SECONDARY) {
+      g_printerr ("Invalid Camera ID selected\n"
+          "Available options:\n"
+          "    PRIMARY: %d\n"
+          "    SECONDARY %d\n",
+          GST_CAMERA_TYPE_PRIMARY,
+          GST_CAMERA_TYPE_SECONDARY);
+      gst_app_context_free (&appctx, &options, config_file);
+      return -EINVAL;
+    }
 
-  // Enable camera flag if user set the camera property
-  if (options.camera_type == GST_CAMERA_TYPE_SECONDARY ||
+    // Enable camera flag if user set the camera property
+    if (options.camera_type == GST_CAMERA_TYPE_SECONDARY ||
       options.camera_type == GST_CAMERA_TYPE_PRIMARY)
-    options.use_camera = TRUE;
+      options.use_camera = TRUE;
+  }
 
   // Terminate if more than one source are there.
   if (options.use_file + options.use_camera + options.use_rtsp + options.use_usb > 1) {
-    g_printerr ("Select anyone source type either Camera or File or RTSP\n");
+    g_printerr ("Select anyone source type either Camera or File or RTSP or USB\n");
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
