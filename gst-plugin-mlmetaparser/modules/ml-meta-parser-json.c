@@ -917,6 +917,8 @@ gst_parser_module_process_video_buffer (GstParserSubModule * submodule,
     gst_parser_module_process_classification_meta (submodule, classmeta);
   }
 
+  GST_JSON_END_META_ARRAY (submodule->builder, metalist);
+
   // Parse root class metas and add array section if there are any available.
   metalist = gst_buffer_get_text_metas_parent_id (buffer, -1);
   GST_JSON_BEGIN_META_ARRAY (submodule->builder, metalist, "text");
