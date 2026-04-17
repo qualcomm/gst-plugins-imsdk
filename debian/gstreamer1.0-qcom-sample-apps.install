@@ -26,10 +26,6 @@ usr/bin/gst-audio-encode-example
 usr/bin/gst-audio-video-encode
 usr/bin/gst-audio-video-playback
 usr/bin/gst-ai-event-encoder
-usr/bin/gst-camera-burst-capture-example
-usr/bin/gst-camera-fd-stream-example
-usr/bin/gst-camera-metadata-example
-usr/bin/gst-camera-per-port-example
 usr/bin/gst-camera-shdr-ldc-eis-example
 usr/bin/gst-camera-single-stream-example
 usr/bin/gst-camera-switch-example
@@ -45,3 +41,4 @@ usr/bin/gst-video-playback-example
 usr/bin/gst-video-transcode-example
 usr/bin/gst-videocodec-concurrent-playback
 usr/bin/gst-weston-composition-example
+usr/bin/GstD-camera-single-stream-example
