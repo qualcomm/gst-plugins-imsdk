@@ -62,7 +62,12 @@ configure_file(
   @ONLY
 )
 
-install(
-  FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
-  DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/pkgconfig
-)
+install(CODE "
+  if(EXISTS \"$<TARGET_FILE:${TARGET_NAME}>\")
+    file(INSTALL
+      DESTINATION \"${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/pkgconfig\"
+      TYPE FILE
+      FILES \"${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc\"
+    )
+  endif()
+")
