@@ -4,6 +4,8 @@
  */
 
 #include <cmath>
+#include <cstring>
+#include <algorithm>
 
 #include <glib-unix.h>
 #include <gst/gst.h>
@@ -102,6 +104,12 @@ typedef enum {
   COLLECT_TAGS = 1,
   APPLY_TAGS
 } GstSessMetadataMenuOption;
+
+typedef enum {
+  NO_META_OPTION = 1,
+  CAPTURE_WITH_META_OPTION,
+  DYNAMIC_CAPTURE_WITH_META_OPTION
+} GstCaptureModeOption;
 
 typedef struct _GstAppContext GstAppContext;
 
@@ -2100,7 +2108,7 @@ print_element_options (GstElement * element, GstStructure * props,
 
 static gboolean
 gst_signal_menu (GstElement * element, GAsyncQueue * messages,
-    const guint signal_id, gboolean is_capture)
+    const guint signal_id, GstCaptureModeOption capture_mode)
 {
   GValue *arguments = NULL, value = G_VALUE_INIT;
   GSignalQuery query;
@@ -2110,6 +2118,7 @@ gst_signal_menu (GstElement * element, GAsyncQueue * messages,
   GPtrArray *metas = NULL;
   gboolean success = FALSE;
   gint imgtype = 0;
+  const gchar *dynamic_str = NULL;
   guint n_images = 0;
 
   // Query the signal parameters.
@@ -2175,7 +2184,7 @@ gst_signal_menu (GstElement * element, GAsyncQueue * messages,
   g_value_init (&value, query.return_type);
 
   // Used for capture image with metadata
-  if (is_capture) {
+  if (CAPTURE_WITH_META_OPTION == capture_mode) {
     g_object_get (G_OBJECT (element), "video-metadata", &meta, NULL);
 
     metas = g_ptr_array_new_full (0, gst_camera_metadata_release);
@@ -2198,6 +2207,31 @@ gst_signal_menu (GstElement * element, GAsyncQueue * messages,
 
     // Free the metadatas array as it's no longer needed.
     g_ptr_array_free (metas, TRUE);
+  } else if (DYNAMIC_CAPTURE_WITH_META_OPTION == capture_mode) {
+    g_object_get (G_OBJECT (element), "video-metadata", &meta, NULL);
+
+    metas = g_ptr_array_new_full (0, gst_camera_metadata_release);
+
+    imgtype = g_value_get_enum (&arguments[1]);
+    dynamic_str = g_value_get_string (&arguments[2]);
+    n_images = g_value_get_uint (&arguments[3]);
+
+    guint n_group = std::count(dynamic_str, dynamic_str + std::strlen(dynamic_str), '<');
+    for (guint idx = 0; idx < n_group * n_images; idx++) {
+      // Clone metadata for each image to avoid use-after-free
+      ::camera::CameraMetadata *meta_copy = new ::camera::CameraMetadata(*meta);
+      g_ptr_array_add (metas, (gpointer) meta_copy);
+    }
+
+    g_signal_emit_by_name (element, "dynamic-capture-image", imgtype, dynamic_str,
+        n_images, metas, &success);
+
+    // Clean up the original metadata
+    delete meta;
+    meta = nullptr;
+
+    // Free the metadatas array as it's no longer needed.
+    g_ptr_array_free (metas, TRUE);
   } else {
     g_signal_emitv (arguments, signal_id, 0, &value);
   }
@@ -2207,8 +2241,10 @@ gst_signal_menu (GstElement * element, GAsyncQueue * messages,
 
   g_free (arguments);
 
-  if (is_capture)
+  if (CAPTURE_WITH_META_OPTION == capture_mode)
     g_print ("\n Capture signal return value: %d\n", success);
+  else if (DYNAMIC_CAPTURE_WITH_META_OPTION == capture_mode)
+    g_print ("\n Dynamic capture signal return value: %d\n", success);
   else {
     status = gst_value_serialize (&value);
 
@@ -2257,7 +2293,8 @@ capture_with_metadata (GstAppContext * appctx, gchar * prop,
     g_signal_query (signal_id, &query);
     active = gst_signal_menu (camsrc, appctx->messages, signal_id,
         (query.signal_name &&
-        g_strcmp0 (query.signal_name, "capture-image") == 0 ? TRUE : FALSE));
+        g_strcmp0 (query.signal_name, "capture-image") == 0 ?
+        CAPTURE_WITH_META_OPTION : DYNAMIC_CAPTURE_WITH_META_OPTION));
   } else if (active) {
     g_print ("Invalid option: '%s'\n", input);
   }
@@ -2953,7 +2990,7 @@ gst_element_menu (GstElement ** element, GAsyncQueue * messages)
     guint signal_id = 0;
 
     gst_structure_get_uint (signals, input, &signal_id);
-    active = gst_signal_menu (*element, messages, signal_id, FALSE);
+    active = gst_signal_menu (*element, messages, signal_id, NO_META_OPTION);
   } else if (active && g_str_equal (input, MENU_BACK_OPTION)) {
     gst_object_unref (*element);
     *element = NULL;
