@@ -118,9 +118,6 @@ else()
     # Define path to gst-plugins-base tree for header includes
     set(QTI_PLUGINS_BASE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/gst-plugin-base)
 
-    # Define the path to the common pkg-config template file used by all base libraries
-    set(BASE_COMMON_PC_IN ${CMAKE_CURRENT_SOURCE_DIR}/gst-plugin-base/gst/common.pc.in)
-
     add_subdirectory(gst-plugin-base/gst/camera)
   endif()
 endif()
