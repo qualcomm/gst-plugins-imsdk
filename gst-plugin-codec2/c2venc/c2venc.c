@@ -435,7 +435,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
   }
 
   success = gst_c2_engine_set_parameter (c2venc->engine,
-      GST_C2_PARAM_OPERATING_FRAMERATE, GPOINTER_CAST (&framerate));
+      GST_C2_PARAM_OPERATING_FRAMERATE, GST_PTR_CAST (&framerate));
   if (!success) {
     GST_ERROR_OBJECT (c2venc, "Failed to set operating framerate parameter!");
     return FALSE;
@@ -792,7 +792,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
   if (c2venc->chroma_qp_offset != DEFAULT_PROP_CHROMA_QP_OFFSET) {
     success = gst_c2_engine_set_parameter (c2venc->engine,
         GST_C2_PARAM_CHROMA_QP_OFFSET,
-        GPOINTER_CAST (&(c2venc->chroma_qp_offset)));
+        GST_PTR_CAST (&(c2venc->chroma_qp_offset)));
     if (!success) {
       GST_ERROR_OBJECT (c2venc, "Failed to set chroma QP offset parameter!");
       return FALSE;
@@ -805,7 +805,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       prefix_mode = GST_C2_NAL_PREFIX_LENGTH;
 
     success = gst_c2_engine_set_parameter (c2venc->engine,
-        GST_C2_PARAM_NAL_LENGTH_BITSTREAM, GPOINTER_CAST (&prefix_mode));
+        GST_C2_PARAM_NAL_LENGTH_BITSTREAM, GST_PTR_CAST (&prefix_mode));
     if (!success) {
       GST_ERROR_OBJECT (c2venc, "Failed to set NAL prefix mode!");
       return FALSE;
