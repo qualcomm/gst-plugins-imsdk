@@ -45,8 +45,6 @@ struct _GstImgPyramidEngine
   evaImage               *outimages;
   // Output buffer map
   GstMapInfo             *outmaps;
-  // UBWC flag
-  gboolean               is_ubwc;
 };
 
 static GstDebugCategory *
@@ -97,8 +95,11 @@ gst_eva_create_image (GstImgPyramidEngine * engine, const GstVideoFrame * frame)
     case GST_VIDEO_FORMAT_NV12:
     case GST_VIDEO_FORMAT_GRAY8:
       // TODO workaround for EVA NV12 issue - Only use Y plane for all format
-      imginfo->eFormat =
-          engine->is_ubwc ? EVA_COLORFORMAT_GRAY_UBWC : EVA_COLORFORMAT_GRAY_8BIT;
+      imginfo->eFormat = EVA_COLORFORMAT_GRAY_8BIT;
+      break;
+    case GST_VIDEO_FORMAT_NV12_Q08C:
+      // TODO workaround for EVA NV12 issue - Only use Y plane for all format
+      imginfo->eFormat = EVA_COLORFORMAT_GRAY_UBWC;
       break;
     default:
       GST_ERROR ("Unsupported video format: %s!",
@@ -196,11 +197,14 @@ gst_imgpyramid_engine_new (GstImgPyramidSettings * settings,
   switch (settings->format) {
     case GST_VIDEO_FORMAT_NV12:
     case GST_VIDEO_FORMAT_GRAY8:
+      // TODO workaround for EVA NV12 issue - Only use Y plane for all format
       srcimginfo.eFormat = EVA_COLORFORMAT_GRAY_8BIT;
-      if (settings->is_ubwc) {
-        engine->is_ubwc = settings->is_ubwc;
-        srcimginfo.eFormat = EVA_COLORFORMAT_GRAY_UBWC;
-      }
+      outformat = EVA_COLORFORMAT_GRAY_8BIT;
+      break;
+    case GST_VIDEO_FORMAT_NV12_Q08C:
+      // TODO workaround for EVA NV12 issue - Only use Y plane for all format
+      srcimginfo.eFormat = EVA_COLORFORMAT_GRAY_UBWC;
+      outformat = EVA_COLORFORMAT_GRAY_UBWC;
       break;
     default:
       GST_ERROR ("Unsupported video format: %s!",
@@ -215,26 +219,25 @@ gst_imgpyramid_engine_new (GstImgPyramidSettings * settings,
   srcimginfo.nTotalSize      = stride * scanline;
   srcimginfo.nWidthStride[0] = stride;
   srcimginfo.nAlignedSize[0] = srcimginfo.nTotalSize;
-  outformat                  =
-      engine->is_ubwc ? EVA_COLORFORMAT_GRAY_UBWC : EVA_COLORFORMAT_GRAY_8BIT;
 
   config.nConfigs = EVA_PYRIMG_NUM_ICONFIG;
   config.pConfigs = g_new0 (evaConfig, config.nConfigs);
+
   evaPyramidQueryConfigIndices(evaPyramidConfigStrings, &config);
   // CONFIG_ACTUAL_FPS
-  config.pConfigs[0].uValue.u32                   = settings->framerate;
+  config.pConfigs[0].uValue.u32 = settings->framerate;
   // CONFIG_OPERATIONAL_FPS
-  config.pConfigs[1].uValue.u32                   = settings->framerate;
+  config.pConfigs[1].uValue.u32 = settings->framerate;
   // CONFIG_SOURCE_IMAGE_INFO
-  config.pConfigs[2].uValue.ptr                   = &srcimginfo;
+  config.pConfigs[2].uValue.ptr = &srcimginfo;
   // CONFIG_OCTAVES
-  config.pConfigs[3].uValue.u32                   = settings->n_octaves;
+  config.pConfigs[3].uValue.u32 = settings->n_octaves;
   // CONFIG_SCALES_PER_OCTAVE
-  config.pConfigs[4].uValue.u32                   = settings->n_scales;
+  config.pConfigs[4].uValue.u32 = settings->n_scales;
   // CONFIG_OUTPUT_COLOR_FORMAT
-  config.pConfigs[5].uValue.ptr                   = &outformat;
+  config.pConfigs[5].uValue.ptr = &outformat;
   // CONFIG_OUTPUT_BASEIMAGE
-  config.pConfigs[6].uValue.b                     = false;
+  config.pConfigs[6].uValue.b = false;
 
   engine->handle = evaInitPyrImg (engine->session, &config, &requirements,
       NULL, NULL);

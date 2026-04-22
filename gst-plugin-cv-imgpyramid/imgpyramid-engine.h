@@ -27,7 +27,6 @@ struct _GstImgPyramidSettings {
 #ifdef HAVE_CVP_IMGPYRAMID_H
   GArray         *div2coef;
 #endif // HAVE_CVP_IMGPYRAMID_H
-  gboolean       is_ubwc;
 };
 
 GST_API GstImgPyramidEngine *
