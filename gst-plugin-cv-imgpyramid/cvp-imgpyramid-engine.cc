@@ -47,8 +47,6 @@ struct _GstImgPyramidEngine
   cvpImage               *outimages;
   // Output buffer map
   GstMapInfo             *outmaps;
-  // UBWC flag
-  gboolean               is_ubwc;
 };
 
 static GstDebugCategory *
@@ -99,8 +97,11 @@ gst_cvp_create_image (GstImgPyramidEngine * engine, const GstVideoFrame * frame)
     case GST_VIDEO_FORMAT_NV12:
     case GST_VIDEO_FORMAT_GRAY8:
       // TODO workaround for CVP NV12 issue - Only use Y plane for all format
-      imginfo->eFormat =
-          engine->is_ubwc ? CVP_COLORFORMAT_GRAY_UBWC : CVP_COLORFORMAT_GRAY_8BIT;
+      imginfo->eFormat = CVP_COLORFORMAT_GRAY_8BIT;
+      break;
+    case GST_VIDEO_FORMAT_NV12_Q08C:
+      // TODO workaround for CVP NV12 issue - Only use Y plane for all format
+      imginfo->eFormat = CVP_COLORFORMAT_GRAY_UBWC;
       break;
     default:
       GST_ERROR ("Unsupported video format: %s!",
@@ -188,25 +189,25 @@ gst_imgpyramid_engine_new (GstImgPyramidSettings * settings, GArray * sizes)
 
   config.nActualFps            = settings->framerate;
   config.nOperationalFps       = settings->framerate;
-  config.eOutFormat            =
-      engine->is_ubwc ? CVP_COLORFORMAT_GRAY_UBWC : CVP_COLORFORMAT_GRAY_8BIT;
   config.nOctaves              = settings->n_octaves;
   config.nScalesPerOctave      = settings->n_scales;
   config.sSrcImageInfo.nWidth  = settings->width;
   config.sSrcImageInfo.nHeight = settings->height;
-  for (idx = 0; idx < settings->n_octaves; idx++) {
+
+  for (idx = 0; idx < settings->n_octaves; idx++)
     config.nFilterDiv2Coeff[idx] = g_array_index (settings->div2coef, guint, idx);
-  }
 
   switch (settings->format) {
     case GST_VIDEO_FORMAT_NV12:
     case GST_VIDEO_FORMAT_GRAY8:
       // TODO workaround for CVP NV12 issue - only use Y plane for all format
       config.sSrcImageInfo.eFormat = CVP_COLORFORMAT_GRAY_8BIT;
-      if (settings->is_ubwc) {
-        engine->is_ubwc = settings->is_ubwc;
-        config.sSrcImageInfo.eFormat = CVP_COLORFORMAT_GRAY_UBWC;
-      }
+      config.eOutFormat = CVP_COLORFORMAT_GRAY_8BIT;
+      break;
+    case GST_VIDEO_FORMAT_NV12_Q08C:
+      // TODO workaround for CVP NV12 issue - Only use Y plane for all format
+      config.sSrcImageInfo.eFormat = CVP_COLORFORMAT_GRAY_UBWC;
+      config.eOutFormat = CVP_COLORFORMAT_GRAY_UBWC;
       break;
     default:
       GST_ERROR ("Unsupported video format: %s!",

@@ -527,7 +527,6 @@ gst_cv_imgpyramid_sinkpad_setcaps (GstCvImgPyramid * imgpyramid, GstPad * pad,
       GST_VIDEO_INFO_FPS_N (&info) / GST_VIDEO_INFO_FPS_D (&info);
   settings.n_octaves = imgpyramid->n_octaves;
   settings.n_scales = imgpyramid->n_scales;
-  settings.is_ubwc = is_ubwc;
 
 #ifdef HAVE_CVP_IMGPYRAMID_H
   settings.div2coef = imgpyramid->octave_sharpness;
