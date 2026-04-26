@@ -67,6 +67,11 @@ static gboolean display = FALSE;
 static gint stream_width = DEFAULT_OUTPUT_WIDTH;
 static gint stream_height = DEFAULT_OUTPUT_HEIGHT;
 
+// Recieves a list of pointers to variable containing pointer to gst element
+// and unrefs the gst element if needed
+void
+cleanup_gst (void * first_elem, ...);
+
 /**
  * Create and initialize application context:
  *
