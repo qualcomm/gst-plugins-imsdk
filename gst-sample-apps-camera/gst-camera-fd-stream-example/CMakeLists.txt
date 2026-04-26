@@ -25,14 +25,12 @@ add_executable(${GST_EXAMPLE_BIN}
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
   ${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/camx-api/camx/service
-  ${GST_INCLUDE_DIRS}/gstreamer-1.0/gst/sampleapps/
   $<$<BOOL:${QMMF_CAMERA_METADATA_FOUND}>:${QMMF_CAMERA_METADATA_INCLUDE_DIRS}>
 )
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
   qmmf_camera_metadata
-  gstappsutils
 )
 
 install(

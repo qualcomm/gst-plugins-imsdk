@@ -1,20 +1,17 @@
-# Add all immediate subdirectories automatically, except excluded ones
-file(GLOB SUBDIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *)
+file(GLOB SAMPLE_APP_DIRS
+     RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+     gst-* )
 
-set(EXCLUDED_DIRS
-    gst-sample-apps-utils
-    gst-camera-fd-stream-example
-    gst-camera-metadata-example
-    gst-camera-per-port-example
-    gst-camera-burst-capture-example
-    gst-webrtc-sendrecv-example
-)
+foreach(dir ${SAMPLE_APP_DIRS})
 
-foreach(subdir IN LISTS SUBDIRS)
-    if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}")
-        list(FIND EXCLUDED_DIRS "${subdir}" EXCLUDED_INDEX)
-        if(EXCLUDED_INDEX EQUAL -1)
-            add_subdirectory("${subdir}")
-        endif()
-    endif()
+  if(NOT IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${dir})
+    continue()
+  endif()
+  if(dir STREQUAL "gst-sample-apps-utils")
+    continue()
+  endif()
+  if (dir MATCHES "gst-webrtc-sendrecv-example")
+    continue()
+  endif()
+  add_subdirectory(${dir})
 endforeach()
