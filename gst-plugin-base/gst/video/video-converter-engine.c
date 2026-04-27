@@ -232,6 +232,34 @@ gst_video_converter_backend_get_type (void)
   return gtype;
 }
 
+GType
+gst_fcv_op_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_FCV_OP_MODE_LOW_POWER,
+        "Uses lowest power consuming implementation", "low-power"
+    },
+    { GST_FCV_OP_MODE_PERFORMANCE,
+        "Uses highest performance implementation", "performance"
+    },
+    {
+      GST_FCV_OP_MODE_CPU_OFFLOAD,
+        "Uses highest performance implementation", "cpu-offload"
+    },
+    {
+      GST_FCV_OP_MODE_CPU_PERFORMANCE,
+        "Uses CPU highest performance implementation", "cpu-performance"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+      gtype = g_enum_register_static ("GstFcvOpMode", variants);
+
+  return gtype;
+}
+
 gboolean
 gst_video_quadrilateral_is_rectangle (const GstVideoQuadrilateral * quadrilateral)
 {
