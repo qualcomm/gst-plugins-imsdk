@@ -929,6 +929,12 @@ gst_socket_src_change_state (GstElement * element, GstStateChange transition)
   GstMessagePayload disc_msg = { .identity = MESSAGE_DISCONNECT};
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
 
+  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+  if (ret == GST_STATE_CHANGE_FAILURE) {
+    GST_ERROR_OBJECT (src, "Failure");
+    return ret;
+  }
+
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_NULL:
       gst_socket_src_flush_socket_queue (src);
@@ -942,12 +948,6 @@ gst_socket_src_change_state (GstElement * element, GstStateChange transition)
       break;
     default:
       break;
-  }
-
-  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
-  if (ret == GST_STATE_CHANGE_FAILURE) {
-    GST_ERROR_OBJECT (src, "Failure");
-    return ret;
   }
 
   return ret;
