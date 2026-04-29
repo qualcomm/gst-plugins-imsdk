@@ -79,11 +79,8 @@ enum
   PARAM_CAMERA_LDC,
   PARAM_CAMERA_LCAC,
   PARAM_CAMERA_EIS,
-#ifndef VHDR_MODES_ENABLE
   PARAM_CAMERA_SHDR,
-#else
   PARAM_CAMERA_VHDR,
-#endif // VHDR_MODES_ENABLE
   PARAM_CAMERA_ADRC,
   PARAM_CAMERA_CONTROL_MODE,
   PARAM_CAMERA_EFFECT_MODE,
@@ -125,9 +122,7 @@ enum
   PARAM_CAMERA_INPUT_ROI_INFO,
   PARAM_CAMERA_PHYISICAL_CAMERA_SWITCH,
   PARAM_CAMERA_SUPER_FRAMERATE,
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
   PARAM_CAMERA_MULTICAMERA_HINT,
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
   PARAM_CAMERA_SW_TNR,
   PARAM_CAMERA_STATIC_METADATAS,
 };
@@ -207,7 +202,10 @@ GST_API gboolean
 gst_qmmf_context_get_device_status_is_present (GstQmmfContext * context);
 
 GST_API void
-gst_qmmf_context_get_static_meta ();
+gst_qmmf_context_set_feature_caps (GstQmmfContext * context, gpointer caps);
+
+GST_API void
+gst_qmmf_context_get_static_meta (gpointer *caps);
 
 guint
 get_vendor_tag_by_name (const gchar * section, const gchar * name);
