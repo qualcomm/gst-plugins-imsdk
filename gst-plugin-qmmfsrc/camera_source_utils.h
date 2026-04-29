@@ -39,6 +39,9 @@
 #include <gst/video/video.h>
 #include <glib/gtypes.h>
 #include <gst/utils/common-utils.h>
+#ifdef __cplusplus
+#include <qmmf-sdk/qmmf_recorder_params.h>
+#endif // __cplusplus
 
 G_BEGIN_DECLS
 
@@ -101,12 +104,8 @@ G_BEGIN_DECLS
 #define GST_TYPE_QMMFSRC_FRC_MODE (gst_qmmfsrc_frc_mode_get_type())
 #define GST_TYPE_QMMFSRC_ROTATE (gst_qmmfsrc_rotate_get_type())
 #define GST_TYPE_QMMFSRC_CAM_OPMODE (gst_qmmfsrc_cam_opmode_get_type())
-#ifdef EIS_MODES_ENABLE
 #define GST_TYPE_QMMFSRC_EIS_MODE (gst_qmmfsrc_eis_mode_get_type())
-#endif // EIS_MODES_ENABLE
-#ifdef VHDR_MODES_ENABLE
 #define GST_TYPE_QMMFSRC_VHDR_MODE (gst_qmmfsrc_vhdr_mode_get_type())
-#endif // VHDR_MODES_ENABLE
 #define GST_TYPE_QMMFSRC_PAD_LOGICAL_STREAM_TYPE \
     (gst_qmmfsrc_pad_logical_stream_type_get_type())
 #define GST_TYPE_QMMFSRC_PAD_ACTIVATION_MODE \
@@ -125,6 +124,7 @@ G_BEGIN_DECLS
 typedef struct _GstQmmfBufferPool GstQmmfBufferPool;
 typedef struct _GstQmmfBufferPoolClass GstQmmfBufferPoolClass;
 typedef struct _GstQmmfSrcResolutionCache GstQmmfSrcResolutionCache;
+
 
 // Resolution range structure
 typedef struct GstQmmfSrcResolutionRange {
@@ -300,7 +300,6 @@ enum
   EIS_ON_DUAL_STREAM,
 };
 
-#ifdef VHDR_MODES_ENABLE
 enum
 {
   VHDR_OFF,
@@ -311,7 +310,6 @@ enum
   QBC_HDR_MODE_VIDEO,
   QBC_HDR_MODE_SNAPSHOT,
 };
-#endif // VHDR_MODES_ENABLE
 
 enum
 {
@@ -370,9 +368,7 @@ GType gst_qmmfsrc_frc_mode_get_type (void);
 
 GType gst_qmmfsrc_eis_mode_get_type (void);
 
-#ifdef VHDR_MODES_ENABLE
 GType gst_qmmfsrc_vhdr_mode_get_type (void);
-#endif // VHDR_MODES_ENABLE
 
 GType gst_qmmfsrc_rotate_get_type (void);
 
@@ -418,25 +414,27 @@ const char * gst_qmmf_video_format_to_string (gint format);
 
 GQuark qmmf_buffer_qdata_quark ();
 
-GHashTable* gst_qmmf_get_static_metas(void);
+GST_API gboolean gst_qmmfsrc_check_logical_cam_support (gpointer caps);
 
-void gst_qmmf_cleanup_static_metas(void);
+GST_API gboolean gst_qmmfsrc_check_offline_ife_support (gpointer caps);
 
-GST_API gboolean gst_qmmfsrc_check_logical_cam_support ();
+GST_API gboolean gst_qmmfsrc_check_logical_cam_sensor_switch_support (gpointer caps);
 
-GST_API gboolean gst_qmmfsrc_check_format (Formats format);
+GST_API gboolean gst_qmmfsrc_check_format (gpointer caps, Formats format);
 
-guint gst_qmmfsrc_check_sw_tnr_support ();
+gboolean gst_qmmfsrc_check_sw_tnr_support (gpointer caps);
 
-guint gst_qmmfsrc_check_eis_support ();
+gboolean gst_qmmfsrc_check_eis_modes_support (gpointer caps);
 
-void gst_qmmfsrc_get_jpeg_resolution_range (GstQmmfSrcResolutionRange *range);
+gboolean gst_qmmfsrc_check_vhdr_modes_support (gpointer caps);
 
-void gst_qmmfsrc_get_bayer_resolution_range (GstQmmfSrcResolutionRange *range);
+void gst_qmmfsrc_get_jpeg_resolution_range (gpointer caps, GstQmmfSrcResolutionRange *range);
 
-void gst_qmmfsrc_get_raw_resolution_range (GstQmmfSrcResolutionRange *range);
+void gst_qmmfsrc_get_bayer_resolution_range (gpointer caps, GstQmmfSrcResolutionRange *range);
 
-guint gst_qmmfsrc_get_max_fps ();
+void gst_qmmfsrc_get_raw_resolution_range (gpointer caps, GstQmmfSrcResolutionRange *range);
+
+guint gst_qmmfsrc_get_max_fps (gpointer caps);
 
 /// org.quic.camera.defog
 static const gchar * gst_camera_defog_table[] =

@@ -53,6 +53,8 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_QMMFSRC))
 #define GST_IS_QMMFSRC_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_QMMFSRC))
+#define GST_QMMFSRC_GET_CLASS(obj) \
+  (G_TYPE_INSTANCE_GET_CLASS((obj),GST_TYPE_QMMFSRC,GstQmmfSrcClass))
 
 #define GST_QMMFSRC_GET_LOCK(obj)   (&GST_QMMFSRC(obj)->lock)
 #define GST_QMMFSRC_LOCK(obj)       g_mutex_lock(GST_QMMFSRC_GET_LOCK(obj))
@@ -93,6 +95,12 @@ struct _GstQmmfSrc {
 struct _GstQmmfSrcClass {
   /// Inherited parent structure.
   GstElementClass parent;
+
+  /// Feature capability map populated once at class init time.
+  /// Holds platform capabilities queried from the camera server.
+  /// Stored in the class struct (not instance) so it exists before any
+  /// instance is created, enabling gst-inspect to show correct properties.
+  gpointer feature_caps;
 };
 
 GType qmmfsrc_get_type(void);

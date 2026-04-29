@@ -33,9 +33,12 @@
  */
 
 #include "camera_source_utils.h"
+
 #include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 #include <qmmf-sdk/qmmf_camera_metadata.h>
+#include <qmmf-sdk/qmmf_recorder_params.h>
 #include <camera_source_context.h>
+
 #include <dlfcn.h>
 
 // Declare Qmmf buffer pool
@@ -645,7 +648,6 @@ gst_qmmfsrc_eis_mode_get_type (void)
   return gtype;
 }
 
-#ifdef VHDR_MODES_ENABLE
 GType
 gst_qmmfsrc_vhdr_mode_get_type (void)
 {
@@ -695,7 +697,26 @@ gst_qmmfsrc_vhdr_mode_get_type (void)
 
   return gtype;
 }
-#endif // VHDR_MODES_ENABLE
+
+gboolean
+gst_qmmfsrc_check_vhdr_modes_support (gpointer caps)
+{
+  gboolean has_vhdr_modes = FALSE;
+  if (!caps) return has_vhdr_modes;
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  auto it = map->find(::qmmf::recorder::CAMERA_FEATURE_VHDR_MODES);
+  if (it != map->end()) {
+    const auto& cap = it->second;
+    if (cap.type == ::qmmf::recorder::TYPE_BOOL) {
+      has_vhdr_modes = cap.bool_value;
+      GST_INFO ("VHDR modes support: %s", has_vhdr_modes ? "YES" : "NO");
+    }
+  } else {
+    GST_INFO ("VHDR modes capability not found in feature map");
+  }
+
+  return has_vhdr_modes;
+}
 
 GType
 gst_qmmfsrc_rotate_get_type (void)
@@ -1013,503 +1034,309 @@ gst_qmmf_video_format_to_string (gint format)
   }
 }
 
-GHashTable*
-gst_qmmf_get_static_metas (void) {
-  static GHashTable *static_metas = NULL;
-
-  if (!static_metas)
-    static_metas = g_hash_table_new (NULL, NULL);
-  return static_metas;
-}
-
-void
-gst_qmmf_cleanup_static_metas (void) {
-  GHashTable *metas = gst_qmmf_get_static_metas ();
-
-  if (metas) {
-    GList *keys = g_hash_table_get_keys (metas);
-
-    for (GList *key = keys; key; key = key->next) {
-      ::qmmf::CameraMetadata *meta =
-        static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup (metas, key->data));
-      if (meta) {
-        delete meta;
-      }
-    }
-    g_list_free (keys);
-    g_hash_table_destroy (metas);
-
-    GST_INFO ("Cleaned up global static_metas hash table");
-  }
-}
-
-guint
-gst_qmmfsrc_check_sw_tnr_support () {
-  guint tag_id = get_vendor_tag_by_name ("org.quic.camera.swcapabilities", "SWMCTFEnable");
-
-  if (tag_id == 0) {
-    GST_INFO ("SW_TNR not supported: tag_id is 0");
-    return 0;
-  }
-  GST_INFO ("SW_TNR supported: tag_id = %u", tag_id);
-  return 1;
-}
-
-guint
-gst_qmmfsrc_check_eis_support () {
-  guint tag_id = get_vendor_tag_by_name ("com.qti.node.supportedEISmodes","EISModes");
-
-  if (tag_id == 0) {
-    GST_INFO ("tag_id is 0");
-    return 0;
-  }
-  GST_INFO ("tag_id is present");
-  return 1;
-}
-
-guint
-gst_qmmfsrc_get_max_fps ()
-{
-  guint max_fps = 0;
-  gboolean has_high_speed = FALSE;
-
-  GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
-
-  // If keys are NULL, return default max fps
-  if (!keys) {
-    GST_WARNING ("No static metadata available, using default max fps: %d", DEFAULT_MAX_FPS);
-    return DEFAULT_MAX_FPS;
-  }
-
-  for (GList *key = keys; key; key = key->next) {
-    ::qmmf::CameraMetadata *meta =
-      static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
-                                              key->data));
-
-    // check if HIGH_SPEED_VIDEO_CONFIGURATIONS is available
-    if (meta->exists(ANDROID_CONTROL_AVAILABLE_HIGH_SPEED_VIDEO_CONFIGURATIONS)) {
-      has_high_speed = TRUE;
-      auto entry = meta->find(ANDROID_CONTROL_AVAILABLE_HIGH_SPEED_VIDEO_CONFIGURATIONS);
-
-      for (uint32_t i = 0; i < entry.count; i += 5) {
-        guint fps = entry.data.i32[i + 3];
-
-        if (fps > max_fps)
-          max_fps = fps;
-      }
+gboolean
+gst_qmmfsrc_check_sw_tnr_support (gpointer caps) {
+  gboolean sw_tnr_supported = FALSE;
+  if (!caps)
+    return sw_tnr_supported;
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  if (map->find(::qmmf::recorder::CAMERA_FEATURE_SW_TNR) != map->end()) {
+    const auto& cap = map->at(::qmmf::recorder::CAMERA_FEATURE_SW_TNR);
+    if (cap.type == ::qmmf::recorder::TYPE_BOOL) {
+      sw_tnr_supported = cap.bool_value ? TRUE : FALSE;
     }
   }
 
-  // If HIGH_SPEED not available, use AVAILABLE_TARGET_FPS_RANGES
-  if (!has_high_speed) {
-    for (GList *key = keys; key; key = key->next) {
-      ::qmmf::CameraMetadata *meta =
-        static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
-                                                key->data));
-
-      if (meta->exists(ANDROID_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)) {
-        auto entry = meta->find(ANDROID_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
-
-        for (uint32_t i = 0; i < entry.count; i += 2) {
-          guint fps = entry.data.i32[i + 1];
-
-          if (fps > max_fps)
-            max_fps = fps;
-        }
-      }
-    }
-  }
-
-  g_list_free(keys);
-  return max_fps;
-}
-
-void
-gst_qmmfsrc_get_jpeg_resolution_range (GstQmmfSrcResolutionRange *range)
-{
-  if (!range)
-    return;
-
-  range->max_width = 0;
-  range->max_height = 0;
-  range->min_width = G_MAXUINT;
-  range->min_height = G_MAXUINT;
-
-  GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
-
-  // If keys are NULL, set default resolution values
-  if (!keys) {
-    GST_WARNING ("No static metadata available, using default resolution: %dx%d to %dx%d",
-                 DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
-    range->max_width = DEFAULT_MAX_WIDTH;
-    range->max_height = DEFAULT_MAX_HEIGHT;
-    range->min_width = DEFAULT_MIN_WIDTH;
-    range->min_height = DEFAULT_MIN_HEIGHT;
-    return;
-  }
-
-  for (GList *key = keys; key; key = key->next) {
-    ::qmmf::CameraMetadata *meta =
-      static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
-                                              key->data));
-
-    // Get maximum resolution from appropriate configuration
-    camera_metadata_tag max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS;
-#if defined(HAS_ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) && \
-    defined(HAS_ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION)
-    // Check if sensor supports ULTRA_HIGH_RESOLUTION
-    if (meta->exists(ANDROID_REQUEST_AVAILABLE_CAPABILITIES)) {
-      auto cap_entry = meta->find(ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
-      for (uint32_t i = 0; i < cap_entry.count; i++) {
-        if (cap_entry.data.u8[i] ==
-            ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) {
-          max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION;
-          GST_INFO ("Sensor has ULTRA_HIGH_RESOLUTION_SENSOR capability");
-          GST_INFO ("Using MAXIMUM_RESOLUTION configurations for max resolution");
-          break;
-        }
-      }
-    }
-    if (max_config_tag == ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS) {
-      GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
-    }
-#else
-    GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
-#endif
-
-    if (meta->exists(max_config_tag)) {
-      auto entry = meta->find(max_config_tag);
-      for (uint32_t i = 0; i < entry.count; i += 4) {
-        if (HAL_PIXEL_FORMAT_BLOB == entry.data.i32[i]) {
-          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
-              entry.data.i32[i+3]) {
-            guint width = entry.data.i32[i+1];
-            guint height = entry.data.i32[i+2];
-
-            if (width > range->max_width)
-              range->max_width = width;
-            if (height > range->max_height)
-              range->max_height = height;
-          }
-        }
-      }
-    }
-
-    // Always get minimum resolution from standard STREAM_CONFIGURATIONS
-    if (meta->exists(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS)) {
-      auto entry = meta->find(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
-      for (uint32_t i = 0; i < entry.count; i += 4) {
-        if (HAL_PIXEL_FORMAT_BLOB == entry.data.i32[i]) {
-          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
-              entry.data.i32[i+3]) {
-            guint width = entry.data.i32[i+1];
-            guint height = entry.data.i32[i+2];
-
-            if (width < range->min_width)
-              range->min_width = width;
-            if (height < range->min_height)
-              range->min_height = height;
-          }
-        }
-      }
-    }
-  }
-
-  g_list_free(keys);
-
-  GST_INFO ("JPEG resolution range: %ux%u to %ux%u\n",
-            range->min_width, range->min_height,
-            range->max_width, range->max_height);
-}
-
-void
-gst_qmmfsrc_get_bayer_resolution_range (GstQmmfSrcResolutionRange *range)
-{
-  if (!range)
-    return;
-
-  range->max_width = 0;
-  range->max_height = 0;
-  range->min_width = G_MAXUINT;
-  range->min_height = G_MAXUINT;
-
-  GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
-
-  // If keys are NULL, set default resolution values
-  if (!keys) {
-    GST_WARNING ("No static metadata available, using default resolution: %dx%d to %dx%d",
-                 DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
-    range->max_width = DEFAULT_MAX_WIDTH;
-    range->max_height = DEFAULT_MAX_HEIGHT;
-    range->min_width = DEFAULT_MIN_WIDTH;
-    range->min_height = DEFAULT_MIN_HEIGHT;
-    return;
-  }
-
-  for (GList *key = keys; key; key = key->next) {
-    ::qmmf::CameraMetadata *meta =
-      static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
-                                              key->data));
-
-    // Get maximum resolution from appropriate configuration
-    camera_metadata_tag max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS;
-#if defined(HAS_ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) && \
-    defined(HAS_ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION)
-    // Check if sensor supports ULTRA_HIGH_RESOLUTION
-    if (meta->exists(ANDROID_REQUEST_AVAILABLE_CAPABILITIES)) {
-      auto cap_entry = meta->find(ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
-      for (uint32_t i = 0; i < cap_entry.count; i++) {
-        if (cap_entry.data.u8[i] ==
-            ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) {
-          max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION;
-          GST_INFO ("Sensor has ULTRA_HIGH_RESOLUTION_SENSOR capability");
-          GST_INFO ("Using MAXIMUM_RESOLUTION configurations for max resolution");
-          break;
-        }
-      }
-    }
-    if (max_config_tag == ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS) {
-      GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
-    }
-#else
-    GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
-#endif
-
-    if (meta->exists(max_config_tag)) {
-      auto entry = meta->find(max_config_tag);
-
-      for (uint32_t i = 0; i < entry.count; i += 4) {
-        gint32 format = entry.data.i32[i];
-
-        if (HAL_PIXEL_FORMAT_RAW8 == format ||
-            HAL_PIXEL_FORMAT_RAW10 == format ||
-            HAL_PIXEL_FORMAT_RAW12 == format ||
-            HAL_PIXEL_FORMAT_RAW16 == format) {
-          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
-              entry.data.i32[i+3]) {
-            guint width = entry.data.i32[i+1];
-            guint height = entry.data.i32[i+2];
-
-            if (width > range->max_width)
-              range->max_width = width;
-            if (height > range->max_height)
-              range->max_height = height;
-          }
-        }
-      }
-    }
-
-    // Always get minimum resolution from standard STREAM_CONFIGURATIONS
-    if (meta->exists(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS)) {
-      auto entry = meta->find(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
-
-      for (uint32_t i = 0; i < entry.count; i += 4) {
-        gint32 format = entry.data.i32[i];
-
-        if (HAL_PIXEL_FORMAT_RAW8 == format ||
-            HAL_PIXEL_FORMAT_RAW10 == format ||
-            HAL_PIXEL_FORMAT_RAW12 == format ||
-            HAL_PIXEL_FORMAT_RAW16 == format) {
-          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
-              entry.data.i32[i+3]) {
-            guint width = entry.data.i32[i+1];
-            guint height = entry.data.i32[i+2];
-
-            if (width < range->min_width)
-              range->min_width = width;
-            if (height < range->min_height)
-              range->min_height = height;
-          }
-        }
-      }
-    }
-  }
-
-  g_list_free(keys);
-
-  GST_INFO ("Bayer resolution range: %ux%u to %ux%u",
-            range->min_width, range->min_height,
-            range->max_width, range->max_height);
-}
-
-void
-gst_qmmfsrc_get_raw_resolution_range (GstQmmfSrcResolutionRange *range)
-{
-  if (!range)
-    return;
-
-  range->max_width = 0;
-  range->max_height = 0;
-  range->min_width = G_MAXUINT;
-  range->min_height = G_MAXUINT;
-
-  GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
-
-  // If keys are NULL, set default resolution values
-  if (!keys) {
-    GST_WARNING ("No static metadata available, using default resolution: %dx%d to %dx%d",
-                 DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
-    range->max_width = DEFAULT_MAX_WIDTH;
-    range->max_height = DEFAULT_MAX_HEIGHT;
-    range->min_width = DEFAULT_MIN_WIDTH;
-    range->min_height = DEFAULT_MIN_HEIGHT;
-    return;
-  }
-
-  for (GList *key = keys; key; key = key->next) {
-    ::qmmf::CameraMetadata *meta =
-      static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
-                                              key->data));
-
-    // Get maximum resolution from appropriate configuration
-    camera_metadata_tag max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS;
-#if defined(HAS_ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) && \
-    defined(HAS_ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION)
-    // Check if sensor supports ULTRA_HIGH_RESOLUTION
-    if (meta->exists(ANDROID_REQUEST_AVAILABLE_CAPABILITIES)) {
-      auto cap_entry = meta->find(ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
-      for (uint32_t i = 0; i < cap_entry.count; i++) {
-        if (cap_entry.data.u8[i] ==
-            ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) {
-          max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION;
-          GST_INFO ("Sensor has ULTRA_HIGH_RESOLUTION_SENSOR capability");
-          GST_INFO ("Using MAXIMUM_RESOLUTION configurations for max resolution");
-          break;
-        }
-      }
-    }
-    if (max_config_tag == ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS) {
-      GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
-    }
-#else
-    GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
-#endif
-
-    if (meta->exists(max_config_tag)) {
-      auto entry = meta->find(max_config_tag);
-
-      for (uint32_t i = 0; i < entry.count; i += 4) {
-        if (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED == entry.data.i32[i]) {
-          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
-              entry.data.i32[i+3]) {
-            guint width = entry.data.i32[i+1];
-            guint height = entry.data.i32[i+2];
-
-            if (width > range->max_width)
-              range->max_width = width;
-            if (height > range->max_height)
-              range->max_height = height;
-          }
-        }
-      }
-    }
-
-    // Always get minimum resolution from standard STREAM_CONFIGURATIONS
-    if (meta->exists(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS)) {
-      auto entry = meta->find(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
-
-      for (uint32_t i = 0; i < entry.count; i += 4) {
-        if (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED == entry.data.i32[i]) {
-          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
-              entry.data.i32[i+3]) {
-            guint width = entry.data.i32[i+1];
-            guint height = entry.data.i32[i+2];
-
-            if (width < range->min_width)
-              range->min_width = width;
-            if (height < range->min_height)
-              range->min_height = height;
-          }
-        }
-      }
-    }
-  }
-
-  g_list_free(keys);
-
-  GST_INFO ("RAW resolution range: %ux%u to %ux%u",
-            range->min_width, range->min_height,
-            range->max_width, range->max_height);
+  return sw_tnr_supported;
 }
 
 gboolean
-gst_qmmfsrc_check_format (Formats format) {
-  GList *keys = g_hash_table_get_keys (gst_qmmf_get_static_metas ());
-
-  // If keys are NULL, return TRUE to support all formats
-  if (!keys) {
-    GST_WARNING ("No static metadata available, supporting all formats");
-    return TRUE;
+gst_qmmfsrc_check_eis_modes_support (gpointer caps)
+{
+  gboolean has_eis_modes = FALSE;
+  if (!caps)
+    return has_eis_modes;
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  auto it = map->find(::qmmf::recorder::CAMERA_FEATURE_EIS_MODES);
+  if (it != map->end()) {
+    const auto& cap = it->second;
+    if (cap.type == ::qmmf::recorder::TYPE_BOOL) {
+      has_eis_modes = cap.bool_value;
+      GST_INFO ("EIS modes support: %s", has_eis_modes ? "YES" : "NO");
+    }
+  } else {
+    GST_INFO ("EIS modes capability not found in feature map");
   }
 
-  for (GList *key = keys; key; key = key->next) {
-    ::qmmf::CameraMetadata *meta =
-      static_cast<::qmmf::CameraMetadata *> (g_hash_table_lookup (gst_qmmf_get_static_metas (),
-                                             key->data));
+  return has_eis_modes;
+}
 
-    if (meta->exists (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS)) {
-      auto entry =
-          meta->find (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
-
-      for (guint j = 0; j < entry.count; j += 4) {
-        if (entry.data.i32[j] == format) {
-          g_list_free (keys);
-          return TRUE;
-        }
-      }
+guint
+gst_qmmfsrc_get_max_fps (gpointer caps)
+{
+  if (!caps) {
+    GST_WARNING ("Max FPS capability not available (caps is NULL), using default: %d", DEFAULT_MAX_FPS);
+    return DEFAULT_MAX_FPS;
+  }
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  // Try feature capabilities map
+  auto it = map->find(::qmmf::recorder::CAMERA_FEATURE_MAX_FPS);
+  if (it != map->end()) {
+    const auto& cap = it->second;
+    if (cap.type == ::qmmf::recorder::TYPE_INT32 && cap.int_value > 0) {
+      GST_INFO ("Max FPS from Featurecaps: %d", cap.int_value);
+      return (guint)cap.int_value;
     }
   }
-  g_list_free (keys);
+
+  // Capability not found, return default
+  GST_WARNING ("Max FPS capability not found in Featurecaps, using default: %d", DEFAULT_MAX_FPS);
+  return DEFAULT_MAX_FPS;
+}
+
+void
+gst_qmmfsrc_get_jpeg_resolution_range (gpointer caps, GstQmmfSrcResolutionRange *range)
+{
+  if (!range)
+    return;
+
+  if (!caps) {
+    GST_WARNING ("JPEG resolution capability not available (caps is NULL), using default: %dx%d to %dx%d",
+                 DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
+    range->max_width = DEFAULT_MAX_WIDTH;
+    range->max_height = DEFAULT_MAX_HEIGHT;
+    range->min_width = DEFAULT_MIN_WIDTH;
+    range->min_height = DEFAULT_MIN_HEIGHT;
+    return;
+  }
+
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  // Try feature capabilities map
+  auto it_max_w = map->find(::qmmf::recorder::CAMERA_FEATURE_JPEG_MAX_WIDTH);
+  auto it_max_h = map->find(::qmmf::recorder::CAMERA_FEATURE_JPEG_MAX_HEIGHT);
+  auto it_min_w = map->find(::qmmf::recorder::CAMERA_FEATURE_JPEG_MIN_WIDTH);
+  auto it_min_h = map->find(::qmmf::recorder::CAMERA_FEATURE_JPEG_MIN_HEIGHT);
+
+  if (it_max_w != map->end() &&
+      it_max_h != map->end() &&
+      it_min_w != map->end() &&
+      it_min_h != map->end() &&
+      it_max_w->second.int_value > 0) {
+    range->max_width  = (guint)it_max_w->second.int_value;
+    range->max_height = (guint)it_max_h->second.int_value;
+    range->min_width  = (guint)it_min_w->second.int_value;
+    range->min_height = (guint)it_min_h->second.int_value;
+    GST_INFO ("JPEG resolution range from Featurecaps: %ux%u to %ux%u",
+              range->min_width, range->min_height,
+              range->max_width, range->max_height);
+    return;
+  }
+
+  // Capability not found, return default values
+  GST_WARNING ("JPEG resolution capability not found in Featurecaps, using default: %dx%d to %dx%d",
+               DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
+  range->max_width = DEFAULT_MAX_WIDTH;
+  range->max_height = DEFAULT_MAX_HEIGHT;
+  range->min_width = DEFAULT_MIN_WIDTH;
+  range->min_height = DEFAULT_MIN_HEIGHT;
+}
+
+void
+gst_qmmfsrc_get_bayer_resolution_range (gpointer caps, GstQmmfSrcResolutionRange *range)
+{
+  if (!range)
+    return;
+
+  if (!caps) {
+    GST_WARNING ("Bayer resolution capability not available (caps is NULL), using default: %dx%d to %dx%d",
+                 DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
+    range->max_width = DEFAULT_MAX_WIDTH;
+    range->max_height = DEFAULT_MAX_HEIGHT;
+    range->min_width = DEFAULT_MIN_WIDTH;
+    range->min_height = DEFAULT_MIN_HEIGHT;
+    return;
+  }
+
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  // Try feature capabilities map
+  auto it_max_w = map->find(::qmmf::recorder::CAMERA_FEATURE_BAYER_MAX_WIDTH);
+  auto it_max_h = map->find(::qmmf::recorder::CAMERA_FEATURE_BAYER_MAX_HEIGHT);
+  auto it_min_w = map->find(::qmmf::recorder::CAMERA_FEATURE_BAYER_MIN_WIDTH);
+  auto it_min_h = map->find(::qmmf::recorder::CAMERA_FEATURE_BAYER_MIN_HEIGHT);
+
+  if (it_max_w != map->end() && it_max_h != map->end() &&
+      it_min_w != map->end() && it_min_h != map->end() &&
+      it_max_w->second.int_value > 0) {
+    range->max_width  = (guint)it_max_w->second.int_value;
+    range->max_height = (guint)it_max_h->second.int_value;
+    range->min_width  = (guint)it_min_w->second.int_value;
+    range->min_height = (guint)it_min_h->second.int_value;
+    GST_INFO ("Bayer resolution range from Featurecaps: %ux%u to %ux%u",
+              range->min_width, range->min_height,
+              range->max_width, range->max_height);
+    return;
+  }
+
+  // Capability not found, return default values
+  GST_WARNING ("Bayer resolution capability not found in Featurecaps, using default: %dx%d to %dx%d",
+               DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
+  range->max_width = DEFAULT_MAX_WIDTH;
+  range->max_height = DEFAULT_MAX_HEIGHT;
+  range->min_width = DEFAULT_MIN_WIDTH;
+  range->min_height = DEFAULT_MIN_HEIGHT;
+}
+
+void
+gst_qmmfsrc_get_raw_resolution_range (gpointer caps, GstQmmfSrcResolutionRange *range)
+{
+  if (!range)
+    return;
+
+  if (!caps) {
+    GST_WARNING ("RAW resolution capability not available (caps is NULL), using default: %dx%d to %dx%d",
+                 DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
+    range->max_width = DEFAULT_MAX_WIDTH;
+    range->max_height = DEFAULT_MAX_HEIGHT;
+    range->min_width = DEFAULT_MIN_WIDTH;
+    range->min_height = DEFAULT_MIN_HEIGHT;
+    return;
+  }
+
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  // Try feature capabilities map
+  auto it_max_w = map->find(::qmmf::recorder::CAMERA_FEATURE_RAW_MAX_WIDTH);
+  auto it_max_h = map->find(::qmmf::recorder::CAMERA_FEATURE_RAW_MAX_HEIGHT);
+  auto it_min_w = map->find(::qmmf::recorder::CAMERA_FEATURE_RAW_MIN_WIDTH);
+  auto it_min_h = map->find(::qmmf::recorder::CAMERA_FEATURE_RAW_MIN_HEIGHT);
+
+  if (it_max_w != map->end() && it_max_h != map->end() &&
+      it_min_w != map->end() && it_min_h != map->end() &&
+      it_max_w->second.int_value > 0) {
+    range->max_width  = (guint)it_max_w->second.int_value;
+    range->max_height = (guint)it_max_h->second.int_value;
+    range->min_width  = (guint)it_min_w->second.int_value;
+    range->min_height = (guint)it_min_h->second.int_value;
+    GST_INFO ("RAW resolution range from Featurecaps: %ux%u to %ux%u",
+              range->min_width, range->min_height,
+              range->max_width, range->max_height);
+    return;
+  }
+
+  // Capability not found, return default values
+  GST_WARNING ("RAW resolution capability not found in Featurecaps, using default: %dx%d to %dx%d",
+               DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
+  range->max_width = DEFAULT_MAX_WIDTH;
+  range->max_height = DEFAULT_MAX_HEIGHT;
+  range->min_width = DEFAULT_MIN_WIDTH;
+  range->min_height = DEFAULT_MIN_HEIGHT;
+}
+
+gboolean
+gst_qmmfsrc_check_format (gpointer caps, Formats format) {
+  if (!caps) {
+    GST_WARNING ("Format 0x%x not available (caps is NULL), assuming not supported", format);
+    return FALSE;
+  }
+
+  // Map HAL format → CameraFeatureKey
+  ::qmmf::recorder::CameraFeatureKey key;
+
+  switch ((gint)format) {
+    case HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED:
+      key = ::qmmf::recorder::CAMERA_FEATURE_FORMAT_IMPLDEFINED;
+      break;
+    case HAL_PIXEL_FORMAT_BLOB:
+      key = ::qmmf::recorder::CAMERA_FEATURE_FORMAT_BLOB;
+      break;
+    case HAL_PIXEL_FORMAT_RAW8:
+      key = ::qmmf::recorder::CAMERA_FEATURE_FORMAT_RAW8;
+      break;
+    case HAL_PIXEL_FORMAT_RAW10:
+      key = ::qmmf::recorder::CAMERA_FEATURE_FORMAT_RAW10;
+      break;
+    case HAL_PIXEL_FORMAT_RAW12:
+      key = ::qmmf::recorder::CAMERA_FEATURE_FORMAT_RAW12;
+      break;
+    case HAL_PIXEL_FORMAT_RAW16:
+      key = ::qmmf::recorder::CAMERA_FEATURE_FORMAT_RAW16;
+      break;
+    default:
+      GST_WARNING ("Unknown format 0x%x, not supported", format);
+      return FALSE;
+  }
+
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  // Check feature caps map
+  auto it = map->find(key);
+  if (it != map->end() && it->second.type == ::qmmf::recorder::TYPE_BOOL) {
+    gboolean supported = it->second.bool_value ? TRUE : FALSE;
+    GST_INFO ("Format 0x%x support from Featurecaps: %s", format,
+              supported ? "YES" : "NO");
+    return supported;
+  }
+
+  GST_WARNING ("Format 0x%x not found in Featurecaps, assuming not supported", format);
   return FALSE;
 }
 
-static void
-parse_logical_cam_support (::qmmf::CameraMetadata *meta,
-  gboolean &is_logical_cam) {
-  camera_metadata_entry entry;
-
-  entry = meta->find (ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
-
-  if (entry.count != 0) {
-    guint8 *cap_req_keys = entry.data.u8;
-    size_t i = 0;
-
-    for (i = 0; i < entry.count; i++) {
-      if (ANDROID_REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA ==
-          cap_req_keys[i]) {
-        is_logical_cam = TRUE;
-        break;
-      }
+gboolean
+gst_qmmfsrc_check_logical_cam_support (gpointer caps) {
+  gboolean has_logical_cam_support = FALSE;
+  if (!caps) return has_logical_cam_support;
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  auto it = map->find(::qmmf::recorder::CAMERA_FEATURE_LOGICAL_CAMERA_SUPPORT);
+  if (it != map->end()) {
+    const auto& cap = it->second;
+    if (cap.type == ::qmmf::recorder::TYPE_BOOL) {
+      has_logical_cam_support = cap.bool_value;
+      GST_INFO ("Logical camera support: %s", has_logical_cam_support ? "YES" : "NO");
     }
+  } else {
+    GST_INFO ("Logical camera capability not found in feature map");
   }
+
+  return has_logical_cam_support;
 }
 
 gboolean
-gst_qmmfsrc_check_logical_cam_support () {
-  gboolean is_logical_cam = FALSE;
-  gsize catonce = 0;
-
-  if (g_once_init_enter (&catonce)) {
-    GList *keys = g_hash_table_get_keys (gst_qmmf_get_static_metas ());
-
-    // If keys are NULL, return FALSE
-    if (!keys) {
-      GST_WARNING ("No static metadata available, logical camera not supported");
-      g_once_init_leave (&catonce, 1);
-      return FALSE;
+gst_qmmfsrc_check_offline_ife_support (gpointer caps)
+{
+  gboolean has_offline_ife = FALSE;
+  if (!caps) return has_offline_ife;
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  auto it = map->find(::qmmf::recorder::CAMERA_FEATURE_OFFLINE_IFE);
+  if (it != map->end()) {
+    const auto& cap = it->second;
+    if (cap.type == ::qmmf::recorder::TYPE_BOOL) {
+      has_offline_ife = cap.bool_value;
+      GST_INFO ("Offline IFE support: %s", has_offline_ife ? "YES" : "NO");
     }
-
-    for (GList *key = keys; key; key = key->next) {
-      ::qmmf::CameraMetadata *meta =
-        static_cast<::qmmf::CameraMetadata *> (g_hash_table_lookup (gst_qmmf_get_static_metas (),
-                                               key->data));
-
-      parse_logical_cam_support (meta, is_logical_cam);
-    }
-    g_list_free (keys);
-    g_once_init_leave (&catonce, 1);
+  } else {
+    GST_INFO ("Offline IFE capability not found in feature map");
   }
-  return is_logical_cam;
+
+  return has_offline_ife;
+}
+
+gboolean
+gst_qmmfsrc_check_logical_cam_sensor_switch_support (gpointer caps)
+{
+  gboolean has_sensor_switch = FALSE;
+  if (!caps) return has_sensor_switch;
+  auto *map = static_cast<::qmmf::recorder::FeatureCapabilityMap*>(caps);
+  auto it = map->find(::qmmf::recorder::CAMERA_FEATURE_LOGICAL_CAMERA_SENSOR_SWITCH);
+  if (it != map->end()) {
+    const auto& cap = it->second;
+    if (cap.type == ::qmmf::recorder::TYPE_BOOL) {
+      has_sensor_switch = cap.bool_value;
+      GST_INFO ("Logical camera sensor switch support: %s",
+                has_sensor_switch ? "YES" : "NO");
+    }
+  } else {
+    GST_INFO ("Logical camera sensor switch capability not found in feature map");
+  }
+
+  return has_sensor_switch;
 }
 
 static void
