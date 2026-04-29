@@ -936,15 +936,15 @@ gst_socket_src_change_state (GstElement * element, GstStateChange transition)
   }
 
   switch (transition) {
-    case GST_STATE_CHANGE_READY_TO_NULL:
-      gst_socket_src_flush_socket_queue (src);
-      gst_socket_src_socket_release (src);
-      break;
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
       msg_info.message = &disc_msg;
       if (send_socket_message (src->client_sock, &msg_info) < 0) {
         GST_INFO_OBJECT (src, "Unable to send disconnect message.");
       }
+      break;
+    case GST_STATE_CHANGE_PAUSED_TO_READY:
+      gst_socket_src_flush_socket_queue (src);
+      gst_socket_src_socket_release (src);
       break;
     default:
       break;
