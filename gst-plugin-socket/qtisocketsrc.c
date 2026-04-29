@@ -1024,6 +1024,8 @@ gst_socket_src_init (GstFdSocketSrc * src)
   g_cond_init (&src->cond);
   g_mutex_init (&src->mutex);
 
+  gst_base_src_set_live (GST_BASE_SRC (src), TRUE);
+
   gst_base_src_set_format (GST_BASE_SRC (src), GST_FORMAT_TIME);
   GST_DEBUG_CATEGORY_INIT (gst_socket_src_debug, "qtisocketsrc", 0,
     "qtisocketsrc object");
