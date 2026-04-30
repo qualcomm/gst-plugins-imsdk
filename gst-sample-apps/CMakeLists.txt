@@ -35,7 +35,7 @@ if (ENABLE_GST_SAMPLE_APPS)
       continue()
     endif()
 
-    if (dir STREQUAL "gst-sample-app-utils")
+    if (dir STREQUAL "gst-sample-apps-utils")
       continue()
     endif()
 
