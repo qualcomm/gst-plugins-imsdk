@@ -113,6 +113,25 @@ gst_mlmeta_extractor_set_caps (GstBaseTransform * base, GstCaps * incaps,
   return TRUE;
 }
 
+static gboolean
+gst_mlmeta_extractor_propose_allocation (GstBaseTransform * base,
+    GstQuery * decide_query, GstQuery * query)
+{
+  GstMLMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (base);
+
+  if (!GST_BASE_TRANSFORM_CLASS (parent_class)->propose_allocation (base,
+          decide_query, query))
+    return FALSE;
+
+  GST_DEBUG_OBJECT (extractor, "Proposing allocation with video meta support");
+
+  // Advertise GstVideoMeta support to enable upstream elements to send
+  // DMA-buf backed buffers, avoiding software buffer allocation and copies.
+  gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+
+  return TRUE;
+}
+
 static GstFlowReturn
 gst_mlmeta_extractor_prepare_output_buffer (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer ** outbuffer)
@@ -765,6 +784,8 @@ gst_mlmeta_extractor_class_init (GstMLMetaExtractorClass * klass)
 
   base->transform_caps = GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_transform_caps);
   base->set_caps = GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_set_caps);
+  base->propose_allocation =
+      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_propose_allocation);
 
   base->transform = GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_transform);
 }
