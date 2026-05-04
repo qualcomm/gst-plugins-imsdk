@@ -825,6 +825,10 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
+    success = gst_pad_set_active (pad, TRUE);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Failed to activate video pad!");
+
     success = qmmfsrc_video_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Failed to fixate video caps!");
@@ -839,6 +843,9 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
+    success = gst_pad_set_active (pad, TRUE);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Failed to activate image pad!");
     success = qmmfsrc_image_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Failed to fixate image caps!");
