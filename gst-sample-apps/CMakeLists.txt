@@ -5,7 +5,6 @@ set(GST_CAMERA_SAMPLE_APPS
     gst-camera-metadata-example
 )
 
-message(STATUS "ENABLE_GST_SAMPLE_APPS_CAMERA = ${ENABLE_GST_SAMPLE_APPS_CAMERA}")
 if (ENABLE_GST_SAMPLE_APPS_CAMERA)
   foreach(dir ${GST_CAMERA_SAMPLE_APPS})
     if (IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${dir})
@@ -15,14 +14,15 @@ if (ENABLE_GST_SAMPLE_APPS_CAMERA)
       message(STATUS "Directory does NOT exist: ${CMAKE_CURRENT_SOURCE_DIR}/${dir}")
     endif()
   endforeach()
-  else()
+else()
   message(STATUS "ENABLE_GST_SAMPLE_APPS_CAMERA is disabled")
 endif()
 
 if (ENABLE_GST_SAMPLE_APPS)
   file(GLOB GST_SAMPLE_APPS_DIRS
        RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
-       gst-* )
+       gst-*
+       GstD-*)
 
   foreach(dir ${GST_SAMPLE_APPS_DIRS})
 
