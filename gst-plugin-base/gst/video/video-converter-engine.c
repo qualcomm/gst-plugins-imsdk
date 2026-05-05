@@ -204,6 +204,62 @@ gst_data_normalization (gpointer data, guint idx, gdouble value,
   return TRUE;
 }
 
+guint
+gst_video_data_type_get_size (guint64 datatype)
+{
+  switch (datatype) {
+    case GST_VCE_DATA_TYPE_U8:
+    case GST_VCE_DATA_TYPE_I8:
+      return 1;
+    case GST_VCE_DATA_TYPE_U16:
+    case GST_VCE_DATA_TYPE_I16:
+    case GST_VCE_DATA_TYPE_F16:
+      return 2;
+    case GST_VCE_DATA_TYPE_U32:
+    case GST_VCE_DATA_TYPE_I32:
+    case GST_VCE_DATA_TYPE_F32:
+      return 4;
+    case GST_VCE_DATA_TYPE_U64:
+    case GST_VCE_DATA_TYPE_I64:
+      return 8;
+    default:
+      break;
+  }
+
+  return 0;
+}
+
+const gchar *
+gst_video_data_type_to_string (guint64 datatype)
+{
+  switch (datatype) {
+    case GST_VCE_DATA_TYPE_U8:
+      return "UINT8";
+    case GST_VCE_DATA_TYPE_I8:
+      return "INT8";
+    case GST_VCE_DATA_TYPE_U16:
+      return "UINT16";
+    case GST_VCE_DATA_TYPE_I16:
+      return "INT16";
+    case GST_VCE_DATA_TYPE_U32:
+      return "UINT32";
+    case GST_VCE_DATA_TYPE_I32:
+      return "INT32";
+    case GST_VCE_DATA_TYPE_U64:
+      return "UINT64";
+    case GST_VCE_DATA_TYPE_I64:
+      return "INT64";
+    case GST_VCE_DATA_TYPE_F16:
+      return "FLOAT16";
+    case GST_VCE_DATA_TYPE_F32:
+      return "FLOAT32";
+    default:
+      break;
+  }
+
+  return "UNKNOWN";
+}
+
 GType
 gst_video_converter_backend_get_type (void)
 {

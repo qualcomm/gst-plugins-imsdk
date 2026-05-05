@@ -227,6 +227,28 @@ gst_video_quadrilateral_to_rectangle (const GstVideoQuadrilateral * quadrilatera
                                       GstVideoRectangle * rectangle);
 
 /**
+ * gst_video_data_type_get_size:
+ * @datatype: A video data type for a video frame.
+ *
+ * Helper function for getting the size of the data type for a video frame.
+ *
+ * Returns: size of the data type in bytes.
+ */
+GST_VIDEO_API guint
+gst_video_data_type_get_size (guint64 datatype);
+
+/**
+ * gst_video_data_type_to_string:
+ * @datatype: A video data type for a video frame.
+ *
+ * Helper function for getting the string name of given data type.
+ *
+ * Returns: (transfer none) (nullable): The name of the data type.
+ */
+GST_VIDEO_API const gchar *
+gst_video_data_type_to_string (guint64 datatype);
+
+/**
  * gst_video_frame_normalize_ip:
  * @vframe: A #GstVideoFrame
  * @datatype: the data type in the video frame

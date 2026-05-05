@@ -553,26 +553,7 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
   width = MIN (((region->x + region->w) - x), (width - x));
   height = MIN (((region->y + region->h) - y), (height - y));
 
-  if (datatype == GST_VCE_DATA_TYPE_I8)
-    mode = " INT8";
-  else if (datatype == GST_VCE_DATA_TYPE_U16)
-    mode = " UINT16";
-  else if (datatype == GST_VCE_DATA_TYPE_I16)
-    mode = " INT16";
-  else if (datatype == GST_VCE_DATA_TYPE_U32)
-    mode = " UINT32";
-  else if (datatype == GST_VCE_DATA_TYPE_I32)
-    mode = " INT32";
-  else if (datatype == GST_VCE_DATA_TYPE_U64)
-    mode = " UINT64";
-  else if (datatype == GST_VCE_DATA_TYPE_I64)
-    mode = " INT64";
-  else if (datatype == GST_VCE_DATA_TYPE_F16)
-    mode = " FLOAT16";
-  else if (datatype == GST_VCE_DATA_TYPE_F32)
-    mode = " FLOAT32";
-  else
-    mode = " UINT8";
+  mode = gst_video_data_type_to_string (datatype);
 
   GST_TRACE ("%s Buffer %p - %ux%u %s%s", type, frame->buffer,
       GST_VIDEO_FRAME_WIDTH (frame), GST_VIDEO_FRAME_HEIGHT (frame),
@@ -604,14 +585,7 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
 
   // Reduce object stride to equivalent UINT8 as engine cannot operate otherwise.
   // Normalization to end pixel type will be done after all other operations.
-  if (datatype == GST_VCE_DATA_TYPE_U16 || datatype == GST_VCE_DATA_TYPE_I16 ||
-      datatype == GST_VCE_DATA_TYPE_F16)
-    object->planes[0].stride /= 2;
-  else if (datatype == GST_VCE_DATA_TYPE_U32 || datatype == GST_VCE_DATA_TYPE_I32 ||
-      datatype == GST_VCE_DATA_TYPE_F32)
-    object->planes[0].stride /= 4;
-  else if (datatype == GST_VCE_DATA_TYPE_U64 || datatype == GST_VCE_DATA_TYPE_I64)
-    object->planes[0].stride /= 8;
+  object->planes[0].stride /= gst_video_data_type_get_size (datatype);
 
   object->planes[0].width = width;
   object->planes[0].height = height;
@@ -1963,7 +1937,7 @@ gst_fcv_video_converter_flip (GstFcvVideoConverter * convert,
 
 static inline gboolean
 gst_fcv_video_converter_fill_background (GstFcvVideoConverter * convert,
-    GstVideoFrame * frame, guint32 color, guint64 flags)
+    GstVideoFrame * frame, guint32 color, guint64 datatype)
 {
   guint8 red = 0, green = 0, blue = 0, alpha = 0, luma = 0, cb = 0, cr = 0;
   guint32 luma10bit = 0, cbcr10bit = 0, bytedepth = 1;
@@ -1996,14 +1970,7 @@ gst_fcv_video_converter_fill_background (GstFcvVideoConverter * convert,
 
   // Reduce object stride to equivalent UINT8 as engine cannot operate otherwise.
   // Normalization to end pixel type will be done after all other operations.
-  if (flags == GST_VCE_DATA_TYPE_U16 || flags == GST_VCE_DATA_TYPE_I16 ||
-      flags == GST_VCE_DATA_TYPE_F16)
-    bytedepth = 2;
-  else if (flags == GST_VCE_DATA_TYPE_U32 || flags == GST_VCE_DATA_TYPE_I32 ||
-      flags == GST_VCE_DATA_TYPE_F32)
-    bytedepth = 4;
-  else if (flags == GST_VCE_DATA_TYPE_U64 || flags == GST_VCE_DATA_TYPE_I64)
-    bytedepth = 8;
+  bytedepth = gst_video_data_type_get_size (datatype);
 
   GST_TRACE ("Fill buffer %p with 0x%X - %ux%u %s", frame->buffer, color,
       GST_VIDEO_FRAME_WIDTH (frame), GST_VIDEO_FRAME_HEIGHT (frame),

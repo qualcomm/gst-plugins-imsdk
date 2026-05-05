@@ -316,26 +316,7 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
   width = GST_ROUND_DOWN_2 (MIN (((region->x + region->w) - x), (width - x)));
   height = GST_ROUND_DOWN_2 (MIN (((region->y + region->h) - y), (height - y)));
 
-  if (datatype == GST_VCE_DATA_TYPE_I8)
-    mode = " INT8";
-  else if (datatype == GST_VCE_DATA_TYPE_U16)
-    mode = " UINT16";
-  else if (datatype == GST_VCE_DATA_TYPE_I16)
-    mode = " INT16";
-  else if (datatype == GST_VCE_DATA_TYPE_U32)
-    mode = " UINT32";
-  else if (datatype == GST_VCE_DATA_TYPE_I32)
-    mode = " INT32";
-  else if (datatype == GST_VCE_DATA_TYPE_U64)
-    mode = " UINT64";
-  else if (datatype == GST_VCE_DATA_TYPE_I64)
-    mode = " INT64";
-  else if (datatype == GST_VCE_DATA_TYPE_F16)
-    mode = " FLOAT16";
-  else if (datatype == GST_VCE_DATA_TYPE_F32)
-    mode = " FLOAT32";
-  else
-    mode = " UINT8";
+  mode = gst_video_data_type_to_string (datatype);
 
   GST_TRACE ("%s Buffer %p - %ux%u %s%s", type, frame->buffer,
       GST_VIDEO_FRAME_WIDTH (frame), GST_VIDEO_FRAME_HEIGHT (frame),
@@ -370,14 +351,7 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
 
   // Reduce object stride to equivalent UINT8 as engine cannot operate otherwise.
   // Normalization to end pixel type will be done after all other operations.
-  if (datatype == GST_VCE_DATA_TYPE_U16 || datatype == GST_VCE_DATA_TYPE_I16 ||
-      datatype == GST_VCE_DATA_TYPE_F16)
-    object->planes[0].stride /= 2;
-  else if (datatype == GST_VCE_DATA_TYPE_U32 || datatype == GST_VCE_DATA_TYPE_I32 ||
-      datatype == GST_VCE_DATA_TYPE_F32)
-    object->planes[0].stride /= 4;
-  else if (datatype == GST_VCE_DATA_TYPE_U64 || datatype == GST_VCE_DATA_TYPE_I64)
-    object->planes[0].stride /= 8;
+  object->planes[0].stride /= gst_video_data_type_get_size (datatype);
 
   object->planes[0].width = width;
   object->planes[0].height = height;

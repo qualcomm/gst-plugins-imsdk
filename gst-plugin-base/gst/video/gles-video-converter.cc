@@ -330,26 +330,7 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   surface.height = GST_VIDEO_INFO_HEIGHT (info);
   surface.size = gst_buffer_get_size (buffer);
 
-  if (datatype == GST_VCE_DATA_TYPE_I8)
-    mode = " INT8";
-  else if (datatype == GST_VCE_DATA_TYPE_U16)
-    mode = " UINT16";
-  else if (datatype == GST_VCE_DATA_TYPE_I16)
-    mode = " INT16";
-  else if (datatype == GST_VCE_DATA_TYPE_U32)
-    mode = " UINT32";
-  else if (datatype == GST_VCE_DATA_TYPE_I32)
-    mode = " INT32";
-  else if (datatype == GST_VCE_DATA_TYPE_U64)
-    mode = " UINT64";
-  else if (datatype == GST_VCE_DATA_TYPE_I64)
-    mode = " INT64";
-  else if (datatype == GST_VCE_DATA_TYPE_F16)
-    mode = " FLOAT16";
-  else if (datatype == GST_VCE_DATA_TYPE_F32)
-    mode = " FLOAT32";
-  else
-    mode = " UINT8";
+  mode = gst_video_data_type_to_string (datatype);
 
   // TODO: Workaround. Remove once GLES supports these pixel types.
   // Overwrite data type in some cases and set variable for stride correction.
@@ -370,8 +351,7 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
     datatype = GST_VCE_DATA_TYPE_U8;
   }
 
-  format =
-      gst_video_format_to_ib2c_format (GST_VIDEO_INFO_FORMAT (info), datatype);
+  format = gst_video_format_to_ib2c_format (GST_VIDEO_INFO_FORMAT (info), datatype);
 
   if (format == (-1)) {
     GST_ERROR ("Unsupported format %s%s combination!",
