@@ -42,6 +42,16 @@
 
 #include <gbm.h>
 #include <gst/gfx/gfx-utils.h>
+#include <gst/utils/common-utils.h>
+
+#define INT8_CONVERSION_OFFSET   (G_MAXUINT8 / 2 + 1)
+#define INT16_CONVERSION_OFFSET  (G_MAXUINT16 / 2 + 1)
+#define UINT16_CONVERSION_SCALE  (G_MAXUINT16 / G_MAXUINT8)
+#define INT32_CONVERSION_OFFSET  (G_MAXUINT32 / 2 + 1)
+#define UINT32_CONVERSION_SCALE  (G_MAXUINT32 / G_MAXUINT8)
+#define INT64_CONVERSION_OFFSET  (G_MAXUINT64 / 2 + 1)
+#define UINT64_CONVERSION_SCALE  (G_MAXUINT64 / G_MAXUINT8)
+#define FLOAT_CONVERSION_SCALE   (1.0 / G_MAXUINT8)
 
 // Function pointers for the GBM library.
 typedef struct gbm_device* (*gbm_create_device_func)(int fd);
@@ -57,6 +67,190 @@ load_symbol (gpointer* method, gpointer handle, const gchar* name)
     return FALSE;
   }
   return TRUE;
+}
+
+static inline gboolean
+gst_video_data_normalization (gpointer data, guint idx, gdouble value,
+    gdouble mean, gdouble sigma, GstVideoDataType datatype) {
+
+  switch (datatype) {
+    case GST_VIDEO_DATA_TYPE_U8:
+    {
+      GST_UINT8_PTR_CAST (data)[idx] = (guint8) ((value - mean) * sigma);
+      break;
+    }
+    case GST_VIDEO_DATA_TYPE_I8:
+    {
+      gint8 newvalue = value - INT8_CONVERSION_OFFSET;
+      GST_INT8_PTR_CAST (data)[idx] = (gint8) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VIDEO_DATA_TYPE_U16:
+    {
+      guint16 newvalue = value * UINT16_CONVERSION_SCALE;
+      GST_UINT16_PTR_CAST (data)[idx] = (guint16) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VIDEO_DATA_TYPE_I16:
+    {
+      gint16 newvalue = value * UINT16_CONVERSION_SCALE - INT16_CONVERSION_OFFSET;
+      GST_INT16_PTR_CAST (data)[idx] = (gint16) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VIDEO_DATA_TYPE_U32:
+    {
+      guint32 newvalue = value * UINT32_CONVERSION_SCALE;
+      GST_UINT32_PTR_CAST (data)[idx] = (guint32) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VIDEO_DATA_TYPE_I32:
+    {
+      gint32 newvalue = value * UINT32_CONVERSION_SCALE - INT32_CONVERSION_OFFSET;
+      GST_INT32_PTR_CAST (data)[idx] = (gint32) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VIDEO_DATA_TYPE_U64:
+    {
+      guint64 newvalue = ((guint64) value) * UINT64_CONVERSION_SCALE;
+      GST_UINT64_PTR_CAST (data)[idx] = (guint64) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VIDEO_DATA_TYPE_I64:
+    {
+      gint64 newvalue = ((gint64) value) * UINT64_CONVERSION_SCALE -
+          INT64_CONVERSION_OFFSET;
+      GST_INT64_PTR_CAST (data)[idx] = (gint64) ((newvalue - mean) * sigma);
+      break;
+    }
+#if defined(__ARM_FP16_FORMAT_IEEE)
+    case GST_VIDEO_DATA_TYPE_F16:
+    {
+      __fp16 newvalue = value * FLOAT_CONVERSION_SCALE;
+      GST_FLOAT16_PTR_CAST (data)[idx] = (__fp16) ((newvalue - mean) * sigma);
+      break;
+    }
+#endif //__ARM_FP16_FORMAT_IEEE
+    case GST_VIDEO_DATA_TYPE_F32:
+    {
+      gfloat newvalue = value * FLOAT_CONVERSION_SCALE;
+      GST_FLOAT_PTR_CAST (data)[idx] = (gfloat) ((newvalue - mean) * sigma);
+      break;
+    }
+    default:
+      GST_ERROR ("Unsupported type: %s", gst_video_data_type_to_string (datatype));
+      return FALSE;
+  }
+
+  return TRUE;
+}
+
+guint
+gst_video_data_type_get_size (GstVideoDataType datatype)
+{
+  switch (datatype) {
+    case GST_VIDEO_DATA_TYPE_U8:
+    case GST_VIDEO_DATA_TYPE_I8:
+      return 1;
+    case GST_VIDEO_DATA_TYPE_U16:
+    case GST_VIDEO_DATA_TYPE_I16:
+    case GST_VIDEO_DATA_TYPE_F16:
+      return 2;
+    case GST_VIDEO_DATA_TYPE_U32:
+    case GST_VIDEO_DATA_TYPE_I32:
+    case GST_VIDEO_DATA_TYPE_F32:
+      return 4;
+    case GST_VIDEO_DATA_TYPE_U64:
+    case GST_VIDEO_DATA_TYPE_I64:
+      return 8;
+    default:
+      break;
+  }
+
+  return 0;
+}
+
+const gchar *
+gst_video_data_type_to_string (GstVideoDataType datatype)
+{
+  switch (datatype) {
+    case GST_VIDEO_DATA_TYPE_U8:
+      return "UINT8";
+    case GST_VIDEO_DATA_TYPE_I8:
+      return "INT8";
+    case GST_VIDEO_DATA_TYPE_U16:
+      return "UINT16";
+    case GST_VIDEO_DATA_TYPE_I16:
+      return "INT16";
+    case GST_VIDEO_DATA_TYPE_U32:
+      return "UINT32";
+    case GST_VIDEO_DATA_TYPE_I32:
+      return "INT32";
+    case GST_VIDEO_DATA_TYPE_U64:
+      return "UINT64";
+    case GST_VIDEO_DATA_TYPE_I64:
+      return "INT64";
+    case GST_VIDEO_DATA_TYPE_F16:
+      return "FLOAT16";
+    case GST_VIDEO_DATA_TYPE_F32:
+      return "FLOAT32";
+    default:
+      break;
+  }
+
+  return "UNKNOWN";
+}
+
+void
+gst_video_point_affine_transform (GstVideoPoint * point, gdouble matrix[3][3])
+{
+  gdouble x = 0.0, y = 0.0, z = 0.0;
+
+  // Calcualte the new X and Y coordinates with the following formulas:
+  // +------------+ +---+   +----+
+  // | A0  A1  A2 | | x |   | x' | x' = A0 * x + A1 * y + A2
+  // | B0  B1  B2 | | y | = | y' | y' = B0 * x + B1 * y + B2
+  // | C0  C1  C2 | | 1 |   | z' | z' = C0 * x + C1 * y + C2
+  // +------------+ +---+   +----+
+  x = matrix[0][0] * point->x + matrix[0][1] * point->y + matrix[0][2];
+  y = matrix[1][0] * point->x + matrix[1][1] * point->y + matrix[1][2];
+  z = matrix[2][0] * point->x + matrix[2][1] * point->y + matrix[2][2];
+
+  // Transform from world space (3D) to screen space (2D).
+  point->x = x / z;
+  point->y = y / z;
+}
+
+gboolean
+gst_video_quadrilateral_is_rectangle (const GstVideoQuadrilateral * quadrilateral)
+{
+  return (quadrilateral->a.x == quadrilateral->b.x) &&
+      (quadrilateral->c.x == quadrilateral->d.x) &&
+      (quadrilateral->a.y == quadrilateral->c.y) &&
+      (quadrilateral->b.y == quadrilateral->d.y);
+}
+
+void
+gst_video_quadrilateral_from_rectangle (GstVideoQuadrilateral * quadrilateral,
+    const GstVideoRectangle * rectangle)
+{
+  quadrilateral->a.x = rectangle->x;
+  quadrilateral->a.y = rectangle->y;
+  quadrilateral->b.x = rectangle->x;
+  quadrilateral->b.y = rectangle->y + rectangle->h;
+  quadrilateral->c.x = rectangle->x + rectangle->w;
+  quadrilateral->c.y = rectangle->y;
+  quadrilateral->d.x = rectangle->x + rectangle->w;
+  quadrilateral->d.y = rectangle->y + rectangle->h;
+}
+
+void
+gst_video_quadrilateral_to_rectangle (
+    const GstVideoQuadrilateral * quadrilateral, GstVideoRectangle * rectangle)
+{
+  rectangle->x = quadrilateral->a.x;
+  rectangle->y = quadrilateral->a.y;
+  rectangle->w = quadrilateral->d.x - quadrilateral->a.x;
+  rectangle->h = quadrilateral->d.y - quadrilateral->a.y;
 }
 
 gboolean
@@ -294,26 +488,6 @@ gst_buffer_has_valid_parent_meta (GstBuffer * buffer, gint parent_id)
   return TRUE;
 }
 
-void
-gst_video_point_affine_transform (GstVideoPoint * point, gdouble matrix[3][3])
-{
-  gdouble x = 0.0, y = 0.0, z = 0.0;
-
-  // Calcualte the new X and Y coordinates with the following formulas:
-  // +------------+ +---+   +----+
-  // | A0  A1  A2 | | x |   | x' | x' = A0 * x + A1 * y + A2
-  // | B0  B1  B2 | | y | = | y' | y' = B0 * x + B1 * y + B2
-  // | C0  C1  C2 | | 1 |   | z' | z' = C0 * x + C1 * y + C2
-  // +------------+ +---+   +----+
-  x = matrix[0][0] * point->x + matrix[0][1] * point->y + matrix[0][2];
-  y = matrix[1][0] * point->x + matrix[1][1] * point->y + matrix[1][2];
-  z = matrix[2][0] * point->x + matrix[2][1] * point->y + matrix[2][2];
-
-  // Transform from world space (3D) to screen space (2D).
-  point->x = x / z;
-  point->y = y / z;
-}
-
 gboolean
 gst_video_info_modify_with_meta (GstVideoInfo * info, const GstVideoMeta * meta)
 {
@@ -331,4 +505,54 @@ gst_video_info_modify_with_meta (GstVideoInfo * info, const GstVideoMeta * meta)
   }
 
   return TRUE;
+}
+
+gboolean
+gst_video_frame_normalize_ip (GstVideoFrame * vframe,
+    GstVideoDataType datatype, gdouble offsets[GST_VIDEO_MAX_COMPONENTS],
+    gdouble scales[GST_VIDEO_MAX_COMPONENTS])
+{
+  guint8 *indata = NULL;
+  gpointer outdata = NULL;
+  gint row = 0, column = 0, width = 0, height = 0, idx = 0, bpp = 0;
+  gboolean success = TRUE, normalize = FALSE;
+
+  // Raise the normalization flag if output is not UINT8.
+  normalize = (datatype != GST_VIDEO_DATA_TYPE_U8);
+
+  // The flag will be raised also if there are custom nomalization params.
+  for (idx = 0; idx < GST_VIDEO_MAX_COMPONENTS; idx++)
+    normalize |= (offsets[idx] != 0) || (scales[idx] != 1);
+
+  if (!normalize)
+    return TRUE;
+
+  GST_TRACE ("Normalization for %" GST_PTR_FORMAT, vframe->buffer);
+
+  // Retrive the video frame Bytes Per Pixel for later calculations.
+  bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
+      GST_VIDEO_FORMAT_INFO_N_COMPONENTS (vframe->info.finfo);
+  bpp /= 8;
+
+  indata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
+  outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
+
+  width = GST_VIDEO_FRAME_WIDTH (vframe);
+  height = GST_VIDEO_FRAME_HEIGHT (vframe);
+
+  // Normalize in reverse as front bytes are occupied.
+  for (row = (height - 1); row >= 0; row--) {
+    for (column = ((width * bpp) - 1); (column >= 0) && success; column--) {
+      idx = (row * width * bpp) + column;
+
+      // Convert value to actual type and apply normalization.
+      success = gst_video_data_normalization (outdata, idx, indata[idx],
+          offsets[idx % bpp], scales[idx % bpp], datatype);
+    }
+  }
+
+  if (!success)
+    GST_ERROR ("Normalization failed for %" GST_PTR_FORMAT, vframe->buffer);
+
+  return success;
 }

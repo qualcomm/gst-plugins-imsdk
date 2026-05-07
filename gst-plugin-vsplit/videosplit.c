@@ -677,12 +677,12 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
 
       composition->buffer = outbuffer;
       composition->info = outinfo;
-      composition->datatype = GST_VCE_DATA_TYPE_U8;
+      composition->datatype = GST_VIDEO_DATA_TYPE_U8;
 
       composition->bgcolor = 0x00000000;
       composition->bgfill = TRUE;
 
-      for (i = 0; i < GST_VCE_MAX_CHANNELS; ++i) {
+      for (i = 0; i < GST_VIDEO_MAX_COMPONENTS; ++i) {
         composition->scales[i] = 1.0;
         composition->offsets[i] = 0.0;
       }

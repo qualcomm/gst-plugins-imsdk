@@ -917,7 +917,7 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 
   composition.buffer = outbuffer;
   composition.bgfill = TRUE;
-  composition.datatype = 0;
+  composition.datatype = GST_VIDEO_DATA_TYPE_U8;
 
   meta = gst_buffer_get_video_meta (outbuffer);
 

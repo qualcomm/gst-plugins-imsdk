@@ -15,6 +15,35 @@ G_BEGIN_DECLS
 #define GST_CAPS_FEATURE_MEMORY_GBM  "memory:GBM"
 
 typedef struct _GstVideoPoint GstVideoPoint;
+typedef struct _GstVideoQuadrilateral GstVideoQuadrilateral;
+
+/**
+ * GstVideoDataType:
+ * @GST_VIDEO_DATA_TYPE_U8: Unsigned integer 8-bits.
+ * @GST_VIDEO_DATA_TYPE_I8: Signed integer 8-bits.
+ * @GST_VIDEO_DATA_TYPE_U16: Unsigned integer 16-bits.
+ * @GST_VIDEO_DATA_TYPE_I16: Signed integer 16-bits.
+ * @GST_VIDEO_DATA_TYPE_U32: Unsigned integer 32-bits.
+ * @GST_VIDEO_DATA_TYPE_I32: Signed integer 32-bits.
+ * @GST_VIDEO_DATA_TYPE_U64: Unsigned integer 64-bits.
+ * @GST_VIDEO_DATA_TYPE_I64: Signed integer 64-bits.
+ * @GST_VIDEO_DATA_TYPE_F16: Floating point 16-bits.
+ * @GST_VIDEO_DATA_TYPE_F32: Floating point 32-bits.
+ *
+ * The size and type of the data contained in each component of a video pixel.
+ */
+typedef enum {
+  GST_VIDEO_DATA_TYPE_U8,
+  GST_VIDEO_DATA_TYPE_I8,
+  GST_VIDEO_DATA_TYPE_U16,
+  GST_VIDEO_DATA_TYPE_I16,
+  GST_VIDEO_DATA_TYPE_U32,
+  GST_VIDEO_DATA_TYPE_I32,
+  GST_VIDEO_DATA_TYPE_U64,
+  GST_VIDEO_DATA_TYPE_I64,
+  GST_VIDEO_DATA_TYPE_F16,
+  GST_VIDEO_DATA_TYPE_F32
+} GstVideoDataType;
 
 /**
  * GstVideoPoint:
@@ -28,6 +57,98 @@ struct _GstVideoPoint
   gfloat x;
   gfloat y;
 };
+
+/**
+ * GstVideoQuadrilateral:
+ * @a: Upper-left point coordinate.
+ * @b: Bottom-left point coordinate.
+ * @c: Upper-right point coordinate.
+ * @d: Bottom-right point coordinate.
+ *
+ * Quadrilateral defined with the coordinates of its 4 points.
+ *
+ *  a               c
+ *   +-------------+
+ *   |             |
+ *   |             |
+ *   |             |
+ *   +-------------+
+ *  b               d
+ */
+struct _GstVideoQuadrilateral
+{
+  GstVideoPoint a;
+  GstVideoPoint b;
+  GstVideoPoint c;
+  GstVideoPoint d;
+};
+
+/**
+ * gst_video_data_type_get_size:
+ * @datatype: A #GstVideoDataType for a video frame.
+ *
+ * Helper function for getting the size of the data type for a video frame.
+ *
+ * Returns: size of the data type in bytes.
+ */
+GST_VIDEO_API guint
+gst_video_data_type_get_size (GstVideoDataType datatype);
+
+/**
+ * gst_video_data_type_to_string:
+ * @datatype: A #GstVideoDataType for a video frame.
+ *
+ * Helper function for getting the string name of given data type.
+ *
+ * Returns: (transfer none) (nullable): The name of the data type.
+ */
+GST_VIDEO_API const gchar *
+gst_video_data_type_to_string (GstVideoDataType datatype);
+
+/**
+ * gst_video_point_affine_transform:
+ * @point: A #GstVideoPoint to which the affine matrix will be applied.
+ * @matrix: (array fixed-size=9) (element-type gdouble):
+ *          A 3x3 affine transformation matrix.
+ *
+ * Helper function for adjusting coordinates of a 2D point with affine matrix.
+ */
+GST_VIDEO_API void
+gst_video_point_affine_transform (GstVideoPoint * point, gdouble matrix[3][3]);
+
+/**
+ * gst_video_quadrilateral_is_rectangle:
+ * @quadrilateral: A #GstVideoQuadrilateral
+ *
+ * Helper function for checking whether a #GstVideoQuadrilateral is rectangular.
+ *
+ * Returns: TRUE on success or FALSE on failure
+ */
+GST_VIDEO_API gboolean
+gst_video_quadrilateral_is_rectangle (const GstVideoQuadrilateral * quadrilateral);
+
+/**
+ * gst_video_quadrilateral_from_rectangle:
+ * @quadrilateral: A #GstVideoQuadrilateral
+ * @rectangle: A #GstVideoRectangle
+ *
+ * Helper function for converting a rectangle into a #GstVideoQuadrilateral.
+ */
+GST_VIDEO_API void
+gst_video_quadrilateral_from_rectangle (GstVideoQuadrilateral * quadrilateral,
+                                        const GstVideoRectangle * rectangle);
+
+/**
+ * gst_video_quadrilateral_to_rectangle:
+ * @quadrilateral: A #GstVideoQuadrilateral
+ * @rectangle: A #GstVideoRectangle
+ *
+ * Helper function for converting a rectangular quadrilateral into the more
+ * convinient #GstVideoRectangle.
+ */
+GST_VIDEO_API void
+gst_video_quadrilateral_to_rectangle (const GstVideoQuadrilateral * quadrilateral,
+                                      GstVideoRectangle * rectangle);
 
 /**
  * gst_gbm_qcom_backend_is_supported:
@@ -128,17 +249,6 @@ GST_VIDEO_API gboolean
 gst_buffer_has_valid_parent_meta (GstBuffer * buffer, gint parent_id);
 
 /**
- * gst_video_point_affine_transform:
- * @point: A #GstVideoPoint to which the affine matrix will be applied.
- * @matrix: (array fixed-size=9) (element-type gdouble):
- *          A 3x3 affine transformation matrix.
- *
- * Helper function for adjusting coordinates of a 2D point with affine matrix.
- */
-GST_VIDEO_API void
-gst_video_point_affine_transform (GstVideoPoint * point, gdouble matrix[3][3]);
-
-/**
  * gst_video_info_modify_with_meta:
  * @info: #GstVideoInfo to write the correct values in
  * @meta: #GstVideoMeta from which to take the correct values
@@ -149,6 +259,24 @@ gst_video_point_affine_transform (GstVideoPoint * point, gdouble matrix[3][3]);
  */
 GST_VIDEO_API gboolean
 gst_video_info_modify_with_meta (GstVideoInfo * info, const GstVideoMeta * meta);
+
+/**
+ * gst_video_frame_normalize_ip:
+ * @vframe: A #GstVideoFrame
+ * @datatype: The #GstVideoDataType in the video frame
+ * @offsets: (array fixed-size=4) (element-type gdouble):
+ *           Component offset factors, used in the normalize operation.
+ * @scales: (array fixed-size=4) (element-type gdouble):
+ *          Component scale factors, used in the normalize operation.
+ *
+ * Helper function for normalizing video frame inplace.
+ *
+ * Returns: TRUE on success or FALSE on failure
+ */
+GST_VIDEO_API gboolean
+gst_video_frame_normalize_ip (GstVideoFrame * vframe, GstVideoDataType datatype,
+                              gdouble offsets[GST_VIDEO_MAX_COMPONENTS],
+                              gdouble scales[GST_VIDEO_MAX_COMPONENTS]);
 
 G_END_DECLS
 

@@ -1705,7 +1705,7 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   composition.buffer = outbuffer;
   composition.info = vtrans->outinfo;
-  composition.datatype = 0;
+  composition.datatype = GST_VIDEO_DATA_TYPE_U8;
 
   composition.bgcolor = vtrans->background;
   composition.bgfill = TRUE;

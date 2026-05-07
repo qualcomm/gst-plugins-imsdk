@@ -301,8 +301,7 @@ gst_ocv_copy_object (GstOcvObject * l_object, GstOcvObject * r_object)
 static inline void
 gst_ocv_update_object (GstOcvObject * object, const gchar * type,
     const GstVideoFrame * frame, const GstVideoRectangle * region,
-    const GstOpenCVFlip flip, const GstVideoConvRotate rotate,
-    const guint64 datatype)
+    GstOpenCVFlip flip, GstVideoConvRotate rotate, GstVideoDataType datatype)
 {
   const gchar *mode = NULL;
   gint x = 0, y = 0, width = 0, height = 0, bpp = 0;
@@ -2522,7 +2521,7 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
       }
 
       gst_ocv_update_object (object, "Source", inframe, &rectangle,
-          flip, rotate, 0);
+          flip, rotate, GST_VIDEO_DATA_TYPE_U8);
 
       // Intialization of the destination OCV object.
       object = &(objects[n_objects + 1]);

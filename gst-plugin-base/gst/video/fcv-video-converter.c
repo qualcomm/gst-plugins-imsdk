@@ -539,7 +539,7 @@ gst_fcv_copy_object (GstFcvObject * l_object, GstFcvObject * r_object)
 static inline void
 gst_fcv_update_object (GstFcvObject * object, const gchar * type,
     const GstVideoFrame * frame, const GstVideoRectangle * region,
-    const guint flip, const guint rotate, const guint64 datatype)
+    const guint flip, const guint rotate, const GstVideoDataType datatype)
 {
   const gchar *mode = NULL;
   gint x = 0, y = 0, width = 0, height = 0, bpp = 0;
@@ -1937,7 +1937,7 @@ gst_fcv_video_converter_flip (GstFcvVideoConverter * convert,
 
 static inline gboolean
 gst_fcv_video_converter_fill_background (GstFcvVideoConverter * convert,
-    GstVideoFrame * frame, guint32 color, guint64 datatype)
+    GstVideoFrame * frame, guint32 color, GstVideoDataType datatype)
 {
   guint8 red = 0, green = 0, blue = 0, alpha = 0, luma = 0, cb = 0, cr = 0;
   guint32 luma10bit = 0, cbcr10bit = 0, bytedepth = 1;

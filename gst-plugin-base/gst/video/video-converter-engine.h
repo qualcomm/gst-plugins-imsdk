@@ -21,27 +21,12 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_VCE_MASK_FLIP_HORIZONTAL (1 << 3)
 #define GST_VCE_MASK_ROTATION        (1 << 4)
 
-// Composition data types valid only for the output RGB(A) frame.
-#define GST_VCE_DATA_TYPE_U8         (0)
-#define GST_VCE_DATA_TYPE_I8         (1)
-#define GST_VCE_DATA_TYPE_U16        (2)
-#define GST_VCE_DATA_TYPE_I16        (3)
-#define GST_VCE_DATA_TYPE_U32        (4)
-#define GST_VCE_DATA_TYPE_I32        (5)
-#define GST_VCE_DATA_TYPE_U64        (6)
-#define GST_VCE_DATA_TYPE_I64        (7)
-#define GST_VCE_DATA_TYPE_F16        (8)
-#define GST_VCE_DATA_TYPE_F32        (9)
-
 #define GST_VCE_BLIT_INIT \
     { NULL, NULL, 0, {{0, 0}, {0, 0}, {0, 0}, {0, 0}}, \
         {0, 0, 0, 0}, 255, GST_VCE_ROTATE_0 }
 #define GST_VCE_COMPOSITION_INIT \
     { NULL, 0, NULL, NULL, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
-      { 1.0, 1.0, 1.0, 1.0 }, 0 }
-
-// Maximum number of image channels, used for normalization offsets and scales.
-#define GST_VCE_MAX_CHANNELS         4
+      { 1.0, 1.0, 1.0, 1.0 }, GST_VIDEO_DATA_TYPE_U8 }
 
 /**
  * GST_VCE_OPT_FCV_OP_MODE:
@@ -52,7 +37,6 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_VCE_OPT_FCV_OP_MODE "fcv-op-mode"
 
 typedef struct _GstVideoConvEngine GstVideoConvEngine;
-typedef struct _GstVideoQuadrilateral GstVideoQuadrilateral;
 typedef struct _GstVideoBlit GstVideoBlit;
 typedef struct _GstVideoComposition GstVideoComposition;
 
@@ -117,23 +101,6 @@ typedef enum {
 } GstVideoConvRotate;
 
 /**
- * GstVideoQuadrilateral:
- * @a: Upper-left point coordinate.
- * @b: Bottom-left point coordinate.
- * @c: Upper-right point coordinate.
- * @d: Bottom-right point coordinate.
- *
- * Quadrilateral defined with the coordinates of its 4 points.
- */
-struct _GstVideoQuadrilateral
-{
-  GstVideoPoint a;
-  GstVideoPoint b;
-  GstVideoPoint c;
-  GstVideoPoint d;
-};
-
-/**
  * GstVideoBlit:
  * @buffer: Input buffer.
  * @info: GstVideoInfo for mapping.
@@ -163,106 +130,36 @@ struct _GstVideoBlit
 
 /**
  * GstVideoComposition:
- * @blits: Array of blit objects.
- * @n_blits: Number of blit objects.
- * @buffer: Output buffer.
- * @info: GstVideoInfo for mapping.
+ * @blits: An array of #GstVideoBlit objects.
+ * @n_blits: Number of #GstVideoBlit objects in the @blits array.
+ * @buffer: The #GstBuffer used as output.
+ * @info: A #GstVideoInfo for mapping.
  * @bgcolor: Background color to be applied if bgfill is set to TRUE.
  * @bgfill: Whether to fill the background of the frame image with bgcolor.
- * @offsets: Component offset factors, used in normalize operation.
- * @scales: Component scale factors, used in normalize operation.
- * @datatype: The data type of the pixels in the output frame.
+ * @offsets: (array fixed-size=4) (element-type gdouble):
+ *           Component offset factors, used in the normalize operation.
+ * @scales: (array fixed-size=4) (element-type gdouble):
+ *          Component scale factors, used in the normalize operation.
+ * @datatype: The #GstVideoDataType of the pixels in the output frame.
  *
  * Blit composition.
  */
 struct _GstVideoComposition
 {
-  GstVideoBlit *blits;
-  guint        n_blits;
+  GstVideoBlit     *blits;
+  guint            n_blits;
 
-  GstBuffer    *buffer;
-  GstVideoInfo *info;
+  GstBuffer        *buffer;
+  GstVideoInfo     *info;
 
-  guint32      bgcolor;
-  gboolean     bgfill;
+  guint32          bgcolor;
+  gboolean         bgfill;
 
-  gdouble      offsets[GST_VCE_MAX_CHANNELS];
-  gdouble      scales[GST_VCE_MAX_CHANNELS];
+  gdouble          offsets[GST_VIDEO_MAX_COMPONENTS];
+  gdouble          scales[GST_VIDEO_MAX_COMPONENTS];
 
-  guint64      datatype;
+  GstVideoDataType datatype;
 };
-
-/**
- * gst_video_quadrilateral_is_rectangle:
- * @quadrilateral: A #GstVideoQuadrilateral
- *
- * Helper function for checking whether A #GstVideoQuadrilateral is rectangular.
- *
- * Returns: TRUE on success or FALSE on failure
- */
-GST_VIDEO_API gboolean
-gst_video_quadrilateral_is_rectangle (const GstVideoQuadrilateral * quadrilateral);
-
-/**
- * gst_video_quadrilateral_from_rectangle:
- * @quadrilateral: A #GstVideoQuadrilateral
- * @rectangle: A #GstVideoRectangle
- *
- * Helper function for converting a rectangle into A #GstVideoQuadrilateral struct.
- */
-GST_VIDEO_API void
-gst_video_quadrilateral_from_rectangle (GstVideoQuadrilateral * quadrilateral,
-                                        const GstVideoRectangle * rectangle);
-
-/**
- * gst_video_quadrilateral_to_rectangle:
- * @quadrilateral: A #GstVideoQuadrilateral
- * @rectangle: A #GstVideoRectangle
- *
- * Helper function for converting a rectangular quadrilateral into the more
- * convinient #GstVideoRectangle struct.
- */
-GST_VIDEO_API void
-gst_video_quadrilateral_to_rectangle (const GstVideoQuadrilateral * quadrilateral,
-                                      GstVideoRectangle * rectangle);
-
-/**
- * gst_video_data_type_get_size:
- * @datatype: A video data type for a video frame.
- *
- * Helper function for getting the size of the data type for a video frame.
- *
- * Returns: size of the data type in bytes.
- */
-GST_VIDEO_API guint
-gst_video_data_type_get_size (guint64 datatype);
-
-/**
- * gst_video_data_type_to_string:
- * @datatype: A video data type for a video frame.
- *
- * Helper function for getting the string name of given data type.
- *
- * Returns: (transfer none) (nullable): The name of the data type.
- */
-GST_VIDEO_API const gchar *
-gst_video_data_type_to_string (guint64 datatype);
-
-/**
- * gst_video_frame_normalize_ip:
- * @vframe: A #GstVideoFrame
- * @datatype: the data type in the video frame
- * @offsets: component offset factors, used in the normalize operation.
- * @scales: component scale factors, used in the normalize operation.
- *
- * Helper function for normalizing video frame inplace.
- *
- * Returns: TRUE on success or FALSE on failure
- */
-GST_VIDEO_API gboolean
-gst_video_frame_normalize_ip (GstVideoFrame * vframe, guint64 datatype,
-                              gdouble offsets[GST_VCE_MAX_CHANNELS],
-                              gdouble scales[GST_VCE_MAX_CHANNELS]);
 
 /**
  * gst_video_converter_default_backend:

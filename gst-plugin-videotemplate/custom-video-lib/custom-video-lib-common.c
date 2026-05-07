@@ -171,7 +171,7 @@ custom_lib_process_buffer (CustomLib * custom_lib,
     composition.n_blits = 1;
 
     composition.buffer = outbuffer;
-    composition.datatype = 0;
+    composition.datatype = GST_VIDEO_DATA_TYPE_U8;
 
     composition.bgcolor = 0;
     composition.bgfill = FALSE;

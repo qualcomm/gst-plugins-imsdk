@@ -2298,25 +2298,25 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   mlconverter->composition.bgfill = TRUE;
 
   if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT64)
-    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_I64;
+    mlconverter->composition.datatype |= GST_VIDEO_DATA_TYPE_I64;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_UINT64)
-    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_U64;
+    mlconverter->composition.datatype |= GST_VIDEO_DATA_TYPE_U64;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT32)
-    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_I32;
+    mlconverter->composition.datatype |= GST_VIDEO_DATA_TYPE_I32;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_UINT32)
-    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_U32;
+    mlconverter->composition.datatype |= GST_VIDEO_DATA_TYPE_U32;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT16)
-    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_I16;
+    mlconverter->composition.datatype |= GST_VIDEO_DATA_TYPE_I16;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_UINT16)
-    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_U16;
+    mlconverter->composition.datatype |= GST_VIDEO_DATA_TYPE_U16;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_FLOAT16)
-    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_F16;
+    mlconverter->composition.datatype |= GST_VIDEO_DATA_TYPE_F16;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_FLOAT32)
-    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_F32;
+    mlconverter->composition.datatype |= GST_VIDEO_DATA_TYPE_F32;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT8)
-    mlconverter->composition.datatype |= GST_VCE_DATA_TYPE_I8;
+    mlconverter->composition.datatype |= GST_VIDEO_DATA_TYPE_I8;
 
-  for (idx = 0; idx < GST_VCE_MAX_CHANNELS; idx++) {
+  for (idx = 0; idx < GST_VIDEO_MAX_COMPONENTS; idx++) {
     mlconverter->composition.offsets[idx] = (idx < mlconverter->mean->len) ?
         g_array_index (mlconverter->mean, gdouble, idx) : DEFAULT_PROP_MEAN;
     mlconverter->composition.scales[idx] = (idx < mlconverter->sigma->len) ?

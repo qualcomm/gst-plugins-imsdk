@@ -71,20 +71,20 @@ static gint refcount = 0;
 struct _GstC2dRequest
 {
   // The ID of the composition request.
-  guint         id;
+  guint            id;
 
   // Video frame which will be normalized.
-  GstVideoFrame *frame;
+  GstVideoFrame    *frame;
 
   // Mapped blit frames
-  GArray        *inframes;
+  GArray           *inframes;
 
   // Offset and scale factors for each component of the pixel.
-  gdouble       offsets[GST_VCE_MAX_CHANNELS];
-  gdouble       scales[GST_VCE_MAX_CHANNELS];
+  gdouble          offsets[GST_VIDEO_MAX_COMPONENTS];
+  gdouble          scales[GST_VIDEO_MAX_COMPONENTS];
 
-  // Configuration mask containing the type of the frame pixels.
-  guint64       flags;
+  // The data type of the frame pixels.
+  GstVideoDataType datatype;
 };
 
 struct _GstC2dVideoConverter
@@ -1158,7 +1158,7 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
     request->id = surface_id;
 
     request->frame = outframe;
-    request->flags = composition->datatype;
+    request->datatype = composition->datatype;
 
     memcpy (request->offsets, composition->offsets, sizeof (request->offsets));
     memcpy (request->scales, composition->scales, sizeof (request->scales));
@@ -1204,7 +1204,7 @@ gst_c2d_video_converter_wait_fence (GstC2dVideoConverter * convert,
 
     GST_LOG ("Finished waiting surface_id: %x", request->id);
 
-    success &= gst_video_frame_normalize_ip (request->frame, request->flags,
+    success &= gst_video_frame_normalize_ip (request->frame, request->datatype,
         request->offsets, request->scales);
   }
 
