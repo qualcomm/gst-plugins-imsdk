@@ -49,6 +49,7 @@
 #include <gst/video/gstimagepool.h>
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
+#include <gst/ml/gstmlsample.h>
 #include <gst/ml/ml-module-utils.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
@@ -152,6 +153,14 @@ enum
   PROP_MEAN,
   PROP_SIGMA,
 };
+
+enum
+{
+  SIGNAL_PROCESS,
+  LAST_SIGNAL
+};
+
+static guint signals[LAST_SIGNAL];
 
 static GstStaticCaps gst_ml_video_converter_static_src_caps =
     GST_STATIC_CAPS (GST_ML_VIDEO_CONVERTER_SRC_CAPS);
@@ -678,6 +687,13 @@ gst_ml_video_converter_is_engine_process (GstMLVideoConverter * mlconverter)
       GST_VIDEO_INFO_HEIGHT (mlconverter->composition.info);
 
   return conversion;
+}
+
+static gboolean
+gst_ml_video_converter_is_signal_process (GstMLVideoConverter * mlconverter)
+{
+  return mlconverter->backend == GST_VIDEO_CONVERTER_BACKEND_NONE &&
+      g_signal_has_handler_pending (mlconverter, signals[SIGNAL_PROCESS], 0, FALSE);
 }
 
 static gboolean
@@ -2012,8 +2028,9 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
 
     result = gst_pad_get_pad_template_caps (pad);
 
-    // Try to negotiate precice video caps if engine is NONE.
-    if (mlconverter->backend == GST_VIDEO_CONVERTER_BACKEND_NONE) {
+    // Try to negotiate precice video caps if engine is NONE and signal is not set.
+    if (mlconverter->backend == GST_VIDEO_CONVERTER_BACKEND_NONE &&
+        !gst_ml_video_converter_is_signal_process (mlconverter)) {
       GstCaps *videocaps = NULL;
       gint idx = 0, length = 0, maxwidth = 0, maxheight = 0;
       GstCaps *localcaps = gst_caps_copy (caps);
@@ -2482,8 +2499,21 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
     // Use Video Converter Engine for processing the composition.
     success = gst_video_converter_engine_compose (mlconverter->converter,
         &(mlconverter->composition), 1, NULL);
+  } else if (gst_ml_video_converter_is_signal_process (mlconverter)) {
+    GstMLSample *sample = NULL;
+
+    sample = gst_ml_sample_new (mlconverter->composition.buffer,
+        mlconverter->mlinfo);
+    gst_buffer_unref (mlconverter->composition.buffer);
+
+    // Call connected external signal for processing the blits and output frame.
+    g_signal_emit (mlconverter, signals[SIGNAL_PROCESS], 0,
+        mlconverter->composition.blits, sample, &success);
+
+    gst_buffer_ref (mlconverter->composition.buffer);
+    gst_ml_sample_unref (sample);
   } else {
-    // There is not need for frame conversion, apply only normalization.
+    // Neither engine nor signal are set, apply only normalization.
     success = gst_ml_video_converter_normalize (mlconverter);
   }
 
@@ -2696,6 +2726,12 @@ gst_ml_video_converter_class_init (GstMLVideoConverterClass * klass)
               "One of B, G or R value.", 0.0, 255.0, DEFAULT_PROP_SIGMA,
               G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  signals[SIGNAL_PROCESS] =
+      g_signal_new ("process", G_TYPE_FROM_CLASS (klass),
+          G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
+          0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 2, GST_TYPE_VIDEO_BLITS,
+          GST_TYPE_ML_SAMPLE);
 
   gst_element_class_set_static_metadata (element,
       "Machine Learning Video Converter", "Filter/Video/Scaler",
