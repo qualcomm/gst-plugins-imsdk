@@ -220,7 +220,22 @@ GST_API GArray *
 g_array_new_take (gpointer data, gsize len, gboolean clear, gsize size);
 #endif // GLIB_CHECK_VERSION(2, 76, 0)
 
-#if !GLIB_CHECK_VERSION(2, 62, 0)
+#if !GLIB_CHECK_VERSION(2, 64, 0)
+/**
+ * g_array_steal:
+ * @array: A #GArray.
+ * @size: Number of elements in the array
+ *
+ * Simple replacement for g_array_steal() in glib version < 2.64
+ * TODO: Remove when only glib version >= 2.64 is used.
+ *
+ * Returns: The raw data pointer
+ **/
+GST_API gpointer
+g_array_steal (GArray * array, gsize * size);
+#endif // GLIB_CHECK_VERSION(2, 62, 0)
+
+#if !GLIB_CHECK_VERSION(2, 64, 0)
 /**
  * g_array_copy:
  * @array: A #GArray.

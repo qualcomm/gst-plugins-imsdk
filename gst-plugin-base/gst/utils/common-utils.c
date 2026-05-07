@@ -367,6 +367,20 @@ g_array_new_take (gpointer data, gsize len, gboolean clear, gsize size)
 }
 #endif // GLIB_CHECK_VERSION(2, 76, 0)
 
+#if !GLIB_CHECK_VERSION(2, 64, 0)
+gpointer
+g_array_steal (GArray * array, gsize * size)
+{
+  gpointer data = (gpointer) array->data;
+
+  if (size != NULL)
+    *size = array->len;
+
+  g_array_free (array, FALSE);
+  return data;
+}
+#endif // GLIB_CHECK_VERSION(2, 64, 0)
+
 #if !GLIB_CHECK_VERSION(2, 62, 0)
 GArray *
 g_array_copy (GArray * array)

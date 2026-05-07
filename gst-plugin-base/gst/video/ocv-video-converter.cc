@@ -24,6 +24,7 @@
 #define GST_OCV_COLOR_RGBA2YUV_YVYU 153 // cv::COLOR_RGBA2YUV_YVYU = 153
 #define GST_OCV_COLOR_BGRA2YUV_YVYU 154 // cv::COLOR_BGRA2YUV_YVYU = 154
 
+GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_CAT_DEFAULT gst_video_converter_engine_debug
 
 // Convinient macros for printing plane values.

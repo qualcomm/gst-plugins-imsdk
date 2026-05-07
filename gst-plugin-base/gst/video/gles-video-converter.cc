@@ -13,6 +13,7 @@
 #include <gst/gfx/ib2c.h>
 
 
+GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_CAT_DEFAULT gst_video_converter_engine_debug
 
 #define GPOINTER_TO_GUINT64(p)   ((guint64) (p))

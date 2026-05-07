@@ -14,6 +14,7 @@ add_library(${TARGET_NAME} SHARED
   gstvideosegmentationmeta.c
   gstvideodepthmeta.c
   video-converter-engine.c
+  video-converter-engine-param.c
   video-utils.c
   $<$<BOOL:${HAVE_ADRENO_C2D2_H}>:c2d-video-converter.c>
   $<$<BOOL:${GLES_FOUND}>:gles-video-converter.cc>
@@ -29,6 +30,7 @@ set(TARGET_HEADERS
   gstvideosegmentationmeta.h
   gstvideodepthmeta.h
   video-converter-engine.h
+  video-converter-engine-param.h
   video-utils.h
 )
 
@@ -129,6 +131,8 @@ if(GIR_SCANNER AND GIR_COMPILER AND PYTHON_SITEPACKAGES_DIR)
     ${CMAKE_CURRENT_SOURCE_DIR}/video-utils.c
     ${CMAKE_CURRENT_SOURCE_DIR}/video-converter-engine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/video-converter-engine.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/video-converter-engine-param.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/video-converter-engine-param.c
     ${CMAKE_CURRENT_SOURCE_DIR}/gstvideoclassificationmeta.h
     ${CMAKE_CURRENT_SOURCE_DIR}/gstvideoclassificationmeta.c
     ${CMAKE_CURRENT_SOURCE_DIR}/gstvideolandmarksmeta.h

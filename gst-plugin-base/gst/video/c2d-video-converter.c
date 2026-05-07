@@ -44,6 +44,7 @@
 #include <media/msm_media_info.h>
 
 
+GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_CAT_DEFAULT gst_video_converter_engine_debug
 
 #define CHECK_C2D_CAPABILITY(info, name) \

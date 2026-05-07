@@ -12,6 +12,7 @@
 #include <gst/utils/common-utils.h>
 
 
+GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_CAT_DEFAULT gst_video_converter_engine_debug
 
 #define LOAD_FCV_SYMBOL(c, name) \
