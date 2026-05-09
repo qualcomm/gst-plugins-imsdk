@@ -574,7 +574,7 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
 
   if (src->mode != DATA_MODE_TEXT) {
     // Create a FD backed allocator.
-    allocator = gst_fd_allocator_new ();
+    allocator = gst_dmabuf_allocator_new ();
     if (allocator == NULL) {
       gst_buffer_unref (gstbuffer);
       g_free (release_data);
@@ -633,7 +633,8 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
       }
 
       // Wrap our buffer memory block in FD backed memory.
-      gstmemory = gst_fd_allocator_alloc (allocator, fds[i], tensor_pl->maxsize,
+      gstmemory = gst_dmabuf_allocator_alloc_with_flags (
+          allocator, fds[i], tensor_pl->maxsize,
           pl_info.buffer_info->use_buffer_pool ?
           GST_FD_MEMORY_FLAG_DONT_CLOSE : GST_FD_MEMORY_FLAG_NONE);
       if (gstmemory == NULL) {
@@ -682,7 +683,8 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
       }
 
       // Wrap our buffer memory block in FD backed memory.
-      gstmemory = gst_fd_allocator_alloc (allocator, fds[i], frame_pl->maxsize,
+      gstmemory = gst_dmabuf_allocator_alloc_with_flags (
+          allocator, fds[i], frame_pl->maxsize,
           pl_info.buffer_info->use_buffer_pool ?
           GST_FD_MEMORY_FLAG_DONT_CLOSE : GST_FD_MEMORY_FLAG_NONE);
       if (gstmemory == NULL) {
