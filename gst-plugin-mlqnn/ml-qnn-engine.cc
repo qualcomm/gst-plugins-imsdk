@@ -1177,18 +1177,6 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
     return FALSE;
   }
 
-  for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
-    Qnn_Tensor_t *tensor = &(graph_info->inputTensors[idx]);
-
-    if (engine->graphindices != NULL) {
-      guint num = g_array_index (engine->graphindices, guint, idx);
-      tensor = &(graph_info->inputTensors[num]);
-    }
-
-    mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, idx);
-    mlmeta->name = g_quark_from_string (QNN_TENSOR_NAME (tensor));
-  }
-
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
     Qnn_Tensor_t *tensor = &(graph_info->outputTensors[idx]);
 

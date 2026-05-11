@@ -994,9 +994,6 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
 
     memcpy (engine->TensorData (tensor), GST_ML_FRAME_BLOCK_DATA (inframe, idx),
         size);
-
-    mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, idx);
-    mlmeta->name = g_quark_from_string (engine->TensorName (tensor));
   }
 
   success = (0 == engine->InterpreterInvoke (

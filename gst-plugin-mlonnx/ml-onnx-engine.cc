@@ -1174,9 +1174,6 @@ gst_ml_onnx_engine_execute (GstMLOnnxEngine * engine,
       api->ReleaseStatus (status);
       goto cleanup;
     }
-
-    mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, i);
-    mlmeta->name = g_quark_from_string (engine->input_names[i]);
   }
 
   // Run inference
