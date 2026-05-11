@@ -737,13 +737,9 @@ gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
       engine->interpreter->getInputTensorNames();
 
   for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
-    const char *name = inoptnames.at(idx);
     zdl::DlSystem::IUserBuffer *usrbuffer =
         engine->usrbuffers[(*inoptnames).at(idx)].get();
     usrbuffer->setBufferAddress(GST_ML_FRAME_BLOCK_DATA (inframe, idx));
-
-    mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, idx);
-    mlmeta->name = g_quark_from_string (name);
   }
 
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
