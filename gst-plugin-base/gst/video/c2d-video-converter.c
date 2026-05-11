@@ -777,7 +777,7 @@ static void
 gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
     const GstVideoBlit * vblit, const GstVideoFrame * outframe)
 {
-  GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
+  GstVideoRotate rotate = GST_VIDEO_ROTATE_0;
   gint x = 0, y = 0, width = 0, height = 0;
 
   object->surface_id = surface_id;
@@ -837,7 +837,7 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
 
   // Setup rotation angle and adjustments.
   switch (rotate) {
-    case GST_VCE_ROTATE_90:
+    case GST_VIDEO_ROTATE_90_CW:
     {
       gint dar_n = 0, dar_d = 0;
 
@@ -870,7 +870,7 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
       object->target_rect.x = y << 16;
       break;
     }
-    case GST_VCE_ROTATE_180:
+    case GST_VIDEO_ROTATE_180:
       object->config_mask |= (C2D_OVERRIDE_GLOBAL_TARGET_ROTATE_CONFIG |
           C2D_OVERRIDE_TARGET_ROTATE_180);
       GST_LOG ("Input surface %x - rotate 180°", surface_id);
@@ -888,7 +888,7 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
       object->target_rect.y =
           (GST_VIDEO_FRAME_HEIGHT (outframe) - (y + height)) << 16;
       break;
-    case GST_VCE_ROTATE_270:
+    case GST_VIDEO_ROTATE_90_CCW:
     {
       gint dar_n = 0, dar_d = 0;
 

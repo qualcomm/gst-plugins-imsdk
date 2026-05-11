@@ -41,7 +41,6 @@ set(GST_QTI_VIDEO_COMPOSER gstqtivcomposer)
 add_library(${GST_QTI_VIDEO_COMPOSER} SHARED
   videocomposer.c
   videocomposersinkpad.c
-  videocomposerutils.c
 )
 
 target_include_directories(${GST_QTI_VIDEO_COMPOSER} PUBLIC

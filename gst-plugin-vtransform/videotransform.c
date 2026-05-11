@@ -55,13 +55,11 @@ GST_DEBUG_CATEGORY_STATIC (gst_video_transform_debug);
 #define gst_video_transform_parent_class parent_class
 G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 
-#define GST_TYPE_VIDEO_TRANSFORM_ROTATE (gst_video_trasform_rotate_get_type())
-
 #define DEFAULT_PROP_ENGINE_BACKEND     (gst_video_converter_default_backend())
 #define DEFAULT_PROP_BACKEND_PARAM      NULL
 #define DEFAULT_PROP_FLIP_HORIZONTAL    FALSE
 #define DEFAULT_PROP_FLIP_VERTICAL      FALSE
-#define DEFAULT_PROP_ROTATE             GST_VIDEO_TRANSFORM_ROTATE_NONE
+#define DEFAULT_PROP_ROTATE             GST_VIDEO_ROTATE_0
 #define DEFAULT_PROP_CROP_X             0
 #define DEFAULT_PROP_CROP_Y             0
 #define DEFAULT_PROP_CROP_WIDTH         0
@@ -99,32 +97,6 @@ enum
   PROP_DESTINATION,
   PROP_BACKGROUND,
 };
-
-static GType
-gst_video_trasform_rotate_get_type (void)
-{
-  static GType gtype = 0;
-  static const GEnumValue methods[] = {
-    { GST_VIDEO_TRANSFORM_ROTATE_NONE,
-        "No rotation", "none"
-    },
-    { GST_VIDEO_TRANSFORM_ROTATE_90_CW,
-        "Rotate 90 degrees clockwise", "90CW"
-    },
-    { GST_VIDEO_TRANSFORM_ROTATE_90_CCW,
-        "Rotate 90 degrees counter-clockwise", "90CCW"
-    },
-    { GST_VIDEO_TRANSFORM_ROTATE_180,
-        "Rotate 180 degrees", "180"
-    },
-    {0, NULL, NULL},
-  };
-
-  if (!gtype)
-    gtype = g_enum_register_static ("GstVideoTransformRotate", methods);
-
-  return gtype;
-}
 
 static GstCaps *
 gst_video_transform_sink_caps (void)
@@ -186,24 +158,6 @@ gst_video_transform_src_template (void)
       gst_video_transform_src_caps ());
 }
 
-static inline GstVideoConvRotate
-gst_video_transform_translate_rotation (GstVideoTransformRotate rotation)
-{
-  switch (rotation) {
-    case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      return GST_VCE_ROTATE_90;
-    case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-      return GST_VCE_ROTATE_270;
-    case GST_VIDEO_TRANSFORM_ROTATE_180:
-      return GST_VCE_ROTATE_180;
-    case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      return GST_VCE_ROTATE_0;
-    default:
-      GST_WARNING ("Invalid rotation flag %d!", rotation);
-  }
-  return GST_VCE_ROTATE_0;
-}
-
 static void
 gst_video_transform_determine_passthrough (GstVideoTransform * vtrans)
 {
@@ -231,7 +185,7 @@ gst_video_transform_determine_passthrough (GstVideoTransform * vtrans)
   }
 
   passthrough &= !vtrans->flip_h && !vtrans->flip_v;
-  passthrough &= vtrans->rotation == GST_VIDEO_TRANSFORM_ROTATE_NONE;
+  passthrough &= vtrans->rotation == GST_VIDEO_ROTATE_0;
 
   passthrough &= vtrans->outfeature == vtrans->infeature;
 
@@ -961,13 +915,13 @@ gst_video_transform_fixate_width (GstVideoTransform * vtrans,
     }
 
     switch (vtrans->rotation) {
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
+      case GST_VIDEO_ROTATE_90_CW:
+      case GST_VIDEO_ROTATE_90_CCW:
         out_width = GST_ROUND_UP_4 (
             gst_util_uint64_scale_int (out_height, den, num));
         break;
-      case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      case GST_VIDEO_TRANSFORM_ROTATE_180:
+      case GST_VIDEO_ROTATE_0:
+      case GST_VIDEO_ROTATE_180:
         out_width = GST_ROUND_UP_4 (
             gst_util_uint64_scale_int (out_height, num, den));
         break;
@@ -996,8 +950,8 @@ gst_video_transform_fixate_width (GstVideoTransform * vtrans,
     // Scale the output width to a value nearest to the input with same DAR
     // and adjust the output PAR if needed.
     switch (vtrans->rotation) {
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
+      case GST_VIDEO_ROTATE_90_CW:
+      case GST_VIDEO_ROTATE_90_CCW:
         out_width = GST_ROUND_UP_4 (
             gst_util_uint64_scale_int (out_height, den, num));
 
@@ -1007,8 +961,8 @@ gst_video_transform_fixate_width (GstVideoTransform * vtrans,
         success = gst_util_fraction_multiply (in_dar_n, in_dar_d,
             out_width, out_height, &out_par_n, &out_par_d);
         break;
-      case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      case GST_VIDEO_TRANSFORM_ROTATE_180:
+      case GST_VIDEO_ROTATE_0:
+      case GST_VIDEO_ROTATE_180:
         out_width = GST_ROUND_UP_4 (
             gst_util_uint64_scale_int (out_height, num, den));
 
@@ -1122,13 +1076,13 @@ gst_video_transform_fixate_height (GstVideoTransform * vtrans,
     }
 
     switch (vtrans->rotation) {
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
+      case GST_VIDEO_ROTATE_90_CW:
+      case GST_VIDEO_ROTATE_90_CCW:
         out_height = GST_ROUND_UP_4 (
             gst_util_uint64_scale_int (out_width, num, den));
         break;
-      case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      case GST_VIDEO_TRANSFORM_ROTATE_180:
+      case GST_VIDEO_ROTATE_0:
+      case GST_VIDEO_ROTATE_180:
         out_height = GST_ROUND_UP_4 (
             gst_util_uint64_scale_int (out_width, den, num));
         break;
@@ -1157,8 +1111,8 @@ gst_video_transform_fixate_height (GstVideoTransform * vtrans,
     // Scale the output height to a value nearest to the input with same DAR
     // and adjust the output PAR if needed.
     switch (vtrans->rotation) {
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
+      case GST_VIDEO_ROTATE_90_CW:
+      case GST_VIDEO_ROTATE_90_CCW:
         out_height = GST_ROUND_UP_4 (
             gst_util_uint64_scale_int (out_width, num, den));
 
@@ -1168,8 +1122,8 @@ gst_video_transform_fixate_height (GstVideoTransform * vtrans,
         success = gst_util_fraction_multiply (in_dar_n, in_dar_d,
             out_width, out_height, &out_par_n, &out_par_d);
         break;
-      case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      case GST_VIDEO_TRANSFORM_ROTATE_180:
+      case GST_VIDEO_ROTATE_0:
+      case GST_VIDEO_ROTATE_180:
         out_height = GST_ROUND_UP_4 (
             gst_util_uint64_scale_int (out_width, den, num));
 
@@ -1285,16 +1239,16 @@ gst_video_transform_fixate_width_and_height (GstVideoTransform * vtrans,
 
     // Keep the input height (because of interlacing).
     switch (vtrans->rotation) {
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
+      case GST_VIDEO_ROTATE_90_CW:
+      case GST_VIDEO_ROTATE_90_CCW:
         gst_structure_fixate_field_nearest_int (structure, "height", in_width);
         gst_structure_get_int (structure, "height", &set_h);
 
         // Scale width in order to keep DAR.
         set_w = GST_ROUND_UP_4 (gst_util_uint64_scale_int (set_h, den, num));
         break;
-      case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      case GST_VIDEO_TRANSFORM_ROTATE_180:
+      case GST_VIDEO_ROTATE_0:
+      case GST_VIDEO_ROTATE_180:
         gst_structure_fixate_field_nearest_int (structure, "height", in_height);
         gst_structure_get_int (structure, "height", &set_h);
 
@@ -1323,16 +1277,16 @@ gst_video_transform_fixate_width_and_height (GstVideoTransform * vtrans,
 
     // Failed to set output width while keeping the input height, try width.
     switch (vtrans->rotation) {
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
+      case GST_VIDEO_ROTATE_90_CW:
+      case GST_VIDEO_ROTATE_90_CCW:
         gst_structure_fixate_field_nearest_int (structure, "width", in_height);
         gst_structure_get_int (structure, "width", &set_w);
 
         // Scale height in order to keep DAR.
         set_h = GST_ROUND_UP_4 (gst_util_uint64_scale_int (set_w, num, den));
         break;
-      case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      case GST_VIDEO_TRANSFORM_ROTATE_180:
+      case GST_VIDEO_ROTATE_0:
+      case GST_VIDEO_ROTATE_180:
         gst_structure_fixate_field_nearest_int (structure, "width", in_width);
         gst_structure_get_int (structure, "width", &set_w);
 
@@ -1407,8 +1361,8 @@ gst_video_transform_fixate_dimensions (GstVideoTransform * vtrans,
     gint out_par_n, out_par_d, out_width, out_height;
 
     switch (vtrans->rotation) {
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
+      case GST_VIDEO_ROTATE_90_CW:
+      case GST_VIDEO_ROTATE_90_CCW:
         gst_structure_fixate_field_nearest_int (structure, "width", in_height);
         gst_structure_get_int (structure, "width", &out_width);
 
@@ -1418,8 +1372,8 @@ gst_video_transform_fixate_dimensions (GstVideoTransform * vtrans,
         success = gst_util_fraction_multiply (in_dar_n, in_dar_d,
             out_width, out_height, &out_par_n, &out_par_d);
         break;
-      case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      case GST_VIDEO_TRANSFORM_ROTATE_180:
+      case GST_VIDEO_ROTATE_0:
+      case GST_VIDEO_ROTATE_180:
         gst_structure_fixate_field_nearest_int (structure, "width", in_width);
         gst_structure_get_int (structure, "width", &out_width);
 
@@ -1688,10 +1642,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   if (vtrans->flip_v)
     blit.mask |= GST_VCE_MASK_FLIP_VERTICAL;
 
-  if (vtrans->rotation != GST_VIDEO_TRANSFORM_ROTATE_NONE) {
-    blit.rotate = gst_video_transform_translate_rotation (vtrans->rotation);
-    blit.mask |= GST_VCE_MASK_ROTATION;
-  }
+  blit.rotate = vtrans->rotation;
+  blit.mask |= GST_VCE_MASK_ROTATION;
 
   meta = gst_buffer_get_video_meta (outbuffer);
 
@@ -1979,7 +1931,7 @@ gst_video_transform_class_init (GstVideoTransformClass * klass)
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_ROTATE,
       g_param_spec_enum ("rotate", "Rotate", "Rotate video image",
-          GST_TYPE_VIDEO_TRANSFORM_ROTATE, DEFAULT_PROP_ROTATE,
+          GST_TYPE_VIDEO_ROTATE, DEFAULT_PROP_ROTATE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CROP,

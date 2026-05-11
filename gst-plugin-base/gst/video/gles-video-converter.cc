@@ -465,7 +465,7 @@ static void
 gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
     const GstVideoBlit * vblit, GstVideoComposition * composition)
 {
-  GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
+  GstVideoRotate rotate = GST_VIDEO_ROTATE_0;
   gint x = 0, y = 0, width = 0, height = 0;
 
   object->id = surface_id;
@@ -515,21 +515,21 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
 
   // Setup rotation angle and adjustments.
   switch (rotate) {
-    case GST_VCE_ROTATE_90:
+    case GST_VIDEO_ROTATE_90_CW:
       GST_TRACE ("Input surface 0x%016" G_GINT64_MODIFIER "x - rotate 90° "
           "clockwise", surface_id);
 
       object->rotation = 90.0;
       object->mask |= ::ib2c::ConfigMask::kRotation;
       break;
-    case GST_VCE_ROTATE_180:
+    case GST_VIDEO_ROTATE_180:
       GST_TRACE ("Input surface 0x%016" G_GINT64_MODIFIER "x - rotate 180°",
           surface_id);
 
       object->rotation = 180.0;
       object->mask |= ::ib2c::ConfigMask::kRotation;
       break;
-    case GST_VCE_ROTATE_270:
+    case GST_VIDEO_ROTATE_90_CCW:
       GST_TRACE ("Input surface 0x%016" G_GINT64_MODIFIER "x - rotate 90° "
           "counter-clockwise", surface_id);
 

@@ -697,7 +697,7 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
       vblit->mask = 0;
 
       vblit->alpha = G_MAXUINT8;
-      vblit->rotate = GST_VCE_ROTATE_0;
+      vblit->rotate = GST_VIDEO_ROTATE_0;
 
       // Depending on the mode a different ROI meta is used or none at all.
       if (srcpad->mode == GST_VSPLIT_MODE_ROI_SINGLE)

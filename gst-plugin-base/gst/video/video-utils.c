@@ -200,6 +200,24 @@ gst_video_data_type_to_string (GstVideoDataType datatype)
   return "UNKNOWN";
 }
 
+GType
+gst_video_rotate_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_VIDEO_ROTATE_0, "No rotation", "none" },
+    { GST_VIDEO_ROTATE_90_CW, "Rotate 90 degrees clockwise", "90CW" },
+    { GST_VIDEO_ROTATE_90_CCW, "Rotate 90 degrees counter-clockwise", "90CCW" },
+    { GST_VIDEO_ROTATE_180, "Rotate 180 degrees", "180" },
+    { 0, NULL, NULL },
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstVideoRotate", variants);
+
+  return gtype;
+}
+
 void
 gst_video_point_affine_transform (GstVideoPoint * point, gdouble matrix[3][3])
 {

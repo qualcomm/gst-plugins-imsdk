@@ -246,24 +246,6 @@ gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
   }
 }
 
-static inline GstVideoConvRotate
-gst_video_composer_translate_rotation (GstVideoComposerRotate rotation)
-{
-  switch (rotation) {
-    case GST_VIDEO_COMPOSER_ROTATE_90_CW:
-      return GST_VCE_ROTATE_90;
-    case GST_VIDEO_COMPOSER_ROTATE_90_CCW:
-      return GST_VCE_ROTATE_270;
-    case GST_VIDEO_COMPOSER_ROTATE_180:
-      return GST_VCE_ROTATE_180;
-    case GST_VIDEO_COMPOSER_ROTATE_NONE:
-      return GST_VCE_ROTATE_0;
-    default:
-      GST_WARNING ("Invalid rotation flag %d!", rotation);
-  }
-  return GST_VCE_ROTATE_0;
-}
-
 static gint
 gst_video_composer_zorder_compare (const GstVideoComposerSinkPad * lpad,
     const GstVideoComposerSinkPad * rpad)
@@ -885,10 +867,8 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
     if (sinkpad->flip_v)
       vblit->mask |= GST_VCE_MASK_FLIP_VERTICAL;
 
-    if (sinkpad->rotation != GST_VIDEO_COMPOSER_ROTATE_NONE) {
-      vblit->rotate = gst_video_composer_translate_rotation (sinkpad->rotation);
-      vblit->mask |= GST_VCE_MASK_ROTATION;
-    }
+    vblit->rotate = sinkpad->rotation;
+    vblit->mask |= GST_VCE_MASK_ROTATION;
 
     GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
 

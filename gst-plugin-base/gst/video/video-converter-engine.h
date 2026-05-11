@@ -23,7 +23,7 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 
 #define GST_VCE_BLIT_INIT \
     { NULL, NULL, 0, {{0, 0}, {0, 0}, {0, 0}, {0, 0}}, \
-        {0, 0, 0, 0}, 255, GST_VCE_ROTATE_0 }
+        {0, 0, 0, 0}, 255, GST_VIDEO_ROTATE_0 }
 #define GST_VCE_COMPOSITION_INIT \
     { NULL, 0, NULL, NULL, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
       { 1.0, 1.0, 1.0, 1.0 }, GST_VIDEO_DATA_TYPE_U8 }
@@ -85,22 +85,6 @@ GST_VIDEO_API GType gst_video_converter_backend_get_type (void);
 #define GST_TYPE_VCE_BACKEND (gst_video_converter_backend_get_type())
 
 /**
- * GstVideoConvRotate:
- * @GST_VCE_ROTATE_0: No rotation.
- * @GST_VCE_ROTATE_90: Rotate frame 90 degrees clockwise.
- * @GST_VCE_ROTATE_180: Rotate frame 180 degrees clockwise.
- * @GST_VCE_ROTATE_270: Rotate frame 270 degrees clockwise.
- *
- * Rotation degrees.
- */
-typedef enum {
-  GST_VCE_ROTATE_0   = 0,
-  GST_VCE_ROTATE_90  = 90,
-  GST_VCE_ROTATE_180 = 180,
-  GST_VCE_ROTATE_270 = 270,
-} GstVideoConvRotate;
-
-/**
  * GstVideoBlit:
  * @buffer: Input buffer.
  * @info: GstVideoInfo for mapping.
@@ -125,7 +109,7 @@ struct _GstVideoBlit
   GstVideoRectangle     destination;
 
   guint8                alpha;
-  GstVideoConvRotate    rotate;
+  GstVideoRotate        rotate;
 };
 
 /**

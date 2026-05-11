@@ -52,7 +52,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_video_composer_sinkpad_debug);
 #define DEFAULT_PROP_ALPHA              1.0
 #define DEFAULT_PROP_FLIP_HORIZONTAL    FALSE
 #define DEFAULT_PROP_FLIP_VERTICAL      FALSE
-#define DEFAULT_PROP_ROTATE             GST_VIDEO_COMPOSER_ROTATE_NONE
+#define DEFAULT_PROP_ROTATE             GST_VIDEO_ROTATE_0
 
 G_DEFINE_TYPE (GstVideoComposerSinkPad, gst_video_composer_sinkpad,
                GST_TYPE_VIDEO_AGGREGATOR_PAD);
@@ -545,7 +545,7 @@ gst_video_composer_sinkpad_class_init (GstVideoComposerSinkPadClass * klass)
           GST_PARAM_MUTABLE_PLAYING | G_PARAM_EXPLICIT_NOTIFY));
   g_object_class_install_property (gobject, PROP_ROTATE,
       g_param_spec_enum ("rotate", "Rotate", "Rotate video",
-          GST_TYPE_VIDEO_COMPOSER_ROTATE, DEFAULT_PROP_ROTATE,
+          GST_TYPE_VIDEO_ROTATE, DEFAULT_PROP_ROTATE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING | G_PARAM_EXPLICIT_NOTIFY));
 

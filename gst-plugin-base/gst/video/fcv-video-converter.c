@@ -445,14 +445,14 @@ gst_fcv_stage_buffer_free (gpointer data)
 }
 
 static inline guint
-gst_fcv_translate_rotation (const GstVideoConvRotate rotate)
+gst_fcv_translate_rotation (const GstVideoRotate rotate)
 {
   switch (rotate) {
-    case GST_VCE_ROTATE_90:
+    case GST_VIDEO_ROTATE_90_CW:
       return FASTCV_ROTATE_90;
-    case GST_VCE_ROTATE_180:
+    case GST_VIDEO_ROTATE_180:
       return FASTCV_ROTATE_180;
-    case GST_VCE_ROTATE_270:
+    case GST_VIDEO_ROTATE_90_CCW:
       return FASTCV_ROTATE_270;
     default:
       break;

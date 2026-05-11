@@ -46,6 +46,25 @@ typedef enum {
 } GstVideoDataType;
 
 /**
+ * GstVideoRotate:
+ * @GST_VIDEO_ROTATE_0: No rotation.
+ * @GST_VIDEO_ROTATE_90_CW: Rotate video frame 90 degrees clockwise.
+ * @GST_VIDEO_ROTATE_180: Rotate video frame 180 degrees.
+ * @GST_VIDEO_ROTATE_90_CCW: Rotate video frame 90 degrees counter-clockwise.
+ *
+ * Exact degrees at which to rotate a video image.
+ */
+typedef enum {
+  GST_VIDEO_ROTATE_0      = 0,
+  GST_VIDEO_ROTATE_90_CW  = 90,
+  GST_VIDEO_ROTATE_180    = 180,
+  GST_VIDEO_ROTATE_90_CCW = 270,
+} GstVideoRotate;
+
+GST_API GType gst_video_rotate_get_type (void);
+#define GST_TYPE_VIDEO_ROTATE (gst_video_rotate_get_type())
+
+/**
  * GstVideoPoint:
  * @x: X Axis coordinate in pixels.
  * @y: Y Axis coordinate in pixels.

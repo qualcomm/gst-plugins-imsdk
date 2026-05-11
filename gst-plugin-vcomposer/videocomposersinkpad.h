@@ -38,8 +38,7 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <gst/video/gstvideoaggregator.h>
-
-#include "videocomposerutils.h"
+#include <gst/video/video-utils.h>
 
 G_BEGIN_DECLS
 
@@ -82,7 +81,7 @@ struct _GstVideoComposerSinkPad {
   GstVideoRectangle       destination;
   gboolean                flip_v;
   gboolean                flip_h;
-  GstVideoComposerRotate  rotation;
+  GstVideoRotate          rotation;
   gdouble                 alpha;
   gint                    zorder;
 };

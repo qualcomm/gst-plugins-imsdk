@@ -60,13 +60,6 @@ G_BEGIN_DECLS
 #define GST_VIDEO_TRANSFORM_UNLOCK(obj) \
   g_mutex_unlock(GST_VIDEO_TRANSFORM_GET_LOCK(obj))
 
-typedef enum {
-  GST_VIDEO_TRANSFORM_ROTATE_NONE,
-  GST_VIDEO_TRANSFORM_ROTATE_90_CW,
-  GST_VIDEO_TRANSFORM_ROTATE_90_CCW,
-  GST_VIDEO_TRANSFORM_ROTATE_180,
-} GstVideoTransformRotate;
-
 typedef struct _GstVideoTransform GstVideoTransform;
 typedef struct _GstVideoTransformClass GstVideoTransformClass;
 
@@ -97,7 +90,7 @@ struct _GstVideoTransform {
   GstStructure            *backendparam;
   gboolean                flip_v;
   gboolean                flip_h;
-  GstVideoTransformRotate rotation;
+  GstVideoRotate          rotation;
   GstVideoRectangle       crop;
   GstVideoRectangle       destination;
   guint                   background;

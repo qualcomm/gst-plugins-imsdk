@@ -2289,7 +2289,7 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
     blit->mask = 0;
 
     blit->alpha = G_MAXUINT8;
-    blit->rotate = GST_VCE_ROTATE_0;
+    blit->rotate = GST_VIDEO_ROTATE_0;
   }
 
   mlconverter->composition.datatype = 0;
