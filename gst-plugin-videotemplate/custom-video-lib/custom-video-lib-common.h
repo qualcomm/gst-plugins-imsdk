@@ -29,8 +29,8 @@ typedef struct
   GstTask *worktask;
 
   // for reference functionality
-  GstVideoConvBackend backend;
-  GstVideoConvEngine *converter;
+  GstVideoConverterBackend backend;
+  GstVideoConverterEngine  *converter;
 } CustomLib;
 
 CustomLib *custom_lib_create_handle (VideoTemplateCb * callback,

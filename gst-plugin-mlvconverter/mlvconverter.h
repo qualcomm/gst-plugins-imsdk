@@ -91,59 +91,59 @@ typedef struct {
 } GstTensorLayout;
 
 struct _GstMLVideoConverter {
-  GstBaseTransform     parent;
+  GstBaseTransform         parent;
 
   /// Input video info.
-  GstVideoInfo         *ininfo;
+  GstVideoInfo             *ininfo;
 
   /// Output ML info.
-  GstMLInfo            *mlinfo;
+  GstMLInfo                *mlinfo;
   /// Video info for the converter engine output, created from the ML info.
-  GstVideoInfo         *vinfo;
+  GstVideoInfo             *vinfo;
 
   /// The ID of current ML inference stage.
-  guint                stage_id;
+  guint                    stage_id;
   /// The IDs of the previous ML detection stages which this plugin can accept.
-  GArray               *roi_stage_ids;
+  GArray                   *roi_stage_ids;
 
   /// Buffer pools.
-  GstBufferPool        *outpool;
+  GstBufferPool            *outpool;
 
   /// Queue for managing stashed buffers with not enough ROI / memory.
-  GQueue               *bufqueue;
+  GQueue                   *bufqueue;
 
   /// Tracker for the current index in the sequential ROI/memory entries.
-  guint                seq_idx;
+  guint                    seq_idx;
   /// The total number of ROI/memory entries to batch from the queued buffer.
-  guint                n_seq_entries;
+  guint                    n_seq_entries;
 
   /// Tracker for the current batch position to be filled in the tensor.
-  guint                batch_idx;
+  guint                    batch_idx;
   /// Tracker for the current depth position to be filled in the tensor.
-  guint                depth_idx;
+  guint                    depth_idx;
 
   /// The next image block in the queued muxed stream buffer to be processed.
-  gint                 next_mem_idx;
+  gint                     next_mem_idx;
   /// The ID of next ROI meta in the queued buffer to be processed.
-  gint                 next_roi_id;
+  gint                     next_roi_id;
 
   // Tensor layout configured
-  GstTensorLayout      tensorlayout;
+  GstTensorLayout          tensorlayout;
 
   /// Video converter engine.
-  GstVideoConvEngine   *converter;
-  GstVideoComposition  composition;
+  GstVideoConverterEngine  *converter;
+  GstVideoComposition      composition;
 
   /// The type of hardware being utilized.
   gchar                hw_util[10];
 
   /// Properties.
-  GstConversionMode    mode;
-  GstVideoConvBackend  backend;
-  GstVideoDisposition  disposition;
-  GstVideoPixelLayout  pixlayout;
-  GArray               *mean;
-  GArray               *sigma;
+  GstConversionMode        mode;
+  GstVideoConverterBackend backend;
+  GstVideoDisposition      disposition;
+  GstVideoPixelLayout      pixlayout;
+  GArray                   *mean;
+  GArray                   *sigma;
 };
 
 struct _GstMLVideoConverterClass {

@@ -64,36 +64,36 @@ typedef struct _GstVideoTransform GstVideoTransform;
 typedef struct _GstVideoTransformClass GstVideoTransformClass;
 
 struct _GstVideoTransform {
-  GstBaseTransform        parent;
+  GstBaseTransform         parent;
 
   /// Global mutex lock.
-  GMutex                  lock;
+  GMutex                   lock;
 
-  GstVideoInfo            *ininfo;
-  GstVideoInfo            *outinfo;
+  GstVideoInfo             *ininfo;
+  GstVideoInfo             *outinfo;
 
   // Features of the negotiated input and output caps.
-  GQuark                  infeature;
-  GQuark                  outfeature;
+  GQuark                   infeature;
+  GQuark                   outfeature;
 
   // Output buffer pool
-  GstBufferPool           *outpool;
+  GstBufferPool            *outpool;
 
   /// Video converter engine.
-  GstVideoConvEngine      *converter;
+  GstVideoConverterEngine  *converter;
 
   /// The type of hardware being utilized.
   gchar                   hw_util[10];
 
   /// Properties.
-  GstVideoConvBackend     backend;
-  GstStructure            *backendparam;
-  gboolean                flip_v;
-  gboolean                flip_h;
-  GstVideoRotate          rotation;
-  GstVideoRectangle       crop;
-  GstVideoRectangle       destination;
-  guint                   background;
+  GstVideoConverterBackend backend;
+  GstStructure             *backendparam;
+  gboolean                 flip_v;
+  gboolean                 flip_h;
+  GstVideoRotate           rotation;
+  GstVideoRectangle        crop;
+  GstVideoRectangle        destination;
+  guint                    background;
 };
 
 struct _GstVideoTransformClass {

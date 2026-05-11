@@ -12,26 +12,26 @@
 G_BEGIN_DECLS
 
 // Bitwise flags for the configuration mask in #GstVideoBlit.
-#define GST_VCE_MASK_SOURCE          (1 << 0)
-#define GST_VCE_MASK_DESTINATION     (1 << 1)
-#define GST_VCE_MASK_FLIP_VERTICAL   (1 << 2)
-#define GST_VCE_MASK_FLIP_HORIZONTAL (1 << 3)
-#define GST_VCE_MASK_ROTATION        (1 << 4)
+#define GST_VIDEO_CONVERTER_MASK_SOURCE          (1 << 0)
+#define GST_VIDEO_CONVERTER_MASK_DESTINATION     (1 << 1)
+#define GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL   (1 << 2)
+#define GST_VIDEO_CONVERTER_MASK_FLIP_HORIZONTAL (1 << 3)
+#define GST_VIDEO_CONVERTER_MASK_ROTATION        (1 << 4)
 
-#define GST_VCE_BLIT_INIT \
+#define GST_VIDEO_BLIT_INIT \
     { NULL, NULL, 0, {{0, 0}, {0, 0}, {0, 0}, {0, 0}}, \
         {0, 0, 0, 0}, 255, GST_VIDEO_ROTATE_0 }
-#define GST_VCE_COMPOSITION_INIT \
+#define GST_VIDEO_COMPOSITION_INIT \
     { NULL, 0, NULL, NULL, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
       { 1.0, 1.0, 1.0, 1.0 }, GST_VIDEO_DATA_TYPE_U8 }
 
 /**
- * GST_VCE_OPT_FCV_OP_MODE:
+ * GST_VIDEO_CONVERTER_OPT_FCV_OP_MODE:
  *
  * #GstFcvOpMode, set the operational mode of the FastCV converter
  * Default: #GST_FCV_OP_MODE_LOW_POWER.
  */
-#define GST_VCE_OPT_FCV_OP_MODE "fcv-op-mode"
+#define GST_VIDEO_CONVERTER_OPT_FCV_OP_MODE "fcv-op-mode"
 
 typedef struct _GstVideoBlit GstVideoBlit;
 typedef struct _GstVideoBlits GstVideoBlits;

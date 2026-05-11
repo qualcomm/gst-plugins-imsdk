@@ -477,7 +477,7 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
       surface_id, object->alpha);
 
   // Setup the source quadrilateral.
-  if (vblit->mask & GST_VCE_MASK_SOURCE) {
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_SOURCE) {
     object->source.a = ::ib2c::Point(vblit->source.a.x, vblit->source.a.y);
     object->source.b = ::ib2c::Point(vblit->source.b.x, vblit->source.b.y);
     object->source.c = ::ib2c::Point(vblit->source.c.x, vblit->source.c.y);
@@ -486,20 +486,20 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
     object->mask |= ::ib2c::ConfigMask::kSource;
   }
 
-  if (vblit->mask & GST_VCE_MASK_FLIP_VERTICAL) {
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL) {
     object->mask |= ::ib2c::ConfigMask::kVFlip;
     GST_TRACE ("Input surface 0x%016" G_GINT64_MODIFIER "x - Flip Vertically",
         surface_id);
   }
 
-  if (vblit->mask & GST_VCE_MASK_FLIP_HORIZONTAL) {
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_HORIZONTAL) {
     object->mask |= ::ib2c::ConfigMask::kHFlip;
     GST_TRACE ("Input surface 0x%016" G_GINT64_MODIFIER "x - Flip Horizontally",
         surface_id);
   }
 
   // Setup the target rectangle.
-  if (vblit->mask & GST_VCE_MASK_DESTINATION) {
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_DESTINATION) {
     x = object->destination.x = vblit->destination.x;
     y = object->destination.y = vblit->destination.y;
     width = object->destination.w = vblit->destination.w;
@@ -511,7 +511,7 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
     height = GST_VIDEO_INFO_HEIGHT (composition->info);
   }
 
-  if (vblit->mask & GST_VCE_MASK_ROTATION)
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_ROTATION)
     rotate = vblit->rotate;
 
   // Setup rotation angle and adjustments.

@@ -417,10 +417,10 @@ gst_fcv_get_opmode (const GstStructure * settings)
   gint mode = GST_FCV_OP_MODE_PERFORMANCE;
 
   if ((settings == NULL) ||
-      !gst_structure_has_field (settings, GST_VCE_OPT_FCV_OP_MODE))
+      !gst_structure_has_field (settings, GST_VIDEO_CONVERTER_OPT_FCV_OP_MODE))
     return mode;
 
-  value = gst_structure_get_value (settings, GST_VCE_OPT_FCV_OP_MODE);
+  value = gst_structure_get_value (settings, GST_VIDEO_CONVERTER_OPT_FCV_OP_MODE);
 
   if (G_VALUE_TYPE (value) == gst_fcv_op_mode_get_type ())
     return g_value_get_enum (value);
@@ -2312,21 +2312,21 @@ gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
         return FALSE;
       }
 
-      if ((blit->mask & GST_VCE_MASK_FLIP_VERTICAL) &&
-          (blit->mask & GST_VCE_MASK_FLIP_HORIZONTAL))
+      if ((blit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL) &&
+          (blit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_HORIZONTAL))
         flip = FASTCV_FLIP_BOTH;
-      else if (blit->mask & GST_VCE_MASK_FLIP_VERTICAL)
+      else if (blit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL)
         flip = FASTCV_FLIP_VERT;
-      else if (blit->mask & GST_VCE_MASK_FLIP_HORIZONTAL)
+      else if (blit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_HORIZONTAL)
         flip = FASTCV_FLIP_HORIZ;
 
-      if (blit->mask & GST_VCE_MASK_ROTATION)
+      if (blit->mask & GST_VIDEO_CONVERTER_MASK_ROTATION)
         rotate = gst_fcv_translate_rotation (blit->rotate);
 
       // Intialization of the source FCV object.
       object = &(objects[n_objects]);
 
-      if (blit->mask & GST_VCE_MASK_SOURCE) {
+      if (blit->mask & GST_VIDEO_CONVERTER_MASK_SOURCE) {
         if (!gst_video_quadrilateral_is_rectangle (&(blit->source))) {
           GST_ERROR ("Composition %u: Blit %u: Source quadrilateral is not a "
               "rectangle! A(%f, %f) B(%f, %f) C(%fd, %f) D(%f, %f)", idx, num,
@@ -2353,7 +2353,7 @@ gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
       object = &(objects[n_objects + 1]);
 
       // Setup the source quadrilateral.
-      if (blit->mask & GST_VCE_MASK_DESTINATION) {
+      if (blit->mask & GST_VIDEO_CONVERTER_MASK_DESTINATION) {
         rectangle = blit->destination;
       } else {
         rectangle.x = rectangle.y = 0;

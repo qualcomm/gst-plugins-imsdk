@@ -791,11 +791,11 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   if (object->global_alpha != G_MAXUINT8)
     object->config_mask |= C2D_GLOBAL_ALPHA_BIT;
 
-  if (vblit->mask & GST_VCE_MASK_ROTATION)
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_ROTATION)
     rotate = vblit->rotate;
 
   // Setup the source rectangle.
-  if (vblit->mask & GST_VCE_MASK_SOURCE) {
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_SOURCE) {
     x = vblit->source.a.x;
     y = vblit->source.a.y;
     width = vblit->source.d.x - vblit->source.a.x;
@@ -815,12 +815,12 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   // Apply the flip bits to the object configure mask if set.
   object->config_mask &= ~(C2D_MIRROR_V_BIT | C2D_MIRROR_H_BIT);
 
-  if (vblit->mask & GST_VCE_MASK_FLIP_VERTICAL) {
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL) {
     object->config_mask |= C2D_MIRROR_V_BIT;
     GST_TRACE ("Input surface %x - Flip Vertically", surface_id);
   }
 
-  if (vblit->mask & GST_VCE_MASK_FLIP_HORIZONTAL) {
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_HORIZONTAL) {
     object->config_mask |= C2D_MIRROR_H_BIT;
     GST_TRACE ("Input surface %x - Flip Horizontally", surface_id);
   }
@@ -829,7 +829,7 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   x = y = width = height = 0;
 
   // Setup the target rectangle.
-  if (vblit->mask & GST_VCE_MASK_DESTINATION) {
+  if (vblit->mask & GST_VIDEO_CONVERTER_MASK_DESTINATION) {
     x = vblit->destination.x;
     y = vblit->destination.y;
     width = vblit->destination.w;
@@ -1039,7 +1039,7 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
   for (idx = 0; idx < n_compositions; idx++) {
     GstVideoComposition *composition = NULL;
     GstVideoFrame *outframe = g_slice_new0 (GstVideoFrame);
-    GstVideoBlit *blits = NULL, l_blit = GST_VCE_BLIT_INIT;
+    GstVideoBlit *blits = NULL, l_blit = GST_VIDEO_BLIT_INIT;
     guint n_blits = 0, n_objects = 0;
     gboolean optimized = FALSE;
     request = &g_array_index (requests, GstC2dRequest, idx);
@@ -1101,7 +1101,7 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
         goto cleanup;
       }
 
-      if ((blit->mask & GST_VCE_MASK_SOURCE) &&
+      if ((blit->mask & GST_VIDEO_CONVERTER_MASK_SOURCE) &&
           !gst_video_quadrilateral_is_rectangle (&(blit->source))) {
         GST_ERROR ("Composition %u: Blit %u: Source quadrilateral is not a "
             "rectangle! A(%f, %f) B(%f, %f) C(%f, %f) D(%f, %f)", idx, num,

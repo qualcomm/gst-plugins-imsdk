@@ -321,10 +321,10 @@ gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
   }
 
   gst_video_quadrilateral_from_rectangle (&(vblit->source), &source);
-  vblit->mask |= GST_VCE_MASK_SOURCE;
+  vblit->mask |= GST_VIDEO_CONVERTER_MASK_SOURCE;
 
   destination = &(vblit->destination);
-  vblit->mask |= GST_VCE_MASK_DESTINATION;
+  vblit->mask |= GST_VIDEO_CONVERTER_MASK_DESTINATION;
 
   destination->x = destination->y = 0;
   destination->w = maxwidth =  GST_VIDEO_INFO_WIDTH (composition->info);
@@ -1321,7 +1321,7 @@ gst_video_split_set_property (GObject * object, guint prop_id,
     case PROP_ENGINE_BACKEND:
       vsplit->backend = g_value_get_enum (value);
 
-      if (vsplit->backend == GST_VCE_BACKEND_GLES)
+      if (vsplit->backend == GST_VIDEO_CONVERTER_BACKEND_GLES)
         g_strlcpy (vsplit->hw_util, "GPU", sizeof(vsplit->hw_util));
       else
         g_strlcpy (vsplit->hw_util, "CPU", sizeof(vsplit->hw_util));
@@ -1381,7 +1381,7 @@ gst_video_split_class_init (GstVideoSplitClass * klass)
   g_object_class_install_property (gobject, PROP_ENGINE_BACKEND,
       g_param_spec_enum ("engine", "Engine",
           "Engine backend used for the conversion operations",
-          GST_TYPE_VCE_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
+          GST_TYPE_VIDEO_CONVERTER_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element,
@@ -1414,7 +1414,7 @@ gst_video_split_init (GstVideoSplit * vsplit)
 
   vsplit->backend = DEFAULT_PROP_ENGINE_BACKEND;
 
-  if (vsplit->backend == GST_VCE_BACKEND_GLES)
+  if (vsplit->backend == GST_VIDEO_CONVERTER_BACKEND_GLES)
     g_strlcpy (vsplit->hw_util, "GPU", sizeof(vsplit->hw_util));
   else
     g_strlcpy (vsplit->hw_util, "CPU", sizeof(vsplit->hw_util));

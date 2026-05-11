@@ -2487,21 +2487,21 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
         return FALSE;
       }
 
-      if ((blit->mask & GST_VCE_MASK_FLIP_VERTICAL) &&
-          (blit->mask & GST_VCE_MASK_FLIP_HORIZONTAL))
+      if ((blit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL) &&
+          (blit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_HORIZONTAL))
         flip = GST_OCV_FLIP_BOTH;
-      else if (blit->mask & GST_VCE_MASK_FLIP_VERTICAL)
+      else if (blit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL)
         flip = GST_OCV_FLIP_VERTICAL;
-      else if (blit->mask & GST_VCE_MASK_FLIP_HORIZONTAL)
+      else if (blit->mask & GST_VIDEO_CONVERTER_MASK_FLIP_HORIZONTAL)
         flip = GST_OCV_FLIP_HORIZONTAL;
 
-      if (blit->mask & GST_VCE_MASK_ROTATION)
+      if (blit->mask & GST_VIDEO_CONVERTER_MASK_ROTATION)
         rotate = blit->rotate;
 
       // Intialization of the source OCV object.
       object = &(objects[n_objects]);
 
-      if (blit->mask & GST_VCE_MASK_SOURCE) {
+      if (blit->mask & GST_VIDEO_CONVERTER_MASK_SOURCE) {
         if (!gst_video_quadrilateral_is_rectangle (&(blit->source))) {
           GST_ERROR ("Composition %u: Blit %u: Source quadrilateral is not a "
               "rectangle! A(%f, %f) B(%f, %f) C(%fd, %f) D(%f, %f)", idx, num,
@@ -2528,7 +2528,7 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
       object = &(objects[n_objects + 1]);
 
       // Setup the source quadrilateral.
-      if (blit->mask & GST_VCE_MASK_DESTINATION) {
+      if (blit->mask & GST_VIDEO_CONVERTER_MASK_DESTINATION) {
         rectangle = blit->destination;
       } else {
         rectangle.x = rectangle.y = 0;

@@ -181,7 +181,7 @@ gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
     vblit = &(composition->blits[idx]);
     inbuffer = vblit->buffer;
 
-    if (vblit->mask & GST_VCE_MASK_SOURCE) {
+    if (vblit->mask & GST_VIDEO_CONVERTER_MASK_SOURCE) {
       gst_video_quadrilateral_to_rectangle (&(vblit->source), &source);
     } else {
       source.x = source.y = 0;
@@ -189,7 +189,7 @@ gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
       source.h = GST_VIDEO_INFO_HEIGHT (vblit->info);
     }
 
-    if (vblit->mask & GST_VCE_MASK_DESTINATION) {
+    if (vblit->mask & GST_VIDEO_CONVERTER_MASK_DESTINATION) {
       destination = vblit->destination;
     } else {
       destination.x = destination.y = 0;
@@ -792,7 +792,7 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (vaggregator);
   GList *list = NULL;
-  GstVideoComposition composition = GST_VCE_COMPOSITION_INIT;
+  GstVideoComposition composition = GST_VIDEO_COMPOSITION_INIT;
   GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = TRUE;
   guint idx = 0, n_inputs = 0;
@@ -845,7 +845,7 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 
     if ((sinkpad->crop.w != 0) && (sinkpad->crop.h != 0)) {
       gst_video_quadrilateral_from_rectangle (&(vblit->source), &(sinkpad->crop));
-      vblit->mask |= GST_VCE_MASK_SOURCE;
+      vblit->mask |= GST_VIDEO_CONVERTER_MASK_SOURCE;
     } else if ((roimeta = gst_buffer_get_image_region_meta (inbuffer)) != NULL) {
       vblit->source.a = (GstVideoPoint){roimeta->x, roimeta->y};
       vblit->source.b = (GstVideoPoint){roimeta->x, roimeta->y + roimeta->h};
@@ -853,22 +853,22 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
       vblit->source.d =
           (GstVideoPoint){roimeta->x + roimeta->w, roimeta->y + roimeta->h};
 
-      vblit->mask |= GST_VCE_MASK_SOURCE;
+      vblit->mask |= GST_VIDEO_CONVERTER_MASK_SOURCE;
     }
 
     if ((sinkpad->destination.w != 0) && (sinkpad->destination.h != 0)) {
       vblit->destination = sinkpad->destination;
-      vblit->mask |= GST_VCE_MASK_DESTINATION;
+      vblit->mask |= GST_VIDEO_CONVERTER_MASK_DESTINATION;
     }
 
     if (sinkpad->flip_h)
-      vblit->mask |= GST_VCE_MASK_FLIP_HORIZONTAL;
+      vblit->mask |= GST_VIDEO_CONVERTER_MASK_FLIP_HORIZONTAL;
 
     if (sinkpad->flip_v)
-      vblit->mask |= GST_VCE_MASK_FLIP_VERTICAL;
+      vblit->mask |= GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL;
 
     vblit->rotate = sinkpad->rotation;
-    vblit->mask |= GST_VCE_MASK_ROTATION;
+    vblit->mask |= GST_VIDEO_CONVERTER_MASK_ROTATION;
 
     GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
 
@@ -1019,7 +1019,7 @@ gst_video_composer_set_property (GObject * object, guint prop_id,
     case PROP_ENGINE_BACKEND:
       vcomposer->backend = g_value_get_enum (value);
 
-      if (vcomposer->backend == GST_VCE_BACKEND_GLES)
+      if (vcomposer->backend == GST_VIDEO_CONVERTER_BACKEND_GLES)
         g_strlcpy (vcomposer->hw_util, "GPU", sizeof(vcomposer->hw_util));
       else
         g_strlcpy (vcomposer->hw_util, "CPU", sizeof(vcomposer->hw_util));
@@ -1094,7 +1094,7 @@ gst_video_composer_class_init (GstVideoComposerClass * klass)
   g_object_class_install_property (gobject, PROP_ENGINE_BACKEND,
       g_param_spec_enum ("engine", "Engine",
           "Engine backend used for the conversion operations",
-          GST_TYPE_VCE_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
+          GST_TYPE_VIDEO_CONVERTER_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_BACKGROUND,
       g_param_spec_uint ("background", "Background",
@@ -1148,7 +1148,7 @@ gst_video_composer_init (GstVideoComposer * vcomposer)
   vcomposer->backend = DEFAULT_PROP_ENGINE_BACKEND;
   vcomposer->background = DEFAULT_PROP_BACKGROUND;
 
-  if (vcomposer->backend == GST_VCE_BACKEND_GLES)
+  if (vcomposer->backend == GST_VIDEO_CONVERTER_BACKEND_GLES)
     g_strlcpy (vcomposer->hw_util, "GPU", sizeof(vcomposer->hw_util));
   else
     g_strlcpy (vcomposer->hw_util, "CPU", sizeof(vcomposer->hw_util));

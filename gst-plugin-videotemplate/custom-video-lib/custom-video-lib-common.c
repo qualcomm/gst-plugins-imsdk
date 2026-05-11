@@ -22,7 +22,7 @@ custom_lib_create_handle (VideoTemplateCb * callback, void *priv_data)
   gst_video_info_init (&custom_lib->outinfo_);
 
   // for reference functionality
-  custom_lib->backend = GST_VCE_BACKEND_GLES;
+  custom_lib->backend = GST_VIDEO_CONVERTER_BACKEND_GLES;
   custom_lib->converter = NULL;
 
   return custom_lib;
@@ -158,14 +158,14 @@ custom_lib_process_buffer (CustomLib * custom_lib,
   }
 
   {
-    GstVideoBlit blit = GST_VCE_BLIT_INIT;
-    GstVideoComposition composition = GST_VCE_COMPOSITION_INIT;
+    GstVideoBlit blit = GST_VIDEO_BLIT_INIT;
+    GstVideoComposition composition = GST_VIDEO_COMPOSITION_INIT;
     GstClockTime time = GST_CLOCK_TIME_NONE;
 
     time = gst_util_get_timestamp ();
 
     blit.buffer = inbuffer;
-    blit.mask |= GST_VCE_MASK_FLIP_VERTICAL;
+    blit.mask |= GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL;
 
     composition.blits = &blit;
     composition.n_blits = 1;

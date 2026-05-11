@@ -72,7 +72,7 @@ typedef gboolean (*GstVideoConvWaitFenceFunction) (gpointer converter,
 typedef void (*GstVideoConvFlushFunction) (gpointer converter);
 
 /**
- * GstVideoConvEngine:
+ * GstVideoConverterEngine:
  * @parent: Parent instance.
  * @converter: Pointer underlying converter backend.
  * @new: Pointer to the new function of the underlying converter.
@@ -83,7 +83,7 @@ typedef void (*GstVideoConvFlushFunction) (gpointer converter);
  *
  * Base class for video converter engine.
  */
-struct _GstVideoConvEngine {
+struct _GstVideoConverterEngine {
   GObject                       parent;
 
   gpointer                      converter;
@@ -96,17 +96,17 @@ struct _GstVideoConvEngine {
   GstVideoConvFlushFunction     flush;
 };
 
-G_DEFINE_TYPE (GstVideoConvEngine, gst_video_converter_engine, G_TYPE_OBJECT)
+G_DEFINE_TYPE (GstVideoConverterEngine, gst_video_converter_engine, G_TYPE_OBJECT)
 
 static void
-gst_video_converter_engine_class_init (GstVideoConvEngineClass * klass)
+gst_video_converter_engine_class_init (GstVideoConverterEngineClass * klass)
 {
   GST_DEBUG_CATEGORY_INIT (gst_video_converter_engine_debug,
       "video-converter-engine", 0, "QTI Video Converter Engine");
 }
 
 static void
-gst_video_converter_engine_init (GstVideoConvEngine * engine)
+gst_video_converter_engine_init (GstVideoConverterEngine * engine)
 {
   engine->converter = NULL;
 
@@ -124,60 +124,60 @@ gst_video_converter_backend_get_type (void)
   static GType gtype = 0;
 
   static const GEnumValue variants[] = {
-    { GST_VCE_BACKEND_NONE, "No backend used", "none" },
+    { GST_VIDEO_CONVERTER_BACKEND_NONE, "No backend used", "none" },
 #ifdef HAVE_ADRENO_C2D2_H
-    { GST_VCE_BACKEND_C2D, "Use C2D based video converter", "c2d" },
+    { GST_VIDEO_CONVERTER_BACKEND_C2D, "Use C2D based video converter", "c2d" },
 #endif // HAVE_ADRENO_C2D2_H
 #ifdef HAVE_GLES2_H
-    { GST_VCE_BACKEND_GLES, "Use OpenGLES based video converter", "gles" },
+    { GST_VIDEO_CONVERTER_BACKEND_GLES, "Use OpenGLES based video converter", "gles" },
 #endif // HAVE_GLES2_H
 #ifdef HAVE_FASTCV_H
-    { GST_VCE_BACKEND_FCV, "Use FastCV based video converter", "fcv" },
+    { GST_VIDEO_CONVERTER_BACKEND_FCV, "Use FastCV based video converter", "fcv" },
 #endif // HAVE_FASTCV_H
 #ifdef HAVE_OPENCV_H
-    { GST_VCE_BACKEND_OCV, "Use OpenCV based video converter", "ocv" },
+    { GST_VIDEO_CONVERTER_BACKEND_OCV, "Use OpenCV based video converter", "ocv" },
 #endif // HAVE_OPENCV_H
     { 0, NULL, NULL },
   };
 
   if (!gtype)
-    gtype = g_enum_register_static ("GstVideoConvBackend", variants);
+    gtype = g_enum_register_static ("GstVideoConverterBackend", variants);
 
   return gtype;
 }
 
-GstVideoConvBackend
+GstVideoConverterBackend
 gst_video_converter_default_backend (void)
 {
-  GstVideoConvBackend backend = GST_VCE_BACKEND_FCV;
+  GstVideoConverterBackend backend = GST_VIDEO_CONVERTER_BACKEND_FCV;
 
 #if defined(HAVE_GLES2_H)
-  backend = GST_VCE_BACKEND_GLES;
+  backend = GST_VIDEO_CONVERTER_BACKEND_GLES;
 #elif defined(HAVE_ADRENO_C2D2_H)
-  backend = GST_VCE_BACKEND_C2D;
+  backend = GST_VIDEO_CONVERTER_BACKEND_C2D;
 #elif defined(HAVE_OPENCV_H)
-  backend = GST_VCE_BACKEND_OCV;
+  backend = GST_VIDEO_CONVERTER_BACKEND_OCV;
 #endif // !HAVE_IOT_CORE_IB2C_H && !HAVE_ADRENO_C2D2_H && ! HAVE_OPENCV_H
 
   return backend;
 }
 
-GstVideoConvEngine *
-gst_video_converter_engine_new (GstVideoConvBackend backend,
+GstVideoConverterEngine *
+gst_video_converter_engine_new (GstVideoConverterBackend backend,
                                 GstStructure * settings)
 {
-  GstVideoConvEngine *engine = NULL;
+  GstVideoConverterEngine *engine = NULL;
 
   engine = g_object_new (GST_TYPE_VIDEO_CONVERTER_ENGINE, NULL);
   g_return_val_if_fail (engine != NULL, FALSE);
 
   switch (backend) {
-    case GST_VCE_BACKEND_NONE:
+    case GST_VIDEO_CONVERTER_BACKEND_NONE:
       // No engine required
       g_object_unref (engine);
       return NULL;
 #ifdef HAVE_ADRENO_C2D2_H
-    case GST_VCE_BACKEND_C2D:
+    case GST_VIDEO_CONVERTER_BACKEND_C2D:
       engine->new = (GstVideoConvNewFunction) gst_c2d_video_converter_new;
       engine->free = (GstVideoConvFreeFunction) gst_c2d_video_converter_free;
       engine->compose =
@@ -188,7 +188,7 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
       break;
 #endif // HAVE_ADRENO_C2D2_H
 #ifdef HAVE_GLES2_H
-    case GST_VCE_BACKEND_GLES:
+    case GST_VIDEO_CONVERTER_BACKEND_GLES:
       engine->new = (GstVideoConvNewFunction) gst_gles_video_converter_new;
       engine->free = (GstVideoConvFreeFunction) gst_gles_video_converter_free;
       engine->compose =
@@ -199,7 +199,7 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
       break;
 #endif // HAVE_GLES2_H
 #ifdef HAVE_FASTCV_H
-    case GST_VCE_BACKEND_FCV:
+    case GST_VIDEO_CONVERTER_BACKEND_FCV:
       engine->new = (GstVideoConvNewFunction) gst_fcv_video_converter_new;
       engine->free = (GstVideoConvFreeFunction) gst_fcv_video_converter_free;
       engine->compose =
@@ -210,7 +210,7 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
       break;
 #endif // HAVE_FASTCV_H
 #ifdef HAVE_OPENCV_H
-    case GST_VCE_BACKEND_OCV:
+    case GST_VIDEO_CONVERTER_BACKEND_OCV:
       engine->new = (GstVideoConvNewFunction) gst_ocv_video_converter_new;
       engine->free = (GstVideoConvFreeFunction) gst_ocv_video_converter_free;
       engine->compose =
@@ -238,7 +238,7 @@ cleanup:
 }
 
 void
-gst_video_converter_engine_free (GstVideoConvEngine * engine)
+gst_video_converter_engine_free (GstVideoConverterEngine * engine)
 {
   if (engine == NULL)
     return;
@@ -248,7 +248,7 @@ gst_video_converter_engine_free (GstVideoConvEngine * engine)
 }
 
 gboolean
-gst_video_converter_engine_compose (GstVideoConvEngine * engine,
+gst_video_converter_engine_compose (GstVideoConverterEngine * engine,
     GstVideoComposition * compositions, guint n_compositions, gpointer * fence)
 {
   g_return_val_if_fail (engine != NULL, FALSE);
@@ -258,7 +258,7 @@ gst_video_converter_engine_compose (GstVideoConvEngine * engine,
 }
 
 gboolean
-gst_video_converter_engine_wait_fence  (GstVideoConvEngine * engine,
+gst_video_converter_engine_wait_fence  (GstVideoConverterEngine * engine,
     gpointer fence)
 {
   g_return_val_if_fail (engine != NULL, FALSE);
@@ -270,7 +270,7 @@ gst_video_converter_engine_wait_fence  (GstVideoConvEngine * engine,
 }
 
 void
-gst_video_converter_engine_flush (GstVideoConvEngine * engine)
+gst_video_converter_engine_flush (GstVideoConverterEngine * engine)
 {
   g_return_if_fail (engine != NULL);
 

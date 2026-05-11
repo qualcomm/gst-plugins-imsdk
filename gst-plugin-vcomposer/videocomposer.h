@@ -65,23 +65,23 @@ typedef struct _GstVideoComposer GstVideoComposer;
 typedef struct _GstVideoComposerClass GstVideoComposerClass;
 
 struct _GstVideoComposer {
-  GstVideoAggregator   parent;
+  GstVideoAggregator       parent;
 
   /// Global mutex lock.
-  GMutex               lock;
+  GMutex                   lock;
 
   /// Output buffer pool.
-  GstBufferPool        *outpool;
+  GstBufferPool            *outpool;
 
   /// Video converter engine.
-  GstVideoConvEngine   *converter;
+  GstVideoConverterEngine  *converter;
 
   /// The type of hardware being utilized.
   gchar                hw_util[10];
 
   /// Properties.
-  GstVideoConvBackend  backend;
-  guint                background;
+  GstVideoConverterBackend backend;
+  guint                    background;
 };
 
 struct _GstVideoComposerClass {

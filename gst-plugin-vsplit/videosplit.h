@@ -34,32 +34,32 @@ typedef struct _GstVideoSplitClass GstVideoSplitClass;
 struct _GstVideoSplit
 {
   /// Inherited parent structure.
-  GstElement           parent;
+  GstElement               parent;
 
   /// Global mutex lock.
-  GMutex               lock;
+  GMutex                   lock;
 
   /// Next available index for the source pads.
-  guint                nextidx;
+  guint                    nextidx;
 
   /// Convenient local reference to sink pad.
-  GstPad               *sinkpad;
+  GstPad                   *sinkpad;
   /// Convenient local reference to source pads.
-  GList                *srcpads;
+  GList                    *srcpads;
 
   /// Worker task.
-  GstTask              *worktask;
+  GstTask                  *worktask;
   /// Worker task mutex.
-  GRecMutex            worklock;
+  GRecMutex                worklock;
 
   /// Video converter engine.
-  GstVideoConvEngine   *converter;
+  GstVideoConverterEngine  *converter;
 
   /// The type of hardware being utilized.
   gchar                hw_util[10];
 
   /// Properties.
-  GstVideoConvBackend  backend;
+  GstVideoConverterBackend backend;
 };
 
 struct _GstVideoSplitClass {

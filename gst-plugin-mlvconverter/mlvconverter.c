@@ -803,7 +803,7 @@ gst_ml_video_converter_update_source (GstMLVideoConverter * mlconverter,
   guint num = 0, row = 0, column = 0;
 
   source = &(vblit->source);
-  vblit->mask |= GST_VCE_MASK_SOURCE;
+  vblit->mask |= GST_VIDEO_CONVERTER_MASK_SOURCE;
 
   if (roimeta == NULL) {
     // Initialize the source region with full dimensions of the blit frame.
@@ -905,7 +905,7 @@ gst_ml_video_converter_update_destination (GstMLVideoConverter * mlconverter,
   gint inwidth = 0, inheight = 0, maxwidth = 0, maxheight = 0;
 
   destination = &(vblit->destination);
-  vblit->mask |= GST_VCE_MASK_DESTINATION;
+  vblit->mask |= GST_VIDEO_CONVERTER_MASK_DESTINATION;
 
   n_batch = GST_ML_INFO_TENSOR_DIM_N (mlconverter->tensorlayout,
       mlconverter->mlinfo);
@@ -2005,7 +2005,7 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
     result = gst_pad_get_pad_template_caps (pad);
 
     // Try to negotiate precice video caps if engine is NONE.
-    if (mlconverter->backend == GST_VCE_BACKEND_NONE) {
+    if (mlconverter->backend == GST_VIDEO_CONVERTER_BACKEND_NONE) {
       GstCaps *videocaps = NULL;
       gint idx = 0, length = 0, maxwidth = 0, maxheight = 0;
       GstCaps *localcaps = gst_caps_copy (caps);
@@ -2491,7 +2491,7 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   // Perform transformation only when custom normalization coefficients are set,
   // when there are multiple blit elements (buffers), or when there is only a
   // single blit element which does not have the required parameters for output.
-  if (mlconverter->backend != GST_VCE_BACKEND_NONE &&
+  if (mlconverter->backend != GST_VIDEO_CONVERTER_BACKEND_NONE &&
       ((n_blits > 1) || is_conversion_required (ininfo, outinfo) ||
           ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0)))) {
     success = gst_video_converter_engine_compose (mlconverter->converter,
@@ -2530,7 +2530,7 @@ gst_ml_video_converter_set_property (GObject * object, guint prop_id,
     case PROP_ENGINE_BACKEND:
       mlconverter->backend = g_value_get_enum (value);
 
-      if (mlconverter->backend == GST_VCE_BACKEND_GLES)
+      if (mlconverter->backend == GST_VIDEO_CONVERTER_BACKEND_GLES)
         g_strlcpy (mlconverter->hw_util, "GPU", sizeof(mlconverter->hw_util));
       else
         g_strlcpy (mlconverter->hw_util, "CPU", sizeof(mlconverter->hw_util));
@@ -2681,7 +2681,7 @@ gst_ml_video_converter_class_init (GstMLVideoConverterClass * klass)
   g_object_class_install_property (gobject, PROP_ENGINE_BACKEND,
       g_param_spec_enum ("engine", "Engine",
           "Engine backend used for the conversion operations",
-          GST_TYPE_VCE_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
+          GST_TYPE_VIDEO_CONVERTER_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_IMAGE_DISPOSITION,
       g_param_spec_enum ("image-disposition", "Image Disposition",
@@ -2774,7 +2774,7 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
   mlconverter->mean = g_array_new (FALSE, FALSE, sizeof (gdouble));
   mlconverter->sigma = g_array_new (FALSE, FALSE, sizeof (gdouble));
 
-  if (mlconverter->backend == GST_VCE_BACKEND_GLES)
+  if (mlconverter->backend == GST_VIDEO_CONVERTER_BACKEND_GLES)
     g_strlcpy (mlconverter->hw_util, "GPU", sizeof(mlconverter->hw_util));
   else
     g_strlcpy (mlconverter->hw_util, "CPU", sizeof(mlconverter->hw_util));

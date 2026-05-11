@@ -1222,7 +1222,7 @@ gst_overlay_video_blit_initialize (GstVOverlay * overlay, guint ovltype,
     return FALSE;
   }
 
-  blit->mask = (GST_VCE_MASK_SOURCE | GST_VCE_MASK_DESTINATION);
+  blit->mask = (GST_VIDEO_CONVERTER_MASK_SOURCE | GST_VIDEO_CONVERTER_MASK_DESTINATION);
   vmeta = gst_buffer_get_video_meta (buffer);
 
   if (!gst_video_info_modify_with_meta (info, vmeta)) {
@@ -2206,7 +2206,7 @@ gst_overlay_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
 {
   GstVOverlay *overlay = GST_OVERLAY (base);
   GstVideoMeta *vmeta = NULL;
-  GstVideoComposition composition = GST_VCE_COMPOSITION_INIT;
+  GstVideoComposition composition = GST_VIDEO_COMPOSITION_INIT;
   GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
 

@@ -34,30 +34,30 @@ typedef struct _GstVOverlay GstVOverlay;
 typedef struct _GstVOverlayClass GstVOverlayClass;
 
 struct _GstVOverlay {
-  GstBaseTransform     parent;
+  GstBaseTransform        parent;
 
-  GMutex               lock;
-
+  /// Global mutex lock.
+  GMutex                  lock;
   /// Maximum latency.
-  GstClockTime         latency;
+  GstClockTime            latency;
 
   /// Video info extracted from negotiated sink/src caps.
-  GstVideoInfo         *vinfo;
+  GstVideoInfo            *vinfo;
 
   /// Internal intermediary buffer pools, used for drawing image overlays.
-  GstBufferPool        *ovlpools[GST_OVERLAY_TYPE_MAX];
+  GstBufferPool           *ovlpools[GST_OVERLAY_TYPE_MAX];
   /// Video info for the intermediary buffers produced by the pools.
-  GstVideoInfo         *ovlinfos[GST_OVERLAY_TYPE_MAX];
+  GstVideoInfo            *ovlinfos[GST_OVERLAY_TYPE_MAX];
 
   /// Video converter engine.
-  GstVideoConvEngine   *converter;
+  GstVideoConverterEngine *converter;
 
   /// Properties.
-  GArray               *bboxes;
-  GArray               *timestamps;
-  GArray               *strings;
-  GArray               *simages;
-  GArray               *masks;
+  GArray                  *bboxes;
+  GArray                  *timestamps;
+  GArray                  *strings;
+  GArray                  *simages;
+  GArray                  *masks;
 };
 
 struct _GstVOverlayClass {

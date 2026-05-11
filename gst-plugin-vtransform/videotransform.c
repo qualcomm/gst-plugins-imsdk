@@ -1598,8 +1598,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (base);
-  GstVideoBlit blit = GST_VCE_BLIT_INIT;
-  GstVideoComposition composition = GST_VCE_COMPOSITION_INIT;
+  GstVideoBlit blit = GST_VIDEO_BLIT_INIT;
+  GstVideoComposition composition = GST_VIDEO_COMPOSITION_INIT;
   GstClockTime time = GST_CLOCK_TIME_NONE;
   const GstVideoMeta *meta = NULL;
   gboolean success = FALSE;
@@ -1628,22 +1628,22 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   if ((vtrans->crop.w != 0) && (vtrans->crop.h != 0)) {
     gst_video_quadrilateral_from_rectangle (&(blit.source), &(vtrans->crop));
-    blit.mask |= GST_VCE_MASK_SOURCE;
+    blit.mask |= GST_VIDEO_CONVERTER_MASK_SOURCE;
   }
 
   if ((vtrans->destination.w != 0) && (vtrans->destination.h != 0)) {
     blit.destination = vtrans->destination;
-    blit.mask |= GST_VCE_MASK_DESTINATION;
+    blit.mask |= GST_VIDEO_CONVERTER_MASK_DESTINATION;
   }
 
   if (vtrans->flip_h)
-    blit.mask |= GST_VCE_MASK_FLIP_HORIZONTAL;
+    blit.mask |= GST_VIDEO_CONVERTER_MASK_FLIP_HORIZONTAL;
 
   if (vtrans->flip_v)
-    blit.mask |= GST_VCE_MASK_FLIP_VERTICAL;
+    blit.mask |= GST_VIDEO_CONVERTER_MASK_FLIP_VERTICAL;
 
   blit.rotate = vtrans->rotation;
-  blit.mask |= GST_VCE_MASK_ROTATION;
+  blit.mask |= GST_VIDEO_CONVERTER_MASK_ROTATION;
 
   meta = gst_buffer_get_video_meta (outbuffer);
 
@@ -1701,7 +1701,7 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
     case PROP_ENGINE_BACKEND:
       vtrans->backend = g_value_get_enum (value);
 
-      if (vtrans->backend == GST_VCE_BACKEND_GLES)
+      if (vtrans->backend == GST_VIDEO_CONVERTER_BACKEND_GLES)
         g_strlcpy (vtrans->hw_util, "GPU", sizeof(vtrans->hw_util));
       else
         g_strlcpy (vtrans->hw_util, "CPU", sizeof(vtrans->hw_util));
@@ -1912,7 +1912,7 @@ gst_video_transform_class_init (GstVideoTransformClass * klass)
   g_object_class_install_property (gobject, PROP_ENGINE_BACKEND,
       g_param_spec_enum ("engine", "Engine",
           "Engine backend used for the conversion operations",
-          GST_TYPE_VCE_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
+          GST_TYPE_VIDEO_CONVERTER_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_BACKEND_PARAM,
       g_param_spec_string ("engine-param", "Engine Parameters",
@@ -2006,7 +2006,7 @@ gst_video_transform_init (GstVideoTransform * vtrans)
   vtrans->destination.w = DEFAULT_PROP_DESTINATION_WIDTH;
   vtrans->destination.h = DEFAULT_PROP_DESTINATION_HEIGHT;
 
-  if (vtrans->backend == GST_VCE_BACKEND_GLES)
+  if (vtrans->backend == GST_VIDEO_CONVERTER_BACKEND_GLES)
     g_strlcpy (vtrans->hw_util, "GPU", sizeof(vtrans->hw_util));
   else
     g_strlcpy (vtrans->hw_util, "CPU", sizeof(vtrans->hw_util));

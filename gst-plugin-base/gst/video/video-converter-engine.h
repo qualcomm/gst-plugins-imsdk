@@ -13,54 +13,54 @@
 
 G_BEGIN_DECLS
 
-typedef struct _GstVideoConvEngine GstVideoConvEngine;
+typedef struct _GstVideoConverterEngine GstVideoConverterEngine;
 
 #define GST_TYPE_VIDEO_CONVERTER_ENGINE (gst_video_converter_engine_get_type())
-G_DECLARE_FINAL_TYPE (GstVideoConvEngine, gst_video_converter_engine, GST,
-    VIDEO_CONVERTER_ENGINE, GObject)
+G_DECLARE_FINAL_TYPE (GstVideoConverterEngine, gst_video_converter_engine,
+    GST, VIDEO_CONVERTER_ENGINE, GObject)
 
 /**
- * GstVideoConvBackend:
- * @GST_VCE_BACKEND_NONE: Do not use any backend
- * @GST_VCE_BACKEND_C2D: Use C2D based video converter.
- * @GST_VCE_BACKEND_GLES: Use OpenGLES based video converter.
- * @GST_VCE_BACKEND_FCV: Use FastCV based video converter.
- * @GST_VCE_BACKEND_OCV: Use OpenCV based video converter.
+ * GstVideoConverterBackend:
+ * @GST_VIDEO_CONVERTER_BACKEND_NONE: Do not use any backend
+ * @GST_VIDEO_CONVERTER_BACKEND_C2D: Use C2D based video converter.
+ * @GST_VIDEO_CONVERTER_BACKEND_GLES: Use OpenGLES based video converter.
+ * @GST_VIDEO_CONVERTER_BACKEND_FCV: Use FastCV based video converter.
+ * @GST_VIDEO_CONVERTER_BACKEND_OCV: Use OpenCV based video converter.
  *
  * The backend of the video converter engine.
  */
 typedef enum {
-  GST_VCE_BACKEND_NONE,
-  GST_VCE_BACKEND_C2D,
-  GST_VCE_BACKEND_GLES,
-  GST_VCE_BACKEND_FCV,
-  GST_VCE_BACKEND_OCV,
-} GstVideoConvBackend;
+  GST_VIDEO_CONVERTER_BACKEND_NONE,
+  GST_VIDEO_CONVERTER_BACKEND_C2D,
+  GST_VIDEO_CONVERTER_BACKEND_GLES,
+  GST_VIDEO_CONVERTER_BACKEND_FCV,
+  GST_VIDEO_CONVERTER_BACKEND_OCV,
+} GstVideoConverterBackend;
 
 GST_VIDEO_API GType gst_video_converter_backend_get_type (void);
-#define GST_TYPE_VCE_BACKEND (gst_video_converter_backend_get_type())
+#define GST_TYPE_VIDEO_CONVERTER_BACKEND (gst_video_converter_backend_get_type())
 
 /**
  * gst_video_converter_default_backend:
  *
  * Retrieve the default vide converter backend.
  *
- * Returns: the default #GstVideoConvBackend
+ * Returns: the default #GstVideoConverterBackend
  */
-GST_VIDEO_API GstVideoConvBackend
+GST_VIDEO_API GstVideoConverterBackend
 gst_video_converter_default_backend (void);
 
 /**
  * gst_video_converter_engine_new:
  * @backend: The type of the underlying converter.
- * @settings: Structure with backend specific options.
+ * @settings: A #GstStructure with backend specific options.
  *
  * Initialize instance of video converter engine.
  *
- * Returns: (transfer full): #GstVideoConvEngine on success or NULL on failure
+ * Returns: (transfer full): A new #GstVideoConverterEngine or NULL on failure
  */
-GST_VIDEO_API GstVideoConvEngine *
-gst_video_converter_engine_new (GstVideoConvBackend backend,
+GST_VIDEO_API GstVideoConverterEngine *
+gst_video_converter_engine_new (GstVideoConverterBackend backend,
                                 GstStructure * settings);
 
 /**
@@ -70,7 +70,7 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
  * Deinitialise the video converter engine.
  */
 GST_VIDEO_API void
-gst_video_converter_engine_free (GstVideoConvEngine * engine);
+gst_video_converter_engine_free (GstVideoConverterEngine * engine);
 
 /**
  * gst_video_converter_engine_compose:
@@ -88,7 +88,7 @@ gst_video_converter_engine_free (GstVideoConvEngine * engine);
  * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
-gst_video_converter_engine_compose (GstVideoConvEngine * engine,
+gst_video_converter_engine_compose (GstVideoConverterEngine * engine,
                                     GstVideoComposition * compositions,
                                     guint n_compositions, gpointer * fence);
 
@@ -102,7 +102,7 @@ gst_video_converter_engine_compose (GstVideoConvEngine * engine,
  * Returns: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
-gst_video_converter_engine_wait_fence (GstVideoConvEngine * engine,
+gst_video_converter_engine_wait_fence (GstVideoConverterEngine * engine,
                                        gpointer fence);
 
 /**
@@ -112,7 +112,7 @@ gst_video_converter_engine_wait_fence (GstVideoConvEngine * engine,
  * Wait for compositions sumbitted to the engine to finish and flush cached data.
  */
 GST_VIDEO_API void
-gst_video_converter_engine_flush (GstVideoConvEngine * engine);
+gst_video_converter_engine_flush (GstVideoConverterEngine * engine);
 
 G_END_DECLS
 
