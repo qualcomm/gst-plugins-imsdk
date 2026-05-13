@@ -94,6 +94,7 @@ struct _GstC2VEncoder {
   GstC2HdrMode         hdr_mode;
   gint32               chroma_qp_offset;
   GstC2EncodingMode    encoding_mode;
+  GstC2Cac             cac;
 };
 
 struct _GstC2VEncoderClass {

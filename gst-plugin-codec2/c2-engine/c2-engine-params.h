@@ -98,6 +98,7 @@ enum {
   GST_C2_PARAM_NAL_LENGTH_BITSTREAM, // GstC2NalPrefixMode
   GST_C2_PARAM_BITRATE_BOOST_MARGIN, // gint32
   GST_C2_PARAM_ENCODING_MODE,        // GstC2EncodingMode
+  GST_C2_PARAM_CAC,                  // GstC2ContentAdaptiveCoding
 };
 
 typedef enum {
@@ -322,6 +323,14 @@ typedef enum {
   GST_C2_ENCODING_MODE_DEPTH,
   GST_C2_ENCODING_MODE_LOOKAHEAD,
 } GstC2EncodingMode;
+
+typedef enum {
+  GST_C2_CAC_DEFAULT,
+  GST_C2_CAC_DISABLE_ALL,
+  GST_C2_CAC_ENABLE_8BIT,
+  GST_C2_CAC_ENABLE_10BIT,
+  GST_C2_CAC_ENABLE_ALL,
+} GstC2Cac;
 
 struct _GstC2PixelInfo {
   GstVideoFormat format;
