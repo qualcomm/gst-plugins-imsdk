@@ -888,19 +888,12 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_RGB2YUV_YV12;
     case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_YV12 << 16):
       return cv::COLOR_BGR2YUV_YV12;
+#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
     // RGB/BGR -> YUY2 (YUYV)
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_YUY2 << 16):
-#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
       return cv::COLOR_RGB2YUV_YUY2;
-#else
-      return GST_OCV_COLOR_RGB2YUV_YUY2;
-#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
     case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_YUY2 << 16):
-#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
       return cv::COLOR_BGR2YUV_YUY2;
-#else
-      return GST_OCV_COLOR_BGR2YUV_YUY2;
-#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
     // RGB/BGR -> UYVY
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_UYVY << 16):
       return cv::COLOR_RGB2YUV_UYVY;
@@ -911,6 +904,23 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_RGB2YUV_YVYU;
     case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_YVYU << 16):
       return cv::COLOR_BGR2YUV_YVYU;
+#else
+    // RGB/BGR -> YUY2 (YUYV)
+    case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_YUY2 << 16):
+      return GST_OCV_COLOR_RGB2YUV_YUY2;
+    case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_YUY2 << 16):
+      return GST_OCV_COLOR_BGR2YUV_YUY2;
+    // RGB/BGR -> UYVY
+    case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_UYVY << 16):
+      return GST_OCV_COLOR_RGB2YUV_UYVY;
+    case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_UYVY << 16):
+      return GST_OCV_COLOR_BGR2YUV_UYVY;
+    // RGB/BGR -> YVYU
+    case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_YVYU << 16):
+      return GST_OCV_COLOR_RGB2YUV_YVYU;
+    case GST_VIDEO_FORMAT_BGR + (GST_VIDEO_FORMAT_YVYU << 16):
+      return GST_OCV_COLOR_BGR2YUV_YVYU;
+#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
     // RGB/BGR -> BGR/RGB
     case GST_VIDEO_FORMAT_RGB + (GST_VIDEO_FORMAT_BGR << 16):
       return cv::COLOR_RGB2BGR;
@@ -962,19 +972,12 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_RGBA2YUV_YV12;
     case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_YV12 << 16):
       return cv::COLOR_BGRA2YUV_YV12;
+#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
     // RGBA/BGRA -> YUY2 (YUYV)
     case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_YUY2 << 16):
-#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
       return cv::COLOR_RGBA2YUV_YUY2;
-#else
-      return GST_OCV_COLOR_RGBA2YUV_YUY2;
-#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
     case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_YUY2 << 16):
-#if CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
       return cv::COLOR_BGRA2YUV_YUY2;
-#else
-      return GST_OCV_COLOR_BGRA2YUV_YUY2;
-#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
     // RGBA/BGRA -> UYVY
     case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_UYVY << 16):
       return cv::COLOR_RGBA2YUV_UYVY;
@@ -985,6 +988,23 @@ gst_ocv_get_conversion_mode (GstOcvObject * s_obj, GstOcvObject * d_obj)
       return cv::COLOR_RGBA2YUV_YVYU;
     case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_YVYU << 16):
       return cv::COLOR_BGRA2YUV_YVYU;
+#else
+    // RGBA/BGRA -> YUY2 (YUYV)
+    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_YUY2 << 16):
+      return GST_OCV_COLOR_RGBA2YUV_YUY2;
+    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_YUY2 << 16):
+      return GST_OCV_COLOR_BGRA2YUV_YUY2;
+    // RGBA/BGRA -> UYVY
+    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_UYVY << 16):
+      return GST_OCV_COLOR_RGBA2YUV_UYVY;
+    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_UYVY << 16):
+      return GST_OCV_COLOR_BGRA2YUV_UYVY;
+    // RGBA/BGRA -> YVYU
+    case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_YVYU << 16):
+      return GST_OCV_COLOR_RGBA2YUV_YVYU;
+    case GST_VIDEO_FORMAT_BGRA + (GST_VIDEO_FORMAT_YVYU << 16):
+      return GST_OCV_COLOR_BGRA2YUV_YVYU;
+#endif // CV_VERSION_MAJOR > 4 || (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 9)
     // RGBA/BGRA -> RGB/BGR
     case GST_VIDEO_FORMAT_RGBA + (GST_VIDEO_FORMAT_RGB << 16):
       return cv::COLOR_RGBA2RGB;
