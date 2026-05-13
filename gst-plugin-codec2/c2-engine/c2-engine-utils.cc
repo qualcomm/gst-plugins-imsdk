@@ -165,6 +165,8 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
   { GST_C2_PARAM_ENCODING_MODE,
       qc2::C2VideoEncodingMode::output::PARAM_TYPE },
 #endif // ((CODEC2_CONFIG_VERSION_MAJOR == 2) && (CODEC2_CONFIG_VERSION_MINOR >= 2))
+  { GST_C2_PARAM_CAC,
+      qc2::C2VideoContentAdaptiveCoding::output::PARAM_TYPE },
 };
 
 // Convenient map for printing the engine parameter name in string form.
@@ -226,7 +228,8 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_HDR_MODE, "HDR_MODE" },
   { GST_C2_PARAM_BITRATE_BOOST_MARGIN, "BITRATE_BOOST_MARGIN" },
   { GST_C2_PARAM_NAL_LENGTH_BITSTREAM, "NAL_LENGTH_BITSTREAM" },
-  { GST_C2_PARAM_ENCODING_MODE, "ENCODING_MODE"}
+  { GST_C2_PARAM_ENCODING_MODE, "ENCODING_MODE"},
+  { GST_C2_PARAM_CAC, "CAC"},
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -477,6 +480,14 @@ static const std::unordered_map<uint32_t, qc2::QcEncodingMode> kEncodingModeMap 
   { GST_C2_ENCODING_MODE_LOOKAHEAD, QcLookahead },
 };
 #endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR >= 2)
+
+// Map for the GstC2Cac.
+static const std::unordered_map<uint32_t, int32_t> kCacMap = {
+  { GST_C2_CAC_DISABLE_ALL,  0 },
+  { GST_C2_CAC_ENABLE_8BIT,  1 },
+  { GST_C2_CAC_ENABLE_10BIT, 2 },
+  { GST_C2_CAC_ENABLE_ALL,   3 },
+};
 
 C2Param::Index GstC2Utils::ParamIndex(uint32_t type) {
 
@@ -1198,6 +1209,14 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       break;
     }
 #endif // ((CODEC2_CONFIG_VERSION_MAJOR == 2) && (CODEC2_CONFIG_VERSION_MINOR >= 2))
+    case GST_C2_PARAM_CAC: {
+      qc2::C2VideoContentAdaptiveCoding::output cac;
+      uint32_t mode = *(reinterpret_cast<GstC2Cac*>(payload));
+
+      cac.value = kCacMap.at(mode);
+      c2param = C2Param::Copy(cac);
+      break;
+    }
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1717,6 +1736,18 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       break;
     }
 #endif // ((CODEC2_CONFIG_VERSION_MAJOR == 2) && (CODEC2_CONFIG_VERSION_MINOR >= 2))
+    case GST_C2_PARAM_CAC: {
+      auto cac = reinterpret_cast<qc2::C2VideoContentAdaptiveCoding::output*>(
+          c2param.get());
+
+      auto result = std::find_if(kCacMap.begin(), kCacMap.end(),
+          [&](const auto& m) { return m.second == cac->value; });
+
+      *(reinterpret_cast<GstC2Cac*>(payload)) =
+          static_cast<GstC2Cac>(result->first);
+
+      break;
+    }
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
