@@ -53,6 +53,7 @@ endif () # ENABLE_CAMERA AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_CAMERA AND ENABLE_DISPLAY)
   add_subdirectory(gst-camera-capture-example)
+  add_subdirectory(gst-rgba-watermark-example)
 endif () # ENABLE_CAMERA AND ENABLE_DISPLAY
 
 if (ENABLE_CAMERA AND ENABLE_VIDEO_ENCODE AND ENABLE_DISPLAY)
