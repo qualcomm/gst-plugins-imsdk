@@ -173,12 +173,13 @@ gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
   gpointer state = NULL;
   GstVideoBlit *vblit = NULL;
   GstVideoRectangle source = {0}, destination = {0};
-  guint idx = 0;
+  guint idx = 0, n_blits = 0;
 
   outbuffer = composition->buffer;
+  n_blits = gst_video_blits_size (composition->blits);
 
-  for (idx = 0; idx < composition->n_blits; idx++) {
-    vblit = &(composition->blits[idx]);
+  for (idx = 0; idx < n_blits; idx++) {
+    vblit = gst_video_blits_entry (composition->blits, idx);
     inbuffer = vblit->buffer;
 
     if (vblit->mask & GST_VIDEO_CONVERTER_MASK_SOURCE) {
@@ -803,8 +804,8 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
 
   GST_OBJECT_LOCK (vaggregator);
 
-  composition.n_blits = GST_ELEMENT (vcomposer)->numsinkpads;
-  composition.blits = g_new0 (GstVideoBlit, composition.n_blits);
+  composition.blits =
+      gst_video_blits_new_sized (GST_ELEMENT (vcomposer)->numsinkpads);
 
   for (list = GST_ELEMENT (vcomposer)->sinkpads; list != NULL; list = list->next) {
     GstVideoComposerSinkPad *sinkpad = GST_VIDEO_COMPOSER_SINKPAD (list->data);
@@ -827,7 +828,7 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
     // Index to the current blit object to be populated.
     idx = n_inputs;
 
-    vblit = &(composition.blits[idx]);
+    vblit = gst_video_blits_entry (composition.blits, idx);
     vblit->buffer = inbuffer;
 
     vblit->info = &GST_VIDEO_AGGREGATOR_PAD (sinkpad)->info;
@@ -889,11 +890,8 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
     goto cleanup;
   }
 
-  // Resize the blits array as actual number is less then the maximum.
-  if (n_inputs < composition.n_blits)
-    composition.blits = g_renew (GstVideoBlit, composition.blits, n_inputs);
-
-  composition.n_blits = n_inputs;
+  // Resize the blits array as actual number is may be less then the maximum.
+  gst_video_blits_resize (composition.blits, n_inputs);
 
   composition.buffer = outbuffer;
   composition.bgfill = TRUE;
@@ -929,9 +927,7 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
       (GST_TIME_AS_USECONDS (time) % 1000), vcomposer->hw_util);
 
 cleanup:
-  if (composition.blits != NULL)
-    g_free (composition.blits);
-
+  g_clear_pointer (&(composition.blits), gst_video_blits_unref);
   return success ? GST_FLOW_OK : GST_FLOW_ERROR;
 }
 

@@ -606,7 +606,7 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
 {
   GArray *fds = NULL, *normalizations = NULL;
   GstNormalizeRequest *normrequest = NULL;
-  guint idx = 0, num = 0, n_blits = 0, n_normalizations = 0;
+  guint idx = 0, num = 0, n_blits = 0, n_normalizations = 0, fd = 0;
   guint64 surface_id = 0;
   gboolean success = TRUE, normalize = FALSE;
 
@@ -623,45 +623,39 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
   for (idx = 0; idx < n_compositions; idx++) {
     GstVideoComposition *composition = &(compositions[idx]);
     GstBuffer *outbuffer = composition->buffer;
-    GstVideoBlit *blits = composition->blits;
-
-    n_blits = composition->n_blits;
 
     // Sanity checks, output frame and blit entries must not be NULL.
     g_return_val_if_fail (outbuffer != NULL, FALSE);
-    g_return_val_if_fail ((blits != NULL) && (n_blits != 0), FALSE);
+    g_return_val_if_fail (composition->blits != NULL, FALSE);
 
     std::vector<::ib2c::Object> objects;
+    n_blits = gst_video_blits_size (composition->blits);
 
     // Iterate over the input blit entries and update each IB2C object.
     for (num = 0; num < n_blits; num++) {
-      GstVideoBlit *blit = &(blits[num]);
+      GstVideoBlit *vblit = gst_video_blits_entry (composition->blits, num);
 
       GST_GLES_LOCK (convert);
 
       surface_id = gst_gles_retrieve_surface_id (convert, convert->insurfaces,
-          "Input", blit->buffer, blit->info, GST_VIDEO_DATA_TYPE_U8);
+          "Input", vblit->buffer, vblit->info, GST_VIDEO_DATA_TYPE_U8);
 
       GST_GLES_UNLOCK (convert);
 
       if (!(success = (surface_id != 0))) {
         GST_ERROR ("Failed to get surface ID for input buffer %p at index %u "
-            "in composition %u!", blit->buffer, num, idx);
+            "in composition %u!", vblit->buffer, num, idx);
         goto cleanup;
       }
 
-      if (blit->buffer->pool == NULL) {
-        GstMemory *memory = NULL;
-        guint fd = 0;
-
-        memory = gst_buffer_peek_memory (blit->buffer, 0);
-        fd = gst_fd_memory_get_fd (memory);
+      if (vblit->buffer->pool == NULL) {
+        fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (vblit->buffer, 0));
         g_array_append_val (fds, fd);
       }
 
       ::ib2c::Object object;
 
-      gst_gles_update_object (&object, surface_id, blit, composition);
+      gst_gles_update_object (&object, surface_id, vblit, composition);
       objects.push_back(object);
     }
 

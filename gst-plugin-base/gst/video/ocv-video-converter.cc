@@ -254,29 +254,29 @@ gst_ocv_regions_overlapping_area (GstVideoRectangle * l_rect,
 }
 
 static inline guint
-gst_ocv_composition_blit_area (GstVideoFrame * outframe, GstVideoBlit * blits,
+gst_ocv_composition_blit_area (GstVideoFrame * outframe, GstVideoBlits * blits,
     guint index)
 {
-  GstVideoBlit *blit = NULL;
-  GstVideoRectangle *region = NULL, *l_region = NULL;
+  GstVideoBlit *vblit = NULL;
+  GstVideoRectangle *region = NULL;
   guint num = 0, area = 0;
 
   // Fetch the blit at current index to which we will compare all others.
-  blit = &(blits[index]);
+  vblit = gst_video_blits_entry (blits, index);
 
   // If there are no destination region then the whole frame is the region.
-  if ((blit->destination.w == 0) || (blit->destination.h == 0))
+  if ((vblit->destination.w == 0) || (vblit->destination.h == 0))
     return GST_VIDEO_FRAME_WIDTH (outframe) * GST_VIDEO_FRAME_HEIGHT (outframe);
 
   // Calculate the destination area filled with frame content.
-  region = &(blit->destination);
+  region = &(vblit->destination);
   area = region->w * region->h;
 
   // Iterate destination region for each blit and subtract overlapping area.
   for (num = 0; num < index; num++) {
     // Subtract overlapping are of the destination regions in that blit object.
-    l_region = &(blits[num].destination);
-    area -= gst_ocv_regions_overlapping_area (region, l_region);
+    vblit = gst_video_blits_entry (blits, num);
+    area -= gst_ocv_regions_overlapping_area (region, &(vblit->destination));
   }
 
   return area;
@@ -2442,15 +2442,14 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
     GST_WARNING ("Asynchronous composition operations are not supported!");
 
   for (idx = 0; idx < n_compositions; idx++) {
-    GstVideoFrame outframe;
-    GArray *inframes = NULL;
     GstVideoComposition *composition = &(compositions[idx]);
-    GstVideoBlit *blits = composition->blits;
-    guint n_blits = composition->n_blits;
+    GArray *inframes = NULL;
+    GstVideoFrame outframe = {};
+    guint n_blits = 0;
 
-    inframes = g_array_sized_new (FALSE, FALSE, sizeof(GstVideoFrame),
-        composition->n_blits);
-    g_array_set_size (inframes, composition->n_blits);
+    n_blits = gst_video_blits_size (composition->blits);
+    inframes = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoFrame), n_blits);
+    g_array_set_size (inframes, n_blits);
 
     success = gst_video_frame_map (&outframe, composition->info,
         composition->buffer,
@@ -2467,12 +2466,12 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
 
     // Iterate over the input blit entries and update each OCV object.
     for (num = 0; num < n_blits; num++) {
-      GstVideoBlit *blit = &(blits[num]);
+      GstVideoBlit *blit = gst_video_blits_entry (composition->blits, num);
+      GstVideoFrame *inframe = &g_array_index (inframes, GstVideoFrame, num);
       GstOcvObject *object = NULL;
       GstVideoRectangle rectangle = {0, 0, 0, 0};
       GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
       GstVideoRotate rotate = GST_VIDEO_ROTATE_0;
-      GstVideoFrame *inframe = &g_array_index (inframes, GstVideoFrame, num);
 
       success = gst_video_frame_map (inframe, blit->info, blit->buffer,
           (GstMapFlags)(GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF));
@@ -2541,14 +2540,11 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
 
       // Subtract blit area from total area.
       if (area != 0)
-        area -= gst_ocv_composition_blit_area (&outframe, blits, num);
+        area -= gst_ocv_composition_blit_area (&outframe, composition->blits, num);
 
       // Increment the objects counter by 2 for for Source/Destination pair.
       n_objects += 2;
     }
-
-    // Sanity checks, output frame and blit entries must not be NULL.
-    g_return_val_if_fail (&outframe != NULL && blits != NULL, FALSE);
 
     if (compositions[idx].bgfill && (area > 0)) {
       guint32 color = compositions[idx].bgcolor;
@@ -2564,13 +2560,11 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
         composition->datatype, composition->offsets, composition->scales);
 
     for (num = 0; num < inframes->len; num++) {
-      GstVideoFrame *inframe = &g_array_index(inframes, GstVideoFrame, num);
-
+      GstVideoFrame *inframe = &g_array_index (inframes, GstVideoFrame, num);
       gst_video_frame_unmap(inframe);
     }
 
     g_array_free (inframes, TRUE);
-
     gst_video_frame_unmap (&outframe);
 
     if (!success) {

@@ -22,8 +22,8 @@ G_BEGIN_DECLS
     { NULL, NULL, 0, {{0, 0}, {0, 0}, {0, 0}, {0, 0}}, \
         {0, 0, 0, 0}, 255, GST_VIDEO_ROTATE_0 }
 #define GST_VIDEO_COMPOSITION_INIT \
-    { NULL, 0, NULL, NULL, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
-      { 1.0, 1.0, 1.0, 1.0 }, GST_VIDEO_DATA_TYPE_U8 }
+    { NULL, NULL, NULL, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
+        { 1.0, 1.0, 1.0, 1.0 }, GST_VIDEO_DATA_TYPE_U8 }
 
 /**
  * GST_VIDEO_CONVERTER_OPT_FCV_OP_MODE:
@@ -89,8 +89,7 @@ struct _GstVideoBlit
 
 /**
  * GstVideoComposition:
- * @blits: An array of #GstVideoBlit objects.
- * @n_blits: Number of #GstVideoBlit objects in the @blits array.
+ * @blits: A #GstVideoBlits used as inputs.
  * @buffer: The #GstBuffer used as output.
  * @info: A #GstVideoInfo for mapping.
  * @bgcolor: Background color to be applied if bgfill is set to TRUE.
@@ -105,8 +104,7 @@ struct _GstVideoBlit
  */
 struct _GstVideoComposition
 {
-  GstVideoBlit     *blits;
-  guint            n_blits;
+  GstVideoBlits    *blits;
 
   GstBuffer        *buffer;
   GstVideoInfo     *info;
@@ -143,52 +141,28 @@ GST_VIDEO_API GstVideoBlits*
 gst_video_blits_new_sized (guint size);
 
 /**
- * gst_video_blits_new_take: (constructor)
- * @data: An array of #GstVideoBlit elements.
- * @size: Number of elements in @data.
- *
- * Create a new #GstVideoBlits by taking ownership of the @data array with @size.
- *
- * Returns: (transfer full): A new #GstVideoBlits.
- */
-
-GST_VIDEO_API GstVideoBlits*
-gst_video_blits_new_take (gpointer data, guint size);
-
-/**
- * gst_video_blits_ref:
- * @vblits: A #GstVideoBlits
+ * gst_video_blits_ref: (skip)
+ * @vblits: (transfer none): A #GstVideoBlits
  *
  * Atomically increments the reference count of @vblits by one.
  * This function is thread-safe and may be called from any thread.
  *
- * Returns: (transfer full): The passed in `GstVideoBlits`
+ * Returns: (transfer none): A pointer to the object passed in @vblits
  */
 GST_VIDEO_API GstVideoBlits*
 gst_video_blits_ref (GstVideoBlits * vblits);
 
 /**
- * gst_video_blits_unref:
- * @vblits: (transfer full): A #GstVideoBlits
+ * gst_video_blits_unref: (skip)
+ * @vblits: (transfer none): A #GstVideoBlits
  *
  * Atomically decrements the reference count of @vblits by one. If the
  * reference count drops to 0, free the GstVideoBlits.
+ *
  * This function is thread-safe and may be called from any thread.
  */
 GST_VIDEO_API void
 gst_video_blits_unref (GstVideoBlits * vblits);
-
-/**
- * gst_video_blits_steal:
- * @vblits: A #GstVideoBlits
- * @size: A pointer to retrieve the number of elements of the original array.
- *
- * Frees the data in the array and free the GstVideoBlits structure.
- *
- * Returns: (transfer full): The allocated raw GstVideoBlit data.
- */
-GST_VIDEO_API gpointer
-gst_video_blits_steal (GstVideoBlits * vblits, guint * size);
 
 /**
  * gst_video_blits_copy:

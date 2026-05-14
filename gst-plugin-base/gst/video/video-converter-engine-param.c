@@ -77,17 +77,6 @@ gst_video_blits_new_sized (guint size)
 }
 
 GstVideoBlits*
-gst_video_blits_new_take (gpointer data, guint size)
-{
-  GstVideoBlits *vblits = g_slice_new (GstVideoBlits);
-
-  g_atomic_ref_count_init (&vblits->refcount);
-  vblits->entries = g_array_new_take (data, size, TRUE, sizeof (GstVideoBlit));
-
-  return vblits;
-}
-
-GstVideoBlits*
 gst_video_blits_ref (GstVideoBlits * vblits)
 {
   g_return_val_if_fail (vblits != NULL, NULL);
@@ -105,23 +94,6 @@ gst_video_blits_unref (GstVideoBlits * vblits)
     g_array_free (vblits->entries, TRUE);
     g_slice_free (GstVideoBlits, vblits);
   }
-}
-
-gpointer
-gst_video_blits_steal (GstVideoBlits * vblits, guint * size)
-{
-  gpointer data = NULL;
-  gsize length = 0;
-
-  g_return_val_if_fail (vblits != NULL, NULL);
-
-  data = g_array_steal (vblits->entries, &length);
-  *size = length;
-
-  g_array_free (vblits->entries, TRUE);
-  g_slice_free (GstVideoBlits, vblits);
-
-  return data;
 }
 
 GstVideoBlits *

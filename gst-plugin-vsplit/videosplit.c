@@ -185,7 +185,7 @@ gst_video_composition_cleanup (gpointer userdata)
   GstVideoComposition *composition = (GstVideoComposition*) userdata;
 
   // Free only video blits, output frame is owned by the request.
-  g_slice_free (GstVideoBlit, composition->blits);
+  g_clear_pointer (&(composition->blits), gst_video_blits_unref);
 }
 
 static inline void
@@ -235,16 +235,19 @@ static inline void
 gst_video_split_composition_populate_metas (GstVideoSplitSrcPad * srcpad,
     GstVideoComposition * composition, GstVideoRegionOfInterestMeta * roimeta)
 {
+  GstVideoBlit *vblit = NULL;
   GstBuffer *inbuffer = NULL, *outbuffer = NULL;
   GstVideoRectangle source = {0}, *destination = NULL;
   GstMeta *meta = NULL;
   gpointer state = NULL;
 
-  inbuffer = composition->blits[0].buffer;
+  vblit = gst_video_blits_entry (composition->blits, 0);
+
+  inbuffer = vblit->buffer;
   outbuffer = composition->buffer;
 
-  gst_video_quadrilateral_to_rectangle (&(composition->blits[0].source), &source);
-  destination = &(composition->blits[0].destination);
+  gst_video_quadrilateral_to_rectangle (&(vblit->source), &source);
+  destination = &(vblit->destination);
 
   while ((meta = gst_buffer_iterate_meta (inbuffer, &state))) {
     if (meta->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) {
@@ -307,7 +310,7 @@ gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
   gint maxwidth = 0, maxheight = 0;
 
   outbuffer = composition->buffer;
-  vblit = &(composition->blits[0]);
+  vblit = gst_video_blits_entry (composition->blits, 0);
 
   if (roimeta != NULL) {
     source.x = roimeta->x;
@@ -687,10 +690,8 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
         composition->offsets[i] = 0.0;
       }
 
-      composition->blits = g_slice_new0 (GstVideoBlit);
-      composition->n_blits = 1;
-
-      vblit = &(composition->blits[0]);
+      composition->blits = gst_video_blits_new_sized (1);
+      vblit = gst_video_blits_entry (composition->blits, 0);
 
       vblit->buffer = inbuffer;
       vblit->info = ininfo;
