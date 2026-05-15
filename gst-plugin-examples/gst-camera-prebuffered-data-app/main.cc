@@ -248,7 +248,7 @@ trigger_snapshot (GstAppContext * appctx)
   else
     g_printerr ("[ERROR] Failed to trigger snapshot capture\n");
 
-  return success;
+  return FALSE;
 }
 
 static gboolean
