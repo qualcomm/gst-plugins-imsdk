@@ -32,15 +32,15 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
-#include "qmmf_source_video_pad.h"
+#include "camera_source_video_pad.h"
 
 #include <gst/gstplugin.h>
 #include <gst/gstelementfactory.h>
 #include <gst/gstpadtemplate.h>
 #include <gst/allocators/allocators.h>
 
-#include "qmmf_source_utils.h"
-#include "qmmf_source.h"
+#include "camera_source_utils.h"
+#include "camera_source.h"
 
 // Declare qmmfsrc_video_pad_class_init() and qmmfsrc_video_pad_init()
 // functions, implement qmmfsrc_video_pad_get_type() function and set

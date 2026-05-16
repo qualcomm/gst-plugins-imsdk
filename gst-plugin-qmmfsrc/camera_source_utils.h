@@ -32,8 +32,8 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
-#ifndef __GST_QMMFSRC_UTILS_H__
-#define __GST_QMMFSRC_UTILS_H__
+#ifndef __GST_CAMERASRC_UTILS_H__
+#define __GST_CAMERASRC_UTILS_H__
 
 #include <gst/gst.h>
 #include <gst/video/video.h>
@@ -524,4 +524,4 @@ GstBufferPool *   gst_qmmf_buffer_pool_new           (void);
 
 G_END_DECLS
 
-#endif // __GST_QMMFSRC_UTILS_H__
+#endif // __GST_CAMERASRC_UTILS_H__

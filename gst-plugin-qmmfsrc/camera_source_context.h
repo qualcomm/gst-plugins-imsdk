@@ -33,8 +33,8 @@
 */
 
 
-#ifndef __GST_QMMFSRC_CONTEXT_H__
-#define __GST_QMMFSRC_CONTEXT_H__
+#ifndef __GST_CAMERASRC_CONTEXT_H__
+#define __GST_CAMERASRC_CONTEXT_H__
 
 #include <gst/gst.h>
 
@@ -214,4 +214,4 @@ get_vendor_tag_by_name (const gchar * section, const gchar * name);
 
 G_END_DECLS
 
-#endif // __GST_QMMFSRC_CONTEXT_H__
+#endif // __GST_CAMERASRC_CONTEXT_H__

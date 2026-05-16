@@ -35,5 +35,5 @@
 #define PACKAGE         "gst-plugins-qcom"
 #define PACKAGE_VERSION "@PROJECT_VERSION@"
 #define PACKAGE_LICENSE "BSD"
-#define PACKAGE_SUMMARY "QTI open-source GStreamer Plug-in for qmmf-sdk"
+#define PACKAGE_SUMMARY "QTI open-source GStreamer Plug-in for camera service"
 #define PACKAGE_ORIGIN  "Unknown package origin"

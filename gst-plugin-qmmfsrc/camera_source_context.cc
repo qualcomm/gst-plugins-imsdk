@@ -36,7 +36,7 @@
 #include "config.h"
 #endif
 
-#include "qmmf_source_context.h"
+#include "camera_source_context.h"
 #include <gst/allocators/allocators.h>
 #include <qmmf-sdk/qmmf_recorder.h>
 #include <qmmf-sdk/qmmf_recorder_extra_param_tags.h>
@@ -44,9 +44,9 @@
 #include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 #include <qmmf-sdk/qmmf_camera_metadata.h>
 
-#include "qmmf_source_utils.h"
-#include "qmmf_source_image_pad.h"
-#include "qmmf_source_video_pad.h"
+#include "camera_source_utils.h"
+#include "camera_source_image_pad.h"
+#include "camera_source_video_pad.h"
 #include <gst/camera/gstcamerameta.h>
 #include <set>
 

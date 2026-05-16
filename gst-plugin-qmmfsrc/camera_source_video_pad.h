@@ -32,8 +32,8 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
-#ifndef __GST_QMMFSRC_VIDEO_PAD_H__
-#define __GST_QMMFSRC_VIDEO_PAD_H__
+#ifndef __GST_CAMERASRC_VIDEO_PAD_H__
+#define __GST_CAMERASRC_VIDEO_PAD_H__
 
 #include <gst/gst.h>
 #include <gst/base/gstdataqueue.h>
@@ -168,4 +168,4 @@ gboolean qmmfsrc_video_pad_fixate_caps (GstPad * pad);
 
 G_END_DECLS
 
-#endif // __GST_QMMFSRC_VIDEO_PAD_H__
+#endif // __GST_CAMERASRC_VIDEO_PAD_H__

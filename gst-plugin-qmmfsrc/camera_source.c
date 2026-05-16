@@ -36,7 +36,7 @@
 #include "config.h"
 #endif
 
-#include "qmmf_source.h"
+#include "camera_source.h"
 
 #include <stdio.h>
 
@@ -45,10 +45,10 @@
 #include <gst/gstelementfactory.h>
 #include <gst/allocators/allocators.h>
 #include <gst/video/video-utils.h>
-#include "qmmf_source_utils.h"
-#include "qmmf_source_image_pad.h"
-#include "qmmf_source_video_pad.h"
-#include "qmmf_source_context.h"
+#include "camera_source_utils.h"
+#include "camera_source_image_pad.h"
+#include "camera_source_video_pad.h"
+#include "camera_source_context.h"
 
 // Declare static GstDebugCategory variable for qmmfsrc.
 GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
@@ -1743,8 +1743,8 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       gst_qmmfsrc_image_src_template ());
 
   gst_element_class_set_static_metadata (
-      gstelement, "QMMF Video Source", "Source/Video",
-      "Reads frames from a device via QMMF service", "QTI"
+      gstelement, "Camera Source", "Source/Video",
+      "Captures frames from camera using QTI camera service", "QTI"
   );
 
   g_object_class_install_property (gobject, PROP_CAMERA_ID,
@@ -2394,15 +2394,24 @@ qmmfsrc_plugin_cleanup(void)
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  return gst_element_register (plugin, "qtiqmmfsrc", GST_RANK_PRIMARY,
+  gboolean ret = TRUE;
+
+  // Primary element name: qticamsrc
+  ret &= gst_element_register (plugin, "qticamsrc", GST_RANK_PRIMARY,
       GST_TYPE_QMMFSRC);
+
+  // Backward-compatible alias: qtiqmmfsrc (rank NONE so it is not auto-selected)
+  ret &= gst_element_register (plugin, "qtiqmmfsrc", GST_RANK_NONE,
+      GST_TYPE_QMMFSRC);
+
+  return ret;
 }
 
 GST_PLUGIN_DEFINE(
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
-    qtiqmmfsrc,
-    "QTI QMMF plugin library",
+    qticamsrc,
+    "QTI Camera plugin library",
     plugin_init,
     PACKAGE_VERSION,
     PACKAGE_LICENSE,

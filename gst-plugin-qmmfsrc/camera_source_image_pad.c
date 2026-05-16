@@ -32,14 +32,14 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
-#include "qmmf_source_image_pad.h"
+#include "camera_source_image_pad.h"
 
 #include <gst/gstplugin.h>
 #include <gst/gstelementfactory.h>
 #include <gst/gstpadtemplate.h>
 #include <gst/allocators/allocators.h>
 
-#include "qmmf_source_utils.h"
+#include "camera_source_utils.h"
 
 // Declare qmmfsrc_image_pad_class_init() and qmmfsrc_image_pad_init()
 // functions, implement qmmfsrc_image_pad_get_type() function and set
@@ -94,7 +94,7 @@ image_pad_send_stream_start (GstPad * pad)
     return;
 
   pad_name = gst_pad_get_name (pad);
-  stream_id =  g_strconcat ("qmmfsrc/", pad_name, NULL);
+  stream_id =  g_strconcat ("camsrc/", pad_name, NULL);
 
   GST_DEBUG_OBJECT (pad, "Pushing STREAM_START");
   event = gst_event_new_stream_start (stream_id);
