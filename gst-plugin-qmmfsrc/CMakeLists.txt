@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(GST_PLUGIN_QTI_OSS_QMMFSRC
+project(GST_PLUGIN_QTI_OSS_CAMSRC
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
   LANGUAGES C CXX
 )
@@ -79,18 +79,18 @@ check_cxx_source_compiles("${SRC_MAX_RES_CONFIG}"
   HAS_ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION)
 
 # GStreamer plugin.
-set(GST_QMMFSRC_PLUGIN gstqtiqmmfsrc)
+set(GST_CAMSRC_PLUGIN gstqticamsrc)
 
-add_library(${GST_QMMFSRC_PLUGIN} SHARED
-  qmmf_source.c
-  qmmf_source_video_pad.c
-  qmmf_source_image_pad.c
-  qmmf_source_utils.cc
-  qmmf_source_context.cc
+add_library(${GST_CAMSRC_PLUGIN} SHARED
+  camera_source.c
+  camera_source_video_pad.c
+  camera_source_image_pad.c
+  camera_source_utils.cc
+  camera_source_context.cc
 )
 
 # Add target specific precompiler defintions.
-target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE
+target_compile_definitions(${GST_CAMSRC_PLUGIN} PRIVATE
   $<$<BOOL:${EIS_MODES_ENABLE}>:EIS_MODES_ENABLE>
   $<$<BOOL:${VHDR_MODES_ENABLE}>:VHDR_MODES_ENABLE>
   $<$<BOOL:${FEATURE_LOGICAL_CAMERA_SENSOR_SWITCH}>:FEATURE_LOGICAL_CAMERA_SENSOR_SWITCH>
@@ -100,7 +100,7 @@ target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE
   $<$<BOOL:${HAS_ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION}>:HAS_ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION>
 )
 
-target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
+target_include_directories(${GST_CAMSRC_PLUGIN} PRIVATE
   ${GST_INCLUDE_DIRS}
   ${CMAKE_SYSROOT}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/camx-api/camx/service
   ${GST_QCOM_UTILS_INCLUDE_DIRS}
@@ -108,7 +108,7 @@ target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
   $<$<BOOL:${QMMF_CAMERA_METADATA_FOUND}>:${QMMF_CAMERA_METADATA_INCLUDE_DIRS}>
 )
 
-target_link_libraries(${GST_QMMFSRC_PLUGIN} PRIVATE
+target_link_libraries(${GST_CAMSRC_PLUGIN} PRIVATE
   qmmf_recorder_client
   qmmf_camera_metadata
   ${GST_LIBRARIES}
@@ -120,7 +120,7 @@ target_link_libraries(${GST_QMMFSRC_PLUGIN} PRIVATE
 )
 
 install(
-  TARGETS ${GST_QMMFSRC_PLUGIN}
+  TARGETS ${GST_CAMSRC_PLUGIN}
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ

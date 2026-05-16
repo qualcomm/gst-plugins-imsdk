@@ -54,7 +54,7 @@ Depends:
  gstreamer1.0-plugins-qcom-mlqnn,
  gstreamer1.0-plugins-qcom-msgbroker,
  gstreamer1.0-plugins-qcom-objtracker,
- gstreamer1.0-plugins-qcom-qmmfsrc,
+ gstreamer1.0-plugins-qcom-camsrc,
  gstreamer1.0-plugins-qcom-redissink,
  gstreamer1.0-plugins-qcom-restricted-zone,
  gstreamer1.0-plugins-qcom-rtspbin,
@@ -232,14 +232,14 @@ Depends:
  ${misc:Depends},
 Description: GStreamer plugin for Qualcomm: objtracker.
 
-Package: gstreamer1.0-plugins-qcom-qmmfsrc
+Package: gstreamer1.0-plugins-qcom-camsrc
 Section: video
 Architecture: arm64
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  qcom-camera-server,
-Description: GStreamer plugin for Qualcomm: qmmfsrc.
+Description: GStreamer plugin for Qualcomm: camsrc.
 
 Package: gstreamer1.0-plugins-qcom-redissink
 Section: libs

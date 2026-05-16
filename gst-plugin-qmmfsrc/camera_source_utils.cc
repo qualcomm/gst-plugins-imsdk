@@ -32,10 +32,10 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include "qmmf_source_utils.h"
+#include "camera_source_utils.h"
 #include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 #include <qmmf-sdk/qmmf_camera_metadata.h>
-#include <qmmf_source_context.h>
+#include <camera_source_context.h>
 #include <dlfcn.h>
 
 // Declare Qmmf buffer pool

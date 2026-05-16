@@ -32,14 +32,14 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
-#ifndef __GST_QMMFSRC_H__
-#define __GST_QMMFSRC_H__
+#ifndef __GST_CAMERASRC_H__
+#define __GST_CAMERASRC_H__
 
 #include <gst/gst.h>
 #include <gobject/gtype.h>
 #include <glib/gtypes.h>
 
-#include "qmmf_source_context.h"
+#include "camera_source_context.h"
 
 G_BEGIN_DECLS
 
@@ -99,4 +99,4 @@ GType qmmfsrc_get_type(void);
 
 G_END_DECLS
 
-#endif // __GST_QMMFSRC_H__
+#endif // __GST_CAMERASRC_H__

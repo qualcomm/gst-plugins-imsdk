@@ -32,8 +32,8 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
-#ifndef __GST_QMMFSRC_IMAGE_PAD_H__
-#define __GST_QMMFSRC_IMAGE_PAD_H__
+#ifndef __GST_CAMERASRC_IMAGE_PAD_H__
+#define __GST_CAMERASRC_IMAGE_PAD_H__
 
 #include <gst/gst.h>
 #include <gst/base/gstdataqueue.h>
@@ -157,4 +157,4 @@ gst_qmmfsrc_image_pad_mode_get_type();
 
 G_END_DECLS
 
-#endif // __GST_QMMFSRC_IMAGE_PAD_H__
+#endif // __GST_CAMERASRC_IMAGE_PAD_H__
