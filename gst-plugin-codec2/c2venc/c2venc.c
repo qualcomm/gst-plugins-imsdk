@@ -763,6 +763,14 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
          GST_ERROR_OBJECT (c2venc, "Failed to enable heir bpreconditions!");
          return FALSE;
        }
+
+       success = gst_c2_engine_set_parameter (c2venc->engine,
+           GST_C2_PARAM_NATIVE_RECORDING, GST_PTR_CAST (&enable));
+       if (!success) {
+         GST_ERROR_OBJECT (c2venc, "Failed to enable heir bpreconditions"
+             " or native recording!");
+         return FALSE;
+       }
     } else if (c2venc->temp_layer.n_layers == 0 &&
         c2venc->temp_layer.n_blayers == 0) {
       enable = FALSE;
