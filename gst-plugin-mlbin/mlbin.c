@@ -295,6 +295,7 @@ gst_ml_bin_link_plugins (GstMLBin * mlbin)
   } else {
     // Link the ghost/proxy pads of the bin to the appropriate elements.
     success = gst_ml_bin_ghost_pad_set_target (mlbin, gpad, mlpostprocess, "src");
+    gpad = GST_GHOST_PAD_CAST (GST_ELEMENT (mlbin)->sinkpads->data);
     success &= gst_ml_bin_ghost_pad_set_target (mlbin, gpad, inqueue, "sink");
   }
 
