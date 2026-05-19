@@ -19,8 +19,11 @@ target_compile_definitions(${GST_QTI_C2_ENGINE} PRIVATE
   $<$<BOOL:${GST_ENABLE_AUDIO_PLUGINS}>:__LINUX__>
 )
 
+pkg_check_modules(GST_ALLOCATORS REQUIRED gstreamer-allocators-1.0)
+
 target_include_directories(${GST_QTI_C2_ENGINE} PRIVATE
   ${GST_INCLUDE_DIRS}
+  ${GST_ALLOCATORS_INCLUDE_DIRS}
   ${KERNEL_BUILDDIR}/usr/include
 )
 
@@ -32,6 +35,7 @@ target_include_directories(${GST_QTI_C2_ENGINE} PRIVATE
 target_link_libraries(${GST_QTI_C2_ENGINE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
+  ${GST_ALLOCATORS_LIBRARIES}
   codec2_vndk
   qtic2module
 )
