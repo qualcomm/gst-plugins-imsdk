@@ -56,7 +56,10 @@ static G_DEFINE_QUARK (GstC2BufferQuark, gst_c2_buffer_qdata);
   g_mutex_unlock (&engine->lock); \
 }
 
-#define MAX_NUM_PENDING_WORK      (26)
+#define MAX_NUM_PENDING_WORK_VIDEO_ENCODE   (26)
+#define MAX_NUM_PENDING_WORK_VIDEO_DECODE   (11)
+#define MAX_NUM_PENDING_WORK_AUDIO_ENCODE   (11)
+#define MAX_NUM_PENDING_WORK_AUDIO_DECODE   (11)
 
 struct _GstC2Engine {
   /// Component name, used mainly for debugging.
@@ -70,6 +73,8 @@ struct _GstC2Engine {
   GMutex          lock;
   /// Tracking the number of pending frames.
   guint32         n_pending;
+  /// Maximum number of pending frames allowed before blocking.
+  guint32         max_pending_work;
   /// Condition signalled when pending frame has been processed.
   GCond           workdone;
 
@@ -284,18 +289,23 @@ gst_c2_engine_new (const gchar * name, guint32 mode, GstC2Callbacks * callbacks,
   switch (mode) {
     case GST_C2_MODE_VIDEO_ENCODE:
       component_mode = C2ModeType::kVideoEncode;
+      engine->max_pending_work = MAX_NUM_PENDING_WORK_VIDEO_ENCODE;
       break;
     case GST_C2_MODE_VIDEO_DECODE:
       component_mode = C2ModeType::kVideoDecode;
+      engine->max_pending_work = MAX_NUM_PENDING_WORK_VIDEO_DECODE;
       break;
     case GST_C2_MODE_AUDIO_ENCODE:
       component_mode = C2ModeType::kAudioEncode;
+      engine->max_pending_work = MAX_NUM_PENDING_WORK_AUDIO_ENCODE;
       break;
     case GST_C2_MODE_AUDIO_DECODE:
       component_mode = C2ModeType::kAudioDecode;
+      engine->max_pending_work = MAX_NUM_PENDING_WORK_AUDIO_DECODE;
       break;
     default:
       component_mode = C2ModeType::kVideoEncode;
+      engine->max_pending_work = MAX_NUM_PENDING_WORK_VIDEO_ENCODE;
       break;
   }
 
@@ -486,7 +496,7 @@ gst_c2_engine_queue (GstC2Engine * engine, GstC2QueueItem * item)
   uint32_t n_subframes = item->n_subframes;
 
   // Check and wait in case maximum number of pending frames has been reached.
-  GST_C2_ENGINE_CHECK_AND_WAIT_PENDING_WORK (engine, MAX_NUM_PENDING_WORK);
+  GST_C2_ENGINE_CHECK_AND_WAIT_PENDING_WORK (engine, engine->max_pending_work);
 
   if (GST_C2_MODE_VIDEO_ENCODE (engine) && (gst_buffer_n_memory (buffer) > 0) &&
       gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0))) {
