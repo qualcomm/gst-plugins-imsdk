@@ -56,7 +56,7 @@ static GstStaticPadTemplate sink_template = GST_STATIC_PAD_TEMPLATE ("sink",
         ", layout = (string) interleaved, channels = (int) 1")
     );
 
-#define GST_ML_TFLITE_TENSOR_TYPES "{ INT8, UINT8, INT32, FLOAT16, FLOAT32 }"
+#define GST_ML_TFLITE_TENSOR_TYPES "{ FLOAT32 }"
 
 #define GST_SRC_PAD_CAPS                        \
     "neural-network/tensors, "                    \
