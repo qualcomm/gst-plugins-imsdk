@@ -1650,6 +1650,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   const GstVideoMeta *meta = NULL;
   gboolean success = FALSE;
 
+  GST_TRACE_OBJECT (vtrans, "Input %" GST_PTR_FORMAT, inbuffer);
+
   // GAP buffer, nothing to do. Propagate output buffer downstream.
   if (gst_buffer_get_size (outbuffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
@@ -1718,6 +1720,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GST_LOG_OBJECT (vtrans, "Conversion took %" G_GINT64_FORMAT ".%03"
       G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
+
+  GST_TRACE_OBJECT (vtrans, "Output %" GST_PTR_FORMAT, outbuffer);
 
   if (!success) {
     GST_ERROR_OBJECT (vtrans, "Failed to process composition!");
