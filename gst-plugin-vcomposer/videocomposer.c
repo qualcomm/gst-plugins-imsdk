@@ -253,6 +253,20 @@ gst_video_composer_zorder_compare (const GstVideoComposerSinkPad * lpad,
   return lpad->zorder - rpad->zorder;
 }
 
+static void
+gst_video_composer_sinkpad_zorder_notify_cb (GObject * object,
+    GParamSpec * pspec, gpointer userdata)
+{
+  GstElement *element = GST_ELEMENT_CAST (userdata);
+
+  GST_OBJECT_LOCK (element);
+
+  element->sinkpads = g_list_sort (element->sinkpads,
+      (GCompareFunc) gst_video_composer_zorder_compare);
+
+  GST_OBJECT_UNLOCK (element);
+}
+
 static gint
 gst_video_composer_index_compare (const GstVideoComposerSinkPad * pad,
     const guint * index)
@@ -945,6 +959,10 @@ gst_video_composer_request_pad (GstElement * element, GstPadTemplate * templ,
 
   GST_OBJECT_UNLOCK (vcomposer);
 
+  // Re-sort sink pads when the zorder property is updated.
+  g_signal_connect (pad, "notify::zorder",
+      G_CALLBACK (gst_video_composer_sinkpad_zorder_notify_cb), element);
+
   GST_DEBUG_OBJECT (vcomposer, "Created pad: %s", GST_PAD_NAME (pad));
 
   gst_child_proxy_child_added (GST_CHILD_PROXY (element), G_OBJECT (pad),
@@ -973,6 +991,9 @@ gst_video_composer_release_pad (GstElement * element, GstPad * pad)
 
   gst_child_proxy_child_removed (GST_CHILD_PROXY (vcomposer), G_OBJECT (pad),
       GST_OBJECT_NAME (pad));
+
+  g_signal_handlers_disconnect_by_func (pad,
+      G_CALLBACK (gst_video_composer_sinkpad_zorder_notify_cb), element);
 
   GST_ELEMENT_CLASS (parent_class)->release_pad (GST_ELEMENT (vcomposer), pad);
 
