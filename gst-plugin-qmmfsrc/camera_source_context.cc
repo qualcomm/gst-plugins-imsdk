@@ -1295,6 +1295,9 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
     // Propagate original camera timestamp in media dependent OFFSET_END field.
     GST_BUFFER_OFFSET_END (gstbuffer) = buffer.timestamp;
 
+    // Propagate original camera frame index in media dependent OFFSET field.
+    GST_BUFFER_OFFSET (gstbuffer) = buffer.seqnum;
+
     GST_QMMF_CONTEXT_LOCK (context);
     // Initialize the timestamp base value for buffer synchronization.
     context->tsbase = (GST_CLOCK_TIME_NONE == context->tsbase) ?
@@ -1405,6 +1408,9 @@ image_data_callback (GstQmmfContext * context, GstPad * pad,
 
   // Propagate original camera timestamp in media dependent OFFSET_END field.
   GST_BUFFER_OFFSET_END (gstbuffer) = buffer.timestamp;
+
+  // Propagate original camera frame index in media dependent OFFSET field.
+  GST_BUFFER_OFFSET (gstbuffer) = buffer.seqnum;
 
   GST_QMMF_CONTEXT_LOCK (context);
   // Initialize the timestamp base value for buffer synchronization.
