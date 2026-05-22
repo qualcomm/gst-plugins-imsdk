@@ -188,7 +188,7 @@ void BYTETracker::linear_assignment(vector<vector<float> > &cost_matrix,
         return;
     }
 
-    vector<uint32_t> rowsol; vector<uint32_t> colsol;
+    vector<int32_t> rowsol; vector<int32_t> colsol;
     float c = (float) lapjv(cost_matrix, rowsol, colsol, true, thresh);
     for (size_t i = 0; i < rowsol.size(); i++) {
         if (rowsol[i] >= 0)  {
@@ -334,7 +334,7 @@ vector<vector<float> > BYTETracker::iou_distance(vector<STrack> &atracks,
 }
 
 double BYTETracker::lapjv(const vector<vector<float> > &cost,
-                          vector<uint32_t> &rowsol, vector<uint32_t> &colsol,
+                          vector<int32_t> &rowsol, vector<int32_t> &colsol,
                           bool extend_cost, float cost_limit, bool return_cost) {
 
     vector<vector<float> > cost_c;
