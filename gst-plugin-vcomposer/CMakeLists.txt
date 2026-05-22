@@ -12,12 +12,28 @@ find_package(PkgConfig)
 pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_QCOM_UTILS
-  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
-pkg_check_modules(GST_QCOM_VIDEO
-  REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
-pkg_check_modules(GST_QCOM_ALLOC
-  REQUIRED gstreamer-qcom-oss-allocators-1.0>=1.0.0)
+# Use in-tree CMake targets if built together, otherwise fall back to pkg-config
+if(TARGET gstqtiutilsbase)
+  set(GST_QCOM_UTILS_INCLUDE_DIRS "")
+  set(GST_QCOM_UTILS_LIBRARIES    gstqtiutilsbase)
+else()
+  pkg_check_modules(GST_QCOM_UTILS
+    REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
+endif()
+if(TARGET gstqtivideobase)
+  set(GST_QCOM_VIDEO_INCLUDE_DIRS "")
+  set(GST_QCOM_VIDEO_LIBRARIES    gstqtivideobase)
+else()
+  pkg_check_modules(GST_QCOM_VIDEO
+    REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+endif()
+if(TARGET gstqtiallocatorsbase)
+  set(GST_QCOM_ALLOC_INCLUDE_DIRS "")
+  set(GST_QCOM_ALLOC_LIBRARIES    gstqtiallocatorsbase)
+else()
+  pkg_check_modules(GST_QCOM_ALLOC
+    REQUIRED gstreamer-qcom-oss-allocators-1.0>=1.0.0)
+endif()
 
 # GST Video Aggregator is taken from plugins bad on versions below 1.16
 if(GST_VERSION VERSION_LESS 1.16.0)

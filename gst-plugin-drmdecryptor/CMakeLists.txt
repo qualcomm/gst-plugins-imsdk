@@ -13,8 +13,14 @@ pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_QCOM_MEM
-  REQUIRED gstreamer-qcom-oss-memory-1.0>=1.0.0)
+# Use in-tree CMake targets if built together, otherwise fall back to pkg-config
+if(TARGET gstqtimemorybase)
+  set(GST_QCOM_MEM_INCLUDE_DIRS "")
+  set(GST_QCOM_MEM_LIBRARIES    gstqtimemorybase)
+else()
+  pkg_check_modules(GST_QCOM_MEM
+    REQUIRED gstreamer-qcom-oss-memory-1.0>=1.0.0)
+endif()
 
 # Generate configuration header file with plugin describing definitions
 configure_file(config.h.in config.h @ONLY)

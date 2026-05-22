@@ -21,8 +21,14 @@ pkg_check_modules(GST_AUDIO
   REQUIRED gstreamer-audio-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_PBUTILS
   REQUIRED gstreamer-pbutils-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_QCOM_UTILS
-  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
+# Use in-tree CMake targets if built together, otherwise fall back to pkg-config
+if(TARGET gstqtiutilsbase)
+  set(GST_QCOM_UTILS_INCLUDE_DIRS "")
+  set(GST_QCOM_UTILS_LIBRARIES    gstqtiutilsbase)
+else()
+  pkg_check_modules(GST_QCOM_UTILS
+    REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
+endif()
 
 # Check whether MMM color format header is present.
 include(CheckIncludeFileCXX)

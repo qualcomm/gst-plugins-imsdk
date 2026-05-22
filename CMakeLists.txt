@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.16)
 project(gst-plugins-qti-oss LANGUAGES C CXX)
 set(GST_VERSION_REQUIRED "1.16")
 
+# Required for SDK based compilation to resolve correct install directories
+# based on the target architecture set by the toolchain.
+include(GNUInstallDirs)
+
 # Common point for setting version of all libs of gst-plugins-qcom package
 set(GST_PLUGINS_QTI_OSS_VERSION "1.0")
 

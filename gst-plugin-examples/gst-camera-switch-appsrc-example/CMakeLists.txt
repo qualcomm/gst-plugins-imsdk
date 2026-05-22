@@ -5,8 +5,14 @@ add_executable(${GST_EXAMPLE_BIN}
   main.cc
 )
 
-pkg_check_modules(GST_QCOM_VIDEO
-  REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+# Use in-tree CMake targets if built together, otherwise fall back to pkg-config
+if(TARGET gstqtivideobase)
+  set(GST_QCOM_VIDEO_INCLUDE_DIRS "")
+  set(GST_QCOM_VIDEO_LIBRARIES    gstqtivideobase)
+else()
+  pkg_check_modules(GST_QCOM_VIDEO
+    REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+endif()
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}

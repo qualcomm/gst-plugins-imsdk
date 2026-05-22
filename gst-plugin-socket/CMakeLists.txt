@@ -15,10 +15,21 @@ pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_QCOM_VIDEO
-  REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
-pkg_check_modules(GST_QCOM_ML
-  REQUIRED gstreamer-qcom-oss-ml-1.0>=1.0.0)
+# Use in-tree CMake targets if built together, otherwise fall back to pkg-config
+if(TARGET gstqtivideobase)
+  set(GST_QCOM_VIDEO_INCLUDE_DIRS "")
+  set(GST_QCOM_VIDEO_LIBRARIES    gstqtivideobase)
+else()
+  pkg_check_modules(GST_QCOM_VIDEO
+    REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+endif()
+if(TARGET gstqtimlbase)
+  set(GST_QCOM_ML_INCLUDE_DIRS "")
+  set(GST_QCOM_ML_LIBRARIES    gstqtimlbase)
+else()
+  pkg_check_modules(GST_QCOM_ML
+    REQUIRED gstreamer-qcom-oss-ml-1.0>=1.0.0)
+endif()
 
 # Generate configuration header file with plugin describing definitions
 configure_file(config.h.in config.h @ONLY)

@@ -15,10 +15,21 @@ pkg_check_modules(GST_BASE REQUIRED
   gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC REQUIRED
   gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_QCOM_ML
-  REQUIRED gstreamer-qcom-oss-ml-1.0>=1.0.0)
-pkg_check_modules(GST_QCOM_UTILS
-  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
+# Use in-tree CMake targets if built together, otherwise fall back to pkg-config
+if(TARGET gstqtimlbase)
+  set(GST_QCOM_ML_INCLUDE_DIRS "")
+  set(GST_QCOM_ML_LIBRARIES    gstqtimlbase)
+else()
+  pkg_check_modules(GST_QCOM_ML
+    REQUIRED gstreamer-qcom-oss-ml-1.0>=1.0.0)
+endif()
+if(TARGET gstqtiutilsbase)
+  set(GST_QCOM_UTILS_INCLUDE_DIRS "")
+  set(GST_QCOM_UTILS_LIBRARIES    gstqtiutilsbase)
+else()
+  pkg_check_modules(GST_QCOM_UTILS
+    REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
+endif()
 
 # Find ONNX Runtime using pkg-config
 pkg_check_modules(ONNXRUNTIME REQUIRED libonnxruntime)
