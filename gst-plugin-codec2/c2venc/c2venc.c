@@ -612,7 +612,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       return FALSE;
     }
 
-#if (CODEC2_CONFIG_VERSION_MAJOR == 2)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR >= 1)
     if (c2venc->intra_refresh.mode != GST_C2_INTRA_REFRESH_DISABLED) {
       success = gst_c2_engine_set_parameter (c2venc->engine,
           GST_C2_PARAM_INTRA_REFRESH_MODE,
