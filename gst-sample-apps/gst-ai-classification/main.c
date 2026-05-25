@@ -355,7 +355,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstStructure *delegate_options = NULL;
   GstPad *qtiqmmfsrc_type = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128], settings[128];
+  gboolean is_v66 = FALSE;
+  char * delegate_str = NULL;
+  gchar element_name[128], settings[128], delegate_backend[128];
   gint pos_vals[2], dim_vals[2];
   gint primary_camera_width = DEFAULT_CAMERA_OUTPUT_WIDTH;
   gint primary_camera_height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
@@ -368,6 +370,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
   gint module_id;
   GValue video_type = G_VALUE_INIT;
+
+  is_v66 = is_v66_arch ();
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     queue[i] = NULL;
@@ -774,9 +778,16 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
           "delegate", tflite_delegate, NULL);
     } else if (options->use_dsp) {
-      g_print ("Using DSP Delegate\n");
-      delegate_options = gst_structure_from_string (
-          "QNNExternalDelegate,backend_type=htp;", NULL);
+      if (is_v66) {
+        snprintf (delegate_backend, sizeof (delegate_backend), "dsp");
+      } else {
+        snprintf (delegate_backend, sizeof (delegate_backend), "htp");
+      }
+      g_print ("Using backend: %s\n", delegate_backend);
+      delegate_str = g_strdup_printf (
+        "QNNExternalDelegate,backend_type=%s;",
+        delegate_backend);
+      delegate_options = gst_structure_from_string (delegate_str, NULL);
       g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
       g_object_set (G_OBJECT (qtimlelement),
@@ -784,6 +795,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_object_set (G_OBJECT (qtimlelement),
           "external-delegate-options", delegate_options, NULL);
       gst_structure_free (delegate_options);
+      g_free (delegate_str);
     } else {
       g_printerr ("Invalid Runtime Selected\n");
       goto error_clean_elements;

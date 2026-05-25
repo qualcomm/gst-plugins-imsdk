@@ -12,8 +12,10 @@
 #include <glob.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <glib-unix.h>
 #include <gst/gst.h>
@@ -469,4 +471,35 @@ create_camera_source_bin (const gchar * bin_name)
   }
 
   return src_bin;
+}
+
+SocId GetSocId() {
+    SocId id = kInvalid;
+
+    int soc_fd = -1;
+    char buf[CHIPSET_BUFFER_SIZE] = {0};
+
+    if (access (SOC_DEV_PATH_PRIMARY, F_OK) == 0) {
+        soc_fd = open (SOC_DEV_PATH_PRIMARY, O_RDONLY);
+    } else {
+        soc_fd = open (SOC_DEV_PATH_SECONDARY, O_RDONLY);
+    }
+
+    if (soc_fd >= 0) {
+        int ret = read (soc_fd, buf, sizeof (buf) - 1);
+        if (ret > 0) {
+            buf[ret] = '\0';
+            id = (SocId) atoi (buf);
+        }
+        close(soc_fd);
+    }
+
+    return id;
+}
+
+gboolean
+is_v66_arch ()
+{
+  SocId id = GetSocId();
+  return (id == kTALOS_QCS615 || id == kTALOS_QCS610 || id == kTALOS_QCS410);
 }

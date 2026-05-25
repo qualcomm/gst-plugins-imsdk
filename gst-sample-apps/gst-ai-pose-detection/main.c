@@ -82,6 +82,7 @@
  * Number of Queues used for buffer caching between elements
  */
 #define QUEUE_COUNT 8
+#define VIDEORATE_COUNT 2
 
 /**
  * Structure for various application specific options
@@ -305,6 +306,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *filesrc = NULL, *qtdemux = NULL, *h264parse = NULL;
   GstElement *v4l2h264dec = NULL, *rtspsrc = NULL, *rtph264depay = NULL;
   GstElement *v4l2h264dec_caps = NULL, *v4l2src = NULL, *v4l2src_caps = NULL;
+  GstElement *videorate[VIDEORATE_COUNT], *videorate_caps[VIDEORATE_COUNT];
   GstElement *v4l2h264enc_file = NULL, *v4l2h264enc_rtsp = NULL;
   GstElement *h264parse_enc_rtsp = NULL, *mp4mux = NULL;
   GstElement *filesink = NULL, *qtirtspbin = NULL;
@@ -314,8 +316,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstPad *qtiqmmfsrc_type = NULL;
   GstPad *vcomposer_sink;
   GstStructure *delegate_options;
-  gboolean ret = FALSE;
-  gchar element_name[128], settings[128];;
+  gboolean ret = FALSE, is_v66 = FALSE;
+  char * delegate_str = NULL;
+  gchar element_name[128], settings[128], delegate_backend[128];
   gint pos_vals[2], dim_vals[2];
   gint primary_camera_width = DEFAULT_CAMERA_OUTPUT_WIDTH;
   gint primary_camera_height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
@@ -326,6 +329,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
   gint module_id;
   GValue video_type = G_VALUE_INIT;
+
+  is_v66 = is_v66_arch ();
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     queue[i] = NULL;
@@ -533,6 +538,27 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
+  for (gint i = 0; i < VIDEORATE_COUNT; i++) {
+    gchar *name1 = g_strdup_printf ("videorate_%d", i);
+    videorate[i] = gst_element_factory_make ("videorate", name1);
+    g_free (name1);
+
+    if (!videorate[i]) {
+      g_printerr ("Failed to create videorate[%d]\n", i);
+      goto error_clean_elements;
+    }
+
+    gchar *name2 = g_strdup_printf ("videorate_caps_%d", i);
+    videorate_caps[i] = gst_element_factory_make ("capsfilter", name2);
+    g_free (name2);
+
+    if (!videorate_caps[i]) {
+      g_printerr ("Failed to create videorate_caps[%d]\n", i);
+      goto error_clean_elements;
+    }
+  }
+
+
   if (options->sinktype == GST_WAYLANDSINK) {
   // Create Wayland compositor to render output on Display
   waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
@@ -706,9 +732,16 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
           "delegate", tflite_delegate, NULL);
     } else if (options->use_dsp) {
-      g_print ("Using DSP Delegate\n");
-      delegate_options = gst_structure_from_string (
-          "QNNExternalDelegate,backend_type=htp;", NULL);
+      if (is_v66) {
+        snprintf (delegate_backend, sizeof (delegate_backend), "dsp");
+      } else {
+        snprintf (delegate_backend, sizeof (delegate_backend), "htp");
+      }
+      g_print ("Using backend: %s\n", delegate_backend);
+      delegate_str = g_strdup_printf (
+        "QNNExternalDelegate,backend_type=%s;",
+        delegate_backend);
+      delegate_options = gst_structure_from_string (delegate_str, NULL);
       g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
       g_object_set (G_OBJECT (qtimlelement),
@@ -716,6 +749,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_object_set (G_OBJECT (qtimlelement),
           "external-delegate-options", delegate_options, NULL);
       gst_structure_free (delegate_options);
+      g_free (delegate_str);
     } else {
       g_printerr ("Invalid Runtime Selected\n");
       goto error_clean_elements;
@@ -777,6 +811,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   g_object_set (G_OBJECT (pose_filter), "caps", pad_filter, NULL);
   gst_caps_unref (pad_filter);
 
+  for (gint i = 0; i < VIDEORATE_COUNT; i++) {
+    pad_filter = gst_caps_new_simple ("video/x-raw",
+      "framerate", GST_TYPE_FRACTION, 15, 1, NULL);
+
+    g_object_set (G_OBJECT (videorate_caps[i]), "caps",
+      pad_filter, NULL);
+    gst_caps_unref (pad_filter);
+  }
+
   // 3. Setup the pipeline
   g_print ("Adding all elements to the pipeline...\n");
 
@@ -820,6 +863,11 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
   }
 
+  for (gint i = 0; i < VIDEORATE_COUNT; i++) {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), videorate[i],
+        videorate_caps[i], NULL);
+  }
+
   g_print ("Linking elements...\n");
 
   if (options->use_file) {
@@ -828,15 +876,26 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Pipeline elements cannot be linked for filesource->qtdemux\n");
       goto error_clean_pipeline;
     }
-    ret = gst_element_link_many (queue[0], h264parse, v4l2h264dec,
+    if (is_v66) {
+      ret = gst_element_link_many (queue[0], h264parse, v4l2h264dec,
+        v4l2h264dec_caps, videorate[0], videorate_caps[0], queue[1], tee, NULL);
+    } else {
+      ret = gst_element_link_many (queue[0], h264parse, v4l2h264dec,
         v4l2h264dec_caps, queue[1], tee, NULL);
+    }
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for parse->tee\n");
       goto error_clean_pipeline;
     }
   } else if (options->use_rtsp) {
-    ret = gst_element_link_many (queue[0], rtph264depay, h264parse,
-        v4l2h264dec, v4l2h264dec_caps,  queue[1], tee, NULL);
+    if (is_v66) {
+      ret = gst_element_link_many (queue[0], rtph264depay, h264parse,
+        v4l2h264dec, v4l2h264dec_caps, videorate[0],
+        videorate_caps[0],  queue[1], tee, NULL);
+    } else {
+      ret = gst_element_link_many (queue[0], rtph264depay, h264parse,
+        v4l2h264dec, v4l2h264dec_caps, queue[1], tee, NULL);
+    }
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
       "rtspsource->rtph264depay\n");
@@ -845,15 +904,28 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   } else if (options->use_usb) {
     if (options->video_format == GST_YUV2_VIDEO_FORMAT ||
         options->video_format == GST_NV12_VIDEO_FORMAT) {
-      ret = gst_element_link_many (v4l2src, v4l2src_caps, tee, NULL);
+      if (is_v66) {
+        ret = gst_element_link_many (v4l2src, v4l2src_caps,
+          videorate[0], videorate_caps[0], tee, NULL);
+      } else {
+        ret = gst_element_link_many (v4l2src, v4l2src_caps,
+          tee, NULL);
+      }
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for"
             " usbsource->tee\n");
         goto error_clean_pipeline;
       }
     } else if (options->video_format == GST_MJPEG_VIDEO_FORMAT) {
-      ret = gst_element_link_many (v4l2src, v4l2src_caps, jpegdec, videoconvert,
+      if (is_v66) {
+        ret = gst_element_link_many (v4l2src, v4l2src_caps,
+          videorate[0], videorate_caps[0], jpegdec, videoconvert,
           qtivtransform_capsfilter, qtivtransform, tee, NULL);
+      } else {
+        ret = gst_element_link_many (v4l2src, v4l2src_caps,
+          jpegdec, videoconvert, qtivtransform_capsfilter,
+          qtivtransform, tee, NULL);
+      }
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for"
             " usbsource->jpegdec->tee\n");
@@ -861,15 +933,26 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       }
     }
   } else {
-    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps_preview,
+    if (is_v66) {
+      ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps_preview,
+        videorate[0], videorate_caps[0], queue[2], NULL);
+    } else {
+      ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps_preview,
         queue[2], NULL);
+    }
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for "
           "qmmfsource->composer\n");
       goto error_clean_pipeline;
     }
 
-    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[4], tee, NULL);
+    if (is_v66) {
+      ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps,
+        videorate[1], videorate_caps[1], queue[4], tee, NULL);
+    } else {
+      ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps,
+        queue[4], tee, NULL);
+    }
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for qmmfsource->tee\n");
       goto error_clean_pipeline;
@@ -1007,6 +1090,10 @@ error_clean_elements:
       &qtirtspbin, &v4l2h264enc_file, &v4l2h264enc_rtsp, h264parse_enc_rtsp,
       &mp4mux, &qtivtransform, &qtivtransform_capsfilter, &videoconvert, &jpegdec,
       &waylandsink, &fpsdisplaysink, NULL);
+  for (gint i = 0; i < VIDEORATE_COUNT; i++) {
+    gst_object_unref (videorate[i]);
+    gst_object_unref (videorate_caps[i]);
+  }
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_object_unref (queue[i]);
   }

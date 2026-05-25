@@ -16,6 +16,10 @@
 #include <glib-unix.h>
 #include <gst/gst.h>
 
+#define SOC_DEV_PATH_PRIMARY "/sys/devices/soc0/soc_id"
+#define SOC_DEV_PATH_SECONDARY "/sys/devices/system/soc/soc0/id"
+#define CHIPSET_BUFFER_SIZE 32
+
 G_BEGIN_DECLS
 
 /**
@@ -420,6 +424,23 @@ typedef enum {
   GST_MJPEG_VIDEO_FORMAT
 };
 
+typedef enum {
+  kInvalid = 0,
+  kTALOS_QCS610 = 401,
+  kTALOS_QCS410 = 406,
+  kQCM6490_IOT = 497,
+  kQCS6490 = 498,
+  kQCS5430_LITE = 575,
+  kQCM5430_LITE = 576,
+  kLEMANS_QRB = 656,
+  kQCS9100_IOT = 667,
+  kQCS8300 = 674,
+  kQCS8275 = 675,
+  kQCS9075 = 676,
+  kTALOS_QCS615 = 680,
+  kMONACO_FLEX = 695,
+} SocId;
+
 /*
  * Check if File Exists
  *
@@ -545,6 +566,18 @@ is_camx_present (void);
 // libcamersrc and qtiqmmfsrc implementation
 GstElement *
 create_camera_source_bin (const gchar * bin_name);
+
+// GetSocId
+// @brief  Query for HW for the SoC Id
+// @return socId returned by the HW being probed; SocId::Invalid on failure
+SocId
+GetSocId();
+
+// is_v66_arch
+// @brief checks whether the SoC supports v66 architecture or not
+// @return TRUE if the SoC supports v66 architecture or else FALSE
+gboolean
+is_v66_arch ();
 
 G_END_DECLS
 
