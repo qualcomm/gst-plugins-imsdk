@@ -10,6 +10,7 @@ import sys
 import signal
 import gi
 import argparse
+import glob
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
@@ -44,6 +45,83 @@ def link_elements(link_orders, elements):
                 )
             src = dest
 
+def is_camx_present():
+    v4l_root = "/sys/class/video4linux"
+    if not os.path.exists(v4l_root):
+        return False
+    video_nodes = glob.glob("/dev/video*")
+    for video_path in video_nodes:
+        video_name = os.path.basename(video_path)
+        driver_module_link = os.path.join(v4l_root, video_name, "device", "driver", "module")
+        try:
+            resolved_path = os.path.realpath(driver_module_link)
+            if "camera" in resolved_path:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def create_camera_source_bin(bin_name=None):
+    """
+    - CAMX present  → returns a bare  qtiqmmfsrc  element.
+    - CAMX absent   → returns a GstBin wrapping  libcamerasrc ! qtivtransform
+                       with a ghost 'src' pad, so the caller always sees a
+                       uniform single-src element / bin.
+    """
+    camx_present = is_camx_present()
+
+    if camx_present:
+        src = Gst.ElementFactory.make("qtiqmmfsrc", "camera_src")
+        if not src:
+            print("ERROR: Failed to create qtiqmmfsrc")
+            return None
+        print("CAMX detected — using qtiqmmfsrc")
+        return src
+
+    src_bin = Gst.Bin.new(bin_name if bin_name else "camera_source_bin")
+    if not src_bin:
+        print("ERROR: Failed to create camera source bin")
+        return None
+
+    src           = Gst.ElementFactory.make("libcamerasrc",  "camera_src")
+    qtivtransform = Gst.ElementFactory.make("qtivtransform", "camera_transform")
+
+    if not src or not qtivtransform:
+        print("ERROR: Failed to create libcamerasrc fallback source chain")
+        return None
+
+    src_bin.add(src)
+    src_bin.add(qtivtransform)
+
+    if not src.link(qtivtransform):
+        print("ERROR: Failed to link libcamerasrc -> qtivtransform")
+        src_bin.remove(src)
+        src_bin.remove(qtivtransform)
+        return None
+
+    target_src_pad = qtivtransform.get_static_pad("src")
+    if not target_src_pad:
+        print("ERROR: Failed to get qtivtransform src pad")
+        src_bin = None
+        return None
+
+    ghost_src_pad = Gst.GhostPad.new("src", target_src_pad)
+    target_src_pad = None
+
+    if not ghost_src_pad:
+        print("ERROR: Failed to create ghost src pad for camera source bin")
+        src_bin = None
+        return None
+
+    if not src_bin.add_pad(ghost_src_pad):
+        print("ERROR: Failed to add ghost src pad to camera source bin")
+        ghost_src_pad = None
+        src_bin = None
+        return None
+
+    print("CAMX not detected — using libcamerasrc -> qtivtransform bin")
+    return src_bin
 
 def construct_pipeline(pipe):
     """Initialize and link elements for the GStreamer pipeline."""
@@ -80,11 +158,17 @@ def construct_pipeline(pipe):
     )
 
     args = parser.parse_args()
+    cam_src_bin = create_camera_source_bin("camera_source_bin")
+    if not cam_src_bin:
+        raise Exception("Unable to create camera source bin")
 
+    # Only qtiqmmfsrc supports the 'camera' property
+    if cam_src_bin.get_factory() and cam_src_bin.get_factory().get_name() == "qtiqmmfsrc":
+       cam_src_bin.set_property("camera", args.camera)
     # Create all elements
     # fmt: off
     elements = {
-        "qmmfsrc":      create_element("qtiqmmfsrc", "camsrc"),
+        "camsrc":cam_src_bin,
         "capsfilter_0": create_element("capsfilter", "camoutcaps"),
         "vtransform":   create_element("qtivtransform", "transfrom"),
         "capsfilter_1": create_element("capsfilter", "transformcaps"),
@@ -96,8 +180,6 @@ def construct_pipeline(pipe):
     # fmt: on
 
     # Set element properties
-    Gst.util_set_object_arg(elements["qmmfsrc"], "camera", f"{args.camera}")
-
     Gst.util_set_object_arg(
         elements["capsfilter_0"],
         "caps",
@@ -128,13 +210,12 @@ def construct_pipeline(pipe):
     # fmt: off
     link_orders = [
         [
-            "qmmfsrc", "capsfilter_0", "vtransform", "capsfilter_1",
+            "camsrc", "capsfilter_0", "vtransform", "capsfilter_1",
             "v4l2h264enc", "h264parse", "mp4mux", "filesink"
         ]
     ]
     # fmt: on
     link_elements(link_orders, elements)
-
 
 def quit_mainloop(loop):
     """Quit the mainloop if it is running."""
