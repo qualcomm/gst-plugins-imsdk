@@ -1,5 +1,4 @@
-pkg_check_modules(GST_VIDEO
-  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 
 set(GST_QTI_META_MODULE meta-transform-roi-label-moving-average)
 

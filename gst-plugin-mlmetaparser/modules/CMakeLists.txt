@@ -1,8 +1,6 @@
 
-pkg_check_modules(GST_VIDEO
-  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(JSON
-  REQUIRED json-glib-1.0)
+pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(JSON REQUIRED json-glib-1.0)
 
 # GStreamer ML meta parser plugin modules.
 set(GST_QTI_PARSER_MODULE ml-meta-parser-json)

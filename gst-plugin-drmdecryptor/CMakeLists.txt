@@ -9,12 +9,12 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools
-pkg_check_modules(GST
-  REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_ALLOC
-  REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_QCOM_MEM
-  REQUIRED gstreamer-qcom-oss-memory-1.0>=1.0.0)
+set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH ON)
+set(CMAKE_PREFIX_PATH "${PKG_CONFIG_LOCAL_PATH}")
+
+pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_QCOM_MEM REQUIRED gstreamer-qcom-oss-memory-1.0>=1.0.0)
 
 # Generate configuration header file with plugin describing definitions
 configure_file(config.h.in config.h @ONLY)

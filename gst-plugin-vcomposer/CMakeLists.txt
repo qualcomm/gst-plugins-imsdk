@@ -9,15 +9,15 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools
+set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH ON)
+set(CMAKE_PREFIX_PATH "${PKG_CONFIG_LOCAL_PATH}")
+
 pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_QCOM_UTILS
-  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
-pkg_check_modules(GST_QCOM_VIDEO
-  REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
-pkg_check_modules(GST_QCOM_ALLOC
-  REQUIRED gstreamer-qcom-oss-allocators-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_UTILS REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_VIDEO REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_ALLOC REQUIRED gstreamer-qcom-oss-allocators-1.0>=1.0.0)
 
 # GST Video Aggregator is taken from plugins bad on versions below 1.16
 if(GST_VERSION VERSION_LESS 1.16.0)

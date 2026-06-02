@@ -54,9 +54,6 @@ install(CODE "
   endif()
 ")
 
-# Add destination of compiletime pkg-config file to PKG_CONFIG_PATH
-set(ENV{PKG_CONFIG_PATH} "${CMAKE_CURRENT_BINARY_DIR}:$ENV{PKG_CONFIG_PATH}")
-
 configure_file(
   ${QTI_PLUGINS_BASE_SOURCE_DIR}/common.pc.in
   ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
