@@ -86,11 +86,11 @@
 #define TEE_COUNT 3
 
 #define STAGE1_MODEL_PATH "/etc/models/foot_track_net_quantized.tflite"
-#define STAGE1_LABELS_PATH "/etc/models/foot_track_net.json"
-#define STAGE1_SETTINGS_PATH "/etc/models/foot_track_net_settings.json"
+#define STAGE1_LABELS_PATH "/etc/labels/foot_track_net.json"
+#define STAGE1_SETTINGS_PATH "/etc/labels/foot_track_net_settings.json"
 
 #define STAGE2_MODEL_PATH "/etc/models/gear_guard_net.tflite"
-#define STAGE2_LABELS_PATH "/etc/models/gear_guard_net.json"
+#define STAGE2_LABELS_PATH "/etc/labels/gear_guard_net.json"
 
 /*
  * Small helper used by dynamic-pad callbacks.
@@ -654,9 +654,15 @@ webrtc_connect_signalling (GstAppContext * appctx)
     return FALSE;
   }
 
-  soup_session_websocket_connect_async (
-      appctx->ws_session, msg, NULL, NULL, G_PRIORITY_DEFAULT, NULL,
+#ifdef GST_SOUP3
+  soup_session_websocket_connect_async (appctx->ws_session, msg, NULL,
+      NULL, G_PRIORITY_DEFAULT, NULL,
       (GAsyncReadyCallback) on_server_connected, appctx);
+#else
+  soup_session_websocket_connect_async (appctx->ws_session, msg, NULL,
+      NULL, NULL,
+      (GAsyncReadyCallback) on_server_connected, appctx);
+#endif
 
   g_object_unref (msg);
 

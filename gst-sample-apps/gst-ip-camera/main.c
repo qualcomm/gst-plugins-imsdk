@@ -85,7 +85,7 @@
 #define TEE_COUNT 2
 
 #define MODEL_PATH "/etc/models/yolov8_det_quantized.tflite"
-#define LABELS_PATH "/etc/models/yolov8.json"
+#define LABELS_PATH "/etc/labels/yolov8.json"
 #define SETTINGS "{\"confidence\": 51.0}"
 
 /*
@@ -650,9 +650,15 @@ webrtc_connect_signalling (GstAppContext * appctx)
     return FALSE;
   }
 
-  soup_session_websocket_connect_async (
-      appctx->ws_session, msg, NULL, NULL, G_PRIORITY_DEFAULT, NULL,
+#ifdef GST_SOUP3
+  soup_session_websocket_connect_async (appctx->ws_session, msg, NULL,
+      NULL, G_PRIORITY_DEFAULT, NULL,
       (GAsyncReadyCallback) on_server_connected, appctx);
+#else
+  soup_session_websocket_connect_async (appctx->ws_session, msg, NULL,
+      NULL, NULL,
+      (GAsyncReadyCallback) on_server_connected, appctx);
+#endif
 
   g_object_unref (msg);
 

@@ -680,9 +680,15 @@ webrtc_connect_signalling (GstAppContext * appctx)
     return FALSE;
   }
 
-  soup_session_websocket_connect_async (
-      appctx->ws_session, msg, NULL, NULL, G_PRIORITY_DEFAULT, NULL,
+#ifdef GST_SOUP3
+  soup_session_websocket_connect_async (appctx->ws_session, msg, NULL,
+      NULL, G_PRIORITY_DEFAULT, NULL,
       (GAsyncReadyCallback) on_server_connected, appctx);
+#else
+  soup_session_websocket_connect_async (appctx->ws_session, msg, NULL,
+      NULL, NULL,
+      (GAsyncReadyCallback) on_server_connected, appctx);
+#endif
 
   g_object_unref (msg);
 
