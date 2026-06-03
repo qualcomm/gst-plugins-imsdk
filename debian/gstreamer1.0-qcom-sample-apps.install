@@ -46,3 +46,13 @@ usr/bin/gst-video-transcode-example
 usr/bin/gst-videocodec-concurrent-playback
 usr/bin/gst-weston-composition-example
 usr/bin/GstD-camera-single-stream-example
+usr/bin/gst-ai-video-classification
+usr/bin/gst-ai-video-daisychain-pose-estimation
+usr/bin/gst-ai-video-detection
+usr/bin/gst-ai-video-inference
+usr/bin/gst-ai-video-postprocess
+usr/bin/gst-ai-video-preprocess
+usr/bin/gst-ai-video-preprocess-crop
+usr/bin/gst-ai-video-segmentation
+usr/bin/gst-detection-display-example
+usr/bin/gst-video-source-example
