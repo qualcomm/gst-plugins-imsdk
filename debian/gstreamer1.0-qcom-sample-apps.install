@@ -56,3 +56,8 @@ usr/bin/gst-ai-video-preprocess-crop
 usr/bin/gst-ai-video-segmentation
 usr/bin/gst-detection-display-example
 usr/bin/gst-video-source-example
+usr/bin/gst-ip-camera
+usr/bin/gst-gesture-recognition
+usr/bin/gst-ppe-detection
+usr/bin/gst-restricted-zone
+usr/bin/gst-video-wall
