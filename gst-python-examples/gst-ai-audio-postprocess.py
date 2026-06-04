@@ -58,7 +58,7 @@ def on_frame(name, buffer):
         # For convenience, the Python script overwrites the same file (result.json)
         # with each inference run. This approach streamlines access to the latest
         # results and eliminates the need to manage multiple output files during testing.
-        buffer_to_file(buffer, "/etc/media/result.json")
+        buffer_to_file(buffer, "result.json")
         print(f"ML result saved.")
     except Exception as e:
         print(f"ML result error: {e}")

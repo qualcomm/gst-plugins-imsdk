@@ -172,7 +172,7 @@ def gst_get_sink(type: str):
         # Encode and save the video
         return (
             "v4l2h264enc capture-io-mode=4 output-io-mode=4 ! queue ! "
-            "h264parse ! mp4mux ! filesink location=/etc/media/output.mp4"
+            "h264parse ! mp4mux ! filesink location=output.mp4"
         )
     elif type.startswith("appsink"):
         # Send video frames to an appsink for processing in Python

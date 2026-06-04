@@ -43,7 +43,7 @@ VIDEO_SOURCE = (
 # Display output (default). Renders video with overlay directly to screen using Wayland.
 # -o display
 
-# Video output. Encodes and saves the video to an MP4 file. Default location is "/etc/media/output.mp4"
+# Video output. Encodes and saves the video to an MP4 file. Default location is "output.mp4"
 # -o video
 
 # Appsink output. Sends frames to Python for further processing (e.g., inference, saving, analysis).
@@ -57,7 +57,11 @@ VIDEO_SOURCE = (
 parser = argparse.ArgumentParser(description=DESCRIPTION)
 parser.add_argument('-s', '--source', type=str, default=VIDEO_SOURCE, help='GStreamer source pipeline string')
 parser.add_argument('-o', '--output', type=str, default="video", help='Output type: display, appsink, video')
+parser.add_argument('--model-base-path', type=str, default="/etc/", help='Base directory containing models/ and labels/')
 args = parser.parse_args()
+MODEL_BASE_PATH = args.model_base_path.rstrip('/')
+MODEL_DIR = f'{MODEL_BASE_PATH}/models' if MODEL_BASE_PATH else '/models'
+LABEL_DIR = f'{MODEL_BASE_PATH}/labels' if MODEL_BASE_PATH else '/labels'
 
 # ------------------------------------------------------------------------------
 # GStreamer Pipeline Definition
@@ -78,11 +82,11 @@ PIPELINE = (
     'qtimltflite name=inference delegate=external '
     'external-delegate-path=libQnnTFLiteDelegate.so '
     'external-delegate-options="QNNExternalDelegate,backend_type=htp;" '
-    'model=/etc/models/deeplabv3_plus_mobilenet.tflite ! queue ! '
+    f'model={MODEL_DIR}/deeplabv3_plus_mobilenet.tflite ! queue ! '
 
     # Postprocess inference results
     'qtimlpostprocess name=postprocess module=deeplab-argmax '
-    'labels=/etc/labels/dv3-argmax.json ! mixer. '
+    f'labels={LABEL_DIR}/dv3-argmax.json ! mixer. '
 
     # Use qtivcomposer to overlay segmentation result over the video frame
     'qtivcomposer name=mixer sink_1::alpha=0.5 ! video/x-raw,format=NV12 ! '
@@ -101,7 +105,7 @@ def on_frame(name, buffer):
         # For convenience, the Python script overwrites the same file (frame.jpeg)
         # with each inference run. This approach streamlines access to the latest
         # results and eliminates the need to manage multiple output files during testing.
-        nv12_buffer_to_jpeg(buffer, "/etc/media/frame.jpeg")
+        nv12_buffer_to_jpeg(buffer, "frame.jpeg")
         print(f"JPEG saved.")
     except Exception as e:
         print(f"JPEG error: {e}")
