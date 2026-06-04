@@ -79,7 +79,7 @@ on_new_sample (GstElement * appsink, gpointer userdata)
 
   /* Store the mapped buffer size before writing the frame to disk. */
   buffer_size = mapinfo.size;
-  
+
   g_print ("New sample received, saving...\n");
 
   /*
@@ -87,7 +87,7 @@ on_new_sample (GstElement * appsink, gpointer userdata)
    * The file is overwritten on each sample, so it always contains the most
    * recent buffer observed by appsink.
    */
-  FILE *f = fopen ("/etc/media/tensor.bin", "wb");
+  FILE *f = fopen ("tensor.bin", "wb");
   if (f) {
     fwrite (mapinfo.data, 1, buffer_size, f);
     fclose (f);
@@ -162,7 +162,7 @@ int main(int argc, char * argv[])
     if (error) g_error_free (error);
     return -1;
   }
-  
+
   /* The main loop keeps the application alive while the pipeline is running. */
   appctx.mloop = g_main_loop_new (NULL, FALSE);
 
