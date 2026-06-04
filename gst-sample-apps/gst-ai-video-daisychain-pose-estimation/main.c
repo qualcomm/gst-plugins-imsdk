@@ -44,7 +44,7 @@ gst_get_sink (const gchar *type)
         // Encode and save video
         return g_strdup (
           "v4l2h264enc capture-io-mode=4 output-io-mode=4 ! queue ! "
-          "h264parse ! mp4mux ! filesink location=/etc/media/output.mp4"
+          "h264parse ! mp4mux ! filesink location=output.mp4"
         );
     }
     else if (g_str_has_prefix(type, "appsink")) {
@@ -112,7 +112,7 @@ on_new_sample (GstElement * appsink, gpointer userdata)
 
   /* Store the mapped buffer size before writing the frame to disk. */
   buffer_size = mapinfo.size;
-  
+
   g_print ("New sample received, saving...\n");
 
   /*
@@ -120,7 +120,7 @@ on_new_sample (GstElement * appsink, gpointer userdata)
    * The file is overwritten on each sample, so it always contains the most
    * recent buffer observed by appsink.
    */
-  FILE *f = fopen ("/etc/media/frame.yuv", "wb");
+  FILE *f = fopen ("frame.yuv", "wb");
   if (f) {
     fwrite (mapinfo.data, 1, buffer_size, f);
     fclose (f);
@@ -143,6 +143,8 @@ int main(int argc, char * argv[])
   GstBus *bus = NULL;
   GError *error = NULL;
   gchar *source = g_strdup (DEFAULT_INPUT);
+  gchar *model_base_path = g_strdup ("/etc/");
+  gchar *model_label_base = NULL;
   gchar *output = g_strdup (DEFAULT_OUTPUT);
 
   /* Initialize GStreamer before using any GstElement, GstBus or caps API. */
@@ -152,6 +154,8 @@ int main(int argc, char * argv[])
   GOptionEntry entries[] = {
     { "source", 's', 0, G_OPTION_ARG_STRING, &source,
       "GStreamer source pipeline", NULL },
+    { "model-base-path", 0, 0, G_OPTION_ARG_STRING, &model_base_path,
+      "Directory containing models/ and labels/", NULL },
     { "output", 'o', 0, G_OPTION_ARG_STRING, &output,
       "GStreamer output pipeline", NULL },
     { NULL }
@@ -165,15 +169,15 @@ int main(int argc, char * argv[])
     return -1;
   }
 
+  model_label_base = g_str_has_suffix (model_base_path, "/") ?
+      g_strdup (model_base_path) : g_strdup_printf ("%s/", model_base_path);
+
   /*
    * Compose the full pipeline string from the selected source branch and a
    * named appsink. The appsink emits signals so this application can receive
    * buffers through on_new_sample().
    */
-  gchar *pipeline_str = g_strdup_printf ("%s ! %s ! %s",
-    // Video source input
-    source,
-
+  gchar *ml_pipe = g_strdup_printf (
     // Use a tee element to pass the video frame sequentially,
     // first to mlvconverter, then to metamux.
     "tee name=t1 "
@@ -185,11 +189,11 @@ int main(int argc, char * argv[])
     "qtimltflite name=detection-inference delegate=external "
     "external-delegate-path=libQnnTFLiteDelegate.so "
     "external-delegate-options=\"QNNExternalDelegate,backend_type=htp;\" "
-    "model=/etc/models/yolox_quantized.tflite ! queue ! "
+    "model=%smodels/yolox_quantized.tflite ! queue ! "
  
     // Postprocess inference results
     "qtimlpostprocess name=detection-postprocess results=8 module=yolov8 "
-    "labels=/etc/labels/coco.txt settings=\"{\\\"confidence\\\": 75.0}\" ! "
+    "labels=%slabels/coco.txt settings=\"{\\\"confidence\\\": 75.0}\" ! "
     "text/x-raw ! metamux_1. "
  
     // Attch ML result to video frame
@@ -207,22 +211,37 @@ int main(int argc, char * argv[])
     "qtimltflite name=pose-inference delegate=external "
     "external-delegate-path=libQnnTFLiteDelegate.so "
     "external-delegate-options=\"QNNExternalDelegate,backend_type=htp,htp_performance_mode=(string)2;\" "
-    "model=/etc/models/hrnet_pose_quantized.tflite ! queue ! "
+    "model=%smodels/hrnet_pose_quantized.tflite ! queue ! "
  
     // Postprocess inference results
     "qtimlpostprocess name=pose-postprocess results=1 module=hrnet "
-    "labels=/etc/labels/coco_pose.txt "
-    "settings=/etc/labels/hrnet_pose_settings.json ! text/x-raw ! metamux_2. "
+    "labels=%slabels/coco_pose.txt "
+    "settings=%slabels/hrnet_pose_settings.json ! text/x-raw ! metamux_2. "
  
     // Attch ML result to video frame
     "t2. ! qtimetamux name=metamux_2 ! "
  
     // Overlay ML result on top of video frame
     "qtivoverlay",
+    model_label_base,
+    model_label_base,
+    model_label_base,
+    model_label_base,
+    model_label_base
+  );
+
+  gchar *pipeline_str = g_strdup_printf ("%s ! %s ! %s",
+    // Video source input
+    source,
+
+    // ML processing branch
+    ml_pipe,
 
     // Output (e.g. display, appsink, encoded video)
     gst_get_sink (output)
   );
+
+  g_free (ml_pipe);
 
   g_print ("Pipeline:\n%s\n\n", pipeline_str);
 
@@ -235,7 +254,7 @@ int main(int argc, char * argv[])
     if (error) g_error_free (error);
     return -1;
   }
-  
+
   /* The main loop keeps the application alive while the pipeline is running. */
   appctx.mloop = g_main_loop_new (NULL, FALSE);
 
@@ -285,6 +304,8 @@ int main(int argc, char * argv[])
   g_main_loop_unref (appctx.mloop);
 
   g_free (source);
+  g_free (model_base_path);
+  g_free (model_label_base);
 
   /* Deinitialize GStreamer after all GStreamer objects have been released. */
   gst_deinit ();
