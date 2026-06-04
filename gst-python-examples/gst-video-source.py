@@ -51,7 +51,7 @@ def on_frame(name, buffer):
         # For convenience, the Python script overwrites the same file (frame.jpeg)
         # with each inference run. This approach streamlines access to the latest
         # results and eliminates the need to manage multiple output files during testing.
-        nv12_buffer_to_jpeg(buffer, "/etc/media/frame.jpeg")
+        nv12_buffer_to_jpeg(buffer, "frame.jpeg")
         print(f"JPEG saved.")
     except Exception as e:
         print(f"JPEG error: {e}")

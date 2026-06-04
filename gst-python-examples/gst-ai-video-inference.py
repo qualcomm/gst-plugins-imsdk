@@ -46,7 +46,11 @@ VIDEO_SOURCE = (
 
 parser = argparse.ArgumentParser(description=DESCRIPTION)
 parser.add_argument('-s', '--source', type=str, default=VIDEO_SOURCE, help='GStreamer source pipeline string')
+parser.add_argument('--model-base-path', type=str, default="/etc/", help='Base directory containing models/ and labels/')
 args = parser.parse_args()
+MODEL_BASE_PATH = args.model_base_path.rstrip('/')
+MODEL_DIR = f'{MODEL_BASE_PATH}/models' if MODEL_BASE_PATH else '/models'
+LABEL_DIR = f'{MODEL_BASE_PATH}/labels' if MODEL_BASE_PATH else '/labels'
 
 # ------------------------------------------------------------------------------
 # GStreamer Pipeline Definition
@@ -63,7 +67,7 @@ PIPELINE = (
     'qtimltflite name=inference delegate=external '
     'external-delegate-path=libQnnTFLiteDelegate.so '
     'external-delegate-options="QNNExternalDelegate,backend_type=htp;" '
-    'model=/etc/models/resnext101-w8a8.tflite ! queue ! '
+    f'model={MODEL_DIR}/resnext101-w8a8.tflite ! queue ! '
 
     # Output appsink
     'appsink name=appsink sync=false emit-signals=true'
@@ -79,7 +83,7 @@ def on_frame(name, buffer):
         # For convenience, the Python script overwrites the same file (tensor.bin)
         # with each inference run. This approach streamlines access to the latest
         # results and eliminates the need to manage multiple output files during testing.
-        buffer_to_file(buffer, "/etc/media/tensor.bin")
+        buffer_to_file(buffer, "tensor.bin")
         print(f"Tensor saved.")
     except Exception as e:
         print(f"Tensor error: {e}")

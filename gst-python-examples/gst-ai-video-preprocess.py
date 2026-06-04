@@ -76,7 +76,7 @@ def on_frame(name, buffer):
         # For convenience, the Python script overwrites the same file (tensor.bin)
         # with each inference run. This approach streamlines access to the latest
         # results and eliminates the need to manage multiple output files during testing.
-        buffer_to_file(buffer, "/etc/media/tensor.bin")
+        buffer_to_file(buffer, "tensor.bin")
         print(f"Tensor saved.")
     except Exception as e:
         print(f"Tensor error: {e}")
