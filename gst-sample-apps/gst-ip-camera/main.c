@@ -21,16 +21,16 @@
  *   visible to the reader.
  *
  * Supported inputs:
- *   --input-type=usb   --input-location=/dev/video0
- *   --input-type=isp
- *   --input-type=rtsp  --input-location=rtsp://...
- *   --input-type=h264  --input-location=/path/to/video.mp4
+ *   --input-type=usb   --input-config=/dev/video0
+ *   --input-type=isp   --input-config=0
+ *   --input-type=rtsp  --input-config=rtsp://...
+ *   --input-type=file  --input-config=/path/to/video.mp4
  *
  * Supported outputs:
  *   --output-type=none
- *   --output-type=h264 --output-location=/path/to/output.mp4
- *   --output-type=rtsp
- *   --output-type=webrtc  --output-location=ws://127.0.0.1:8443
+ *   --output-type=file --output-config=/path/to/output.mp4
+ *   --output-type=rtsp --output-config=8554
+ *   --output-type=webrtc  --output-config=ws://127.0.0.1:8443
  *
  * Display output is enabled by default but can be disabled with:
  *   --no-display
@@ -40,18 +40,18 @@
  *
  *   ./gst-ip-camera \
  *       --input-type=usb \
- *       --input-location=/dev/video0 \
+ *       --input-config=/dev/video0 \
  *       --width=1280 \
  *       --height=720 \
  *       --framerate=30 \
- *       --output-type=h264 \
- *       --output-location=output.mp4
+ *       --output-type=file \
+ *       --output-config=output.mp4
  *
  *   ./gst-ip-camera \
  *       --input-type=rtsp \
- *       --input-location=rtsp://192.168.1.10:8554/camera
+ *       --input-config=rtsp://192.168.1.10:8554/camera
  *
- * Important notes:
+ * Notes:
  *   - RTSP input currently assumes H.264 RTP video. If a demo needs H.265 or
  *     another codec, replace the RTSP depay/parser elements in
  *     gst_app_create_input_pipe().
@@ -59,9 +59,6 @@
  *   - File and RTSP outputs are explicitly encoded with v4l2h264enc.
  *   - WebRTC output uses webrtcbin with an explicit H.264 RTP branch and a
  *     simple WebSocket signalling client.
- *   - The code favors explicit checks and readable error messages over compact
- *     helper abstractions so that new GStreamer developers can follow the full
- *     application flow.
  */
 
 #include <errno.h>
@@ -79,13 +76,14 @@
 #define DEFAULT_WIDTH 1920
 #define DEFAULT_HEIGHT 1080
 #define DEFAULT_FRAMERATE 30
-#define DEFAULT_RTSP_LATENCY_MS 100
+#define DEFAULT_RTSP_LATENCY_MS 200
+#define DEFAULT_WEBRTC_ID 1010
 
 #define QUEUE_COUNT 8
 #define TEE_COUNT 2
 
-#define MODEL_PATH "/etc/models/yolov8_det_quantized.tflite"
-#define LABELS_PATH "/etc/labels/yolov8.json"
+#define MODEL_PATH "yolov8_det_quantized.tflite"
+#define LABELS_PATH "yolov8.json"
 #define SETTINGS "{\"confidence\": 51.0}"
 
 /*
@@ -113,15 +111,14 @@ typedef struct GstAppPadLinkData
 typedef struct GstAppConfig
 {
   gchar *input_type;
-  gchar *input_location;
-  gchar *input_format;
+  gchar *input_config;
   gchar *output_type;
-  gchar *output_location;
+  gchar *output_config;
+  gchar *model_base_path;
   gboolean no_display;
   gint width;
   gint height;
   gint framerate;
-  gint rtsp_latency_ms;
   gint webrtc_id;
 } GstAppConfig;
 
@@ -894,7 +891,7 @@ gst_app_is_valid_input_type (const gchar * type)
   return g_strcmp0 (type, "usb") == 0 ||
       g_strcmp0 (type, "isp") == 0 ||
       g_strcmp0 (type, "rtsp") == 0 ||
-      g_strcmp0 (type, "h264") == 0;
+      g_strcmp0 (type, "file") == 0;
 }
 
 /* Check whether the selected command-line output type is supported. */
@@ -902,7 +899,7 @@ static gboolean
 gst_app_is_valid_output_type (const gchar * type)
 {
   return g_strcmp0 (type, "none") == 0 ||
-      g_strcmp0 (type, "h264") == 0 ||
+      g_strcmp0 (type, "file") == 0 ||
       g_strcmp0 (type, "rtsp") == 0 ||
       g_strcmp0 (type, "webrtc") == 0;
 }
@@ -911,7 +908,7 @@ gst_app_is_valid_output_type (const gchar * type)
  * Fill missing command-line options with practical defaults.
  *
  * Defaults make the sample easy to launch during education and testing while
- * still requiring explicit locations for inputs/outputs that cannot be guessed
+ * still requiring explicit configs for inputs/outputs that cannot be guessed
  * safely, such as RTSP URLs and file paths.
  */
 static void
@@ -920,30 +917,34 @@ gst_app_config_apply_defaults (GstAppConfig * config)
   if (config->input_type == NULL)
     config->input_type = g_strdup ("isp");
 
-  if (config->input_format == NULL)
-    config->input_format = g_strdup ("NV12");
-
   if (config->output_type == NULL)
     config->output_type = g_strdup ("none");
 
-  if (config->input_location == NULL) {
+  if (config->input_config == NULL) {
     if (g_strcmp0 (config->input_type, "usb") == 0)
-      config->input_location = g_strdup ("/dev/video0");
+      config->input_config = g_strdup ("/dev/video0");
+    else if (g_strcmp0 (config->input_type, "isp") == 0)
+        config->input_config = g_strdup ("0");
     else
-      config->input_location = g_strdup ("");
+      config->input_config = g_strdup ("");
   }
 
-  if (config->output_location == NULL) {
-    if (g_strcmp0 (config->output_type, "h264") == 0)
-      config->output_location = g_strdup ("output.mp4");
+  if (config->output_config == NULL) {
+    if (g_strcmp0 (config->output_type, "file") == 0)
+      config->output_config = g_strdup ("output.mp4");
     else if (g_strcmp0 (config->output_type, "webrtc") == 0)
-      config->output_location = g_strdup ("ws://127.0.0.1:8443");
+      config->output_config = g_strdup ("ws://127.0.0.1:8443");
+    else if (g_strcmp0 (config->output_type, "rtsp") == 0)
+      config->output_config = g_strdup ("8554");
     else
-      config->output_location = g_strdup ("");
+      config->output_config = g_strdup ("");
   }
+
+  if (config->model_base_path == NULL)
+    config->model_base_path = g_strdup ("/etc");
 
   if (config->webrtc_id <= 0)
-    config->webrtc_id = 1010;
+    config->webrtc_id = DEFAULT_WEBRTC_ID;
 }
 
 /*
@@ -956,29 +957,40 @@ static gboolean
 gst_app_config_validate (const GstAppConfig * config)
 {
   if (!gst_app_is_valid_input_type (config->input_type)) {
-    g_printerr ("ERROR: Unsupported input type '%s'. Use usb, isp, rtsp or h264.\n",
+    g_printerr ("ERROR: Unsupported input type '%s'. Use usb, isp, rtsp or file.\n",
         GST_STR_NULL (config->input_type));
     return FALSE;
   }
 
   if (!gst_app_is_valid_output_type (config->output_type)) {
-    g_printerr ("ERROR: Unsupported output type '%s'. Use none, h264, rtsp or webrtc.\n",
+    g_printerr ("ERROR: Unsupported output type '%s'. Use none, file, rtsp or webrtc.\n",
         GST_STR_NULL (config->output_type));
     return FALSE;
   }
 
   if ((g_strcmp0 (config->input_type, "rtsp") == 0 ||
-          g_strcmp0 (config->input_type, "h264") == 0) &&
-      (config->input_location == NULL || config->input_location[0] == '\0')) {
-    g_printerr ("ERROR: --input-location is required for input type '%s'.\n",
+          g_strcmp0 (config->input_type, "file") == 0) &&
+      (config->input_config == NULL || config->input_config[0] == '\0')) {
+    g_printerr ("ERROR: --input-config is required for input type '%s'.\n",
         config->input_type);
     return FALSE;
   }
 
-  if ((g_strcmp0 (config->output_type, "h264") == 0 ||
-          g_strcmp0 (config->output_type, "webrtc") == 0) &&
-      (config->output_location == NULL || config->output_location[0] == '\0')) {
-    g_printerr ("ERROR: --output-location is required for output type '%s'.\n",
+  if (g_strcmp0 (config->input_type, "isp") == 0 &&
+      config->input_config != NULL &&
+      config->input_config[0] != '\0') {
+
+    gint cam_id = atoi(config->input_config);
+    if (cam_id < 0) {
+      g_printerr("ERROR: ISP camera id must be >= 0\n");
+      return FALSE;
+    }
+  }
+
+  if ((g_strcmp0 (config->output_type, "file") == 0 ||
+      g_strcmp0 (config->output_type, "webrtc") == 0) &&
+      (config->output_config == NULL || config->output_config[0] == '\0')) {
+    g_printerr ("ERROR: --output-config is required for output type '%s'.\n",
         config->output_type);
     return FALSE;
   }
@@ -996,10 +1008,10 @@ static void
 gst_app_config_free (GstAppConfig * config)
 {
   g_free (config->input_type);
-  g_free (config->input_location);
-  g_free (config->input_format);
+  g_free (config->input_config);
   g_free (config->output_type);
-  g_free (config->output_location);
+  g_free (config->output_config);
+  g_free (config->model_base_path);
 }
 
 /*
@@ -1099,7 +1111,7 @@ gst_app_create_input_pipe (GstAppContext * appctx, GstElement ** input_tail)
     if (!source)
       goto error;
 
-    g_object_set (G_OBJECT (source), "device", appctx->config.input_location, NULL);
+    g_object_set (G_OBJECT (source), "device", appctx->config.input_config, NULL);
 
     capsfilter = gst_app_make_element ("capsfilter", "input_capsfilter");
     if (!capsfilter)
@@ -1143,12 +1155,35 @@ gst_app_create_input_pipe (GstAppContext * appctx, GstElement ** input_tail)
     if (!source)
       goto error;
 
+    /*
+    * input-config (when using ISP) is interpreted as camera ID.
+    * Default is 0 if not provided or invalid.
+    */
+    gint camera_id = 0;
+
+    if (appctx->config.input_config != NULL &&
+        appctx->config.input_config[0] != '\0') {
+
+      camera_id = atoi(appctx->config.input_config);
+
+      if (camera_id < 0) {
+        g_printerr("WARNING: Invalid ISP camera id '%s', using 0\n",
+                  appctx->config.input_config);
+        camera_id = 0;
+      }
+    }
+
+    /* Set camera ID property */
+    g_object_set (G_OBJECT (source),
+                  "camera", camera_id,
+                  NULL);
+
     capsfilter = gst_app_make_element ("capsfilter", "input_capsfilter");
     if (!capsfilter)
       goto error;
 
     caps = gst_caps_new_simple ("video/x-raw",
-        "format", G_TYPE_STRING, appctx->config.input_format,
+        "format", G_TYPE_STRING, "NV12",
         "width", G_TYPE_INT, appctx->config.width,
         "height", G_TYPE_INT, appctx->config.height,
         "framerate", GST_TYPE_FRACTION, appctx->config.framerate, 1,
@@ -1168,7 +1203,7 @@ gst_app_create_input_pipe (GstAppContext * appctx, GstElement ** input_tail)
       g_printerr ("ERROR: Failed to link ISP camera source.\n");
       goto error;
     }
-  } else if (g_strcmp0 (appctx->config.input_type, "h264") == 0) {
+  } else if (g_strcmp0 (appctx->config.input_type, "file") == 0) {
     /*
      * H.264 file input: filesrc reads bytes, qtdemux extracts the MP4 track,
      * h264parse prepares the elementary stream, and v4l2h264dec produces raw
@@ -1193,7 +1228,7 @@ gst_app_create_input_pipe (GstAppContext * appctx, GstElement ** input_tail)
     if (!source || !demux || !parse || !decoder || !capsfilter)
       goto error;
 
-    g_object_set (G_OBJECT (source), "location", appctx->config.input_location, NULL);
+    g_object_set (G_OBJECT (source), "location", appctx->config.input_config, NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
         source, demux, parse, decoder, capsfilter, NULL);
@@ -1204,7 +1239,7 @@ gst_app_create_input_pipe (GstAppContext * appctx, GstElement ** input_tail)
      */
     ret = gst_element_link (source, demux);
     if (!ret) {
-      g_printerr ("ERROR: Failed to link h264 source to qtdemux.\n");
+      g_printerr ("ERROR: Failed to link file source to qtdemux.\n");
       goto error;
     }
 
@@ -1251,8 +1286,8 @@ gst_app_create_input_pipe (GstAppContext * appctx, GstElement ** input_tail)
       goto error;
 
     g_object_set (G_OBJECT (source),
-        "location", appctx->config.input_location,
-        "latency", appctx->config.rtsp_latency_ms,
+        "location", appctx->config.input_config,
+        "latency", DEFAULT_RTSP_LATENCY_MS,
         NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
@@ -1459,7 +1494,7 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
     }
   }
 
-  if (g_strcmp0 (appctx->config.output_type, "h264") == 0) {
+  if (g_strcmp0 (appctx->config.output_type, "file") == 0) {
     /*
      * H.264 file output: encode raw frames, parse the stream, mux it into MP4,
      * and write it to disk. The explicit encoder keeps hardware usage visible.
@@ -1471,14 +1506,14 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
     if (!encoder || !parse || !mux || !sink)
       goto error;
 
-    g_object_set (G_OBJECT (sink), "location", appctx->config.output_location, NULL);
+    g_object_set (G_OBJECT (sink), "location", appctx->config.output_config, NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
         encoder, parse, mux, sink, NULL);
 
     ret = gst_element_link_many (output_queue, encoder, parse, mux, sink, NULL);
     if (!ret) {
-      g_printerr ("ERROR: Failed to link h264 output branch.\n");
+      g_printerr ("ERROR: Failed to link file output branch.\n");
       goto error;
     }
   } else if (g_strcmp0 (appctx->config.output_type, "rtsp") == 0) {
@@ -1494,7 +1529,10 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
 
     g_object_set (G_OBJECT (parse), "config-interval", 1, NULL);
 
-    g_object_set (G_OBJECT (sink), "address", "0.0.0.0", NULL);
+    g_object_set (G_OBJECT (sink),
+        "address", "0.0.0.0",
+        "port", appctx->config.output_config,
+        NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
         encoder, parse, sink, NULL);
@@ -1549,7 +1587,7 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
      * Keep a copy of the signalling endpoint in appctx because the WebSocket
      * connection is opened asynchronously and used by the WebRTC callbacks.
      */
-    appctx->webrtc_signalling_url = g_strdup (appctx->config.output_location);
+    appctx->webrtc_signalling_url = g_strdup (appctx->config.output_config);
     appctx->ws_local_id = (guint) appctx->config.webrtc_id;
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
@@ -1624,7 +1662,7 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
       *meta_head = meta_queue;
   }
 
-  if (g_strcmp0 (appctx->config.output_type, "h264") == 0 ||
+  if (g_strcmp0 (appctx->config.output_type, "file") == 0 ||
       g_strcmp0 (appctx->config.output_type, "none") == 0) {
     GstElement *meta_sink = NULL;
 
@@ -1752,20 +1790,34 @@ gst_app_create_user_pipe (GstAppContext * appctx, GstElement * input_tail,
   delegate_options =
       gst_structure_from_string ("QNNExternalDelegate,backend_type=htp;", NULL);
 
+
+  gchar *model_path = g_strdup_printf("%s/models/%s",
+      appctx->config.model_base_path,
+      MODEL_PATH);
+
   g_object_set (G_OBJECT (qtimltflite),
       "external-delegate-path", "libQnnTFLiteDelegate.so",
       "external-delegate-options", delegate_options,
-      "model", MODEL_PATH,
+      "model", model_path,
       NULL);
+
+  g_free (model_path);
 
   gst_element_set_enum_property (qtimltflite, "delegate", "external");
   gst_structure_free (delegate_options);
 
+  gchar *labels_path =
+    g_strdup_printf("%s/labels/%s",
+                    appctx->config.model_base_path,
+                    LABELS_PATH);
+
   g_object_set (G_OBJECT (qtimlpostprocess),
-    "labels", LABELS_PATH,
+    "labels", labels_path,
     "bbox-stabilization", TRUE,
     "settings", SETTINGS,
     NULL);
+
+  g_free(labels_path);
 
   gst_element_set_enum_property (qtimlpostprocess, "module", "yolov8");
 
@@ -2164,20 +2216,19 @@ main (int argc, char * argv[])
   appctx.config.width = DEFAULT_WIDTH;
   appctx.config.height = DEFAULT_HEIGHT;
   appctx.config.framerate = DEFAULT_FRAMERATE;
-  appctx.config.rtsp_latency_ms = DEFAULT_RTSP_LATENCY_MS;
-  appctx.config.webrtc_id = 1010;
+  appctx.config.webrtc_id = DEFAULT_WEBRTC_ID;
 
   GOptionEntry entries[] = {
     { "input-type", 0, 0, G_OPTION_ARG_STRING, &appctx.config.input_type,
-      "Input type: usb, isp, rtsp or h264", "TYPE" },
-    { "input-location", 0, 0, G_OPTION_ARG_STRING, &appctx.config.input_location,
-      "Input location: /dev/videoX, rtsp://..., or file path", "LOCATION" },
-    { "input-format", 0, 0, G_OPTION_ARG_STRING, &appctx.config.input_format,
-      "Raw video format after input conversion", "FORMAT" },
+      "Input type: usb, isp, rtsp or file", "TYPE" },
+    { "input-config", 0, 0, G_OPTION_ARG_STRING, &appctx.config.input_config,
+      "Input config: /dev/videoX, rtsp://..., or file path", "CONFIG" },
     { "output-type", 0, 0, G_OPTION_ARG_STRING, &appctx.config.output_type,
-      "Output type: none, h264, rtsp or webrtc", "TYPE" },
-    { "output-location", 0, 0, G_OPTION_ARG_STRING, &appctx.config.output_location,
-      "Output location for h264, RTSP, or WebRTC signalling URL", "LOCATION" },
+      "Output type: none, file, rtsp or webrtc", "TYPE" },
+    { "output-config", 0, 0, G_OPTION_ARG_STRING, &appctx.config.output_config,
+      "Output config for file, RTSP port, or WebRTC signalling URL", "CONFIG" },
+    { "model-base-path", 0, 0, G_OPTION_ARG_STRING, &appctx.config.model_base_path,
+      "Base path for models and labels (expects /models and /labels inside)", "PATH" },
     { "no-display", 0, 0, G_OPTION_ARG_NONE, &appctx.config.no_display,
       "Disable on-screen display", NULL },
     { "width", 'w', 0, G_OPTION_ARG_INT, &appctx.config.width,
@@ -2186,8 +2237,6 @@ main (int argc, char * argv[])
       "Output/input raw video height", "HEIGHT" },
     { "framerate", 'f', 0, G_OPTION_ARG_INT, &appctx.config.framerate,
       "Output/input raw video framerate", "FPS" },
-    { "rtsp-latency", 0, 0, G_OPTION_ARG_INT, &appctx.config.rtsp_latency_ms,
-      "RTSP input latency in milliseconds", "MS" },
     { "webrtc-id", 0, 0, G_OPTION_ARG_INT, &appctx.config.webrtc_id,
       "Local WebRTC signalling id", "ID" },
     { NULL }
