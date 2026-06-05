@@ -567,6 +567,10 @@ gst_video_transform_prepare_output_buffer (GstBaseTransform * base,
 
   origin_meta->crop = vtrans->crop;
 
+  GST_TRACE_OBJECT (vtrans, "Origin Meta: Width: %d, Height: %d, Crop: [%d, %d, "
+      "%d, %d]" , origin_meta->width, origin_meta->height, origin_meta->crop.x,
+      origin_meta->crop.y, origin_meta->crop.w, origin_meta->crop.h);
+
   return GST_FLOW_OK;
 }
 
