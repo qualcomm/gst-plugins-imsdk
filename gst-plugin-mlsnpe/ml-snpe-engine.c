@@ -386,7 +386,6 @@ gst_ml_snpe_engine_setup_input_tensors (GstMLSnpeEngine *engine)
 
     if (!success) {
       GST_ERROR ("Failed to get attributes for input tensor '%s'!", name);
-      engine->IBufferAttributesDelete (attribs);
       goto cleanup;
     }
 
@@ -486,7 +485,6 @@ gst_ml_snpe_engine_setup_output_tensors (GstMLSnpeEngine *engine)
 
     if (!success) {
       GST_ERROR ("Failed to get attributes for output tensor '%s'!", name);
-      engine->IBufferAttributesDelete (attribs);
       return FALSE;
     }
 
