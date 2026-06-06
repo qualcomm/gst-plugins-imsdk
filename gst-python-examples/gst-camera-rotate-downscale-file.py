@@ -46,21 +46,7 @@ def link_elements(link_orders, elements):
             src = dest
 
 def is_camx_present():
-    v4l_root = "/sys/class/video4linux"
-    if not os.path.exists(v4l_root):
-        return False
-    video_nodes = glob.glob("/dev/video*")
-    for video_path in video_nodes:
-        video_name = os.path.basename(video_path)
-        driver_module_link = os.path.join(v4l_root, video_name, "device", "driver", "module")
-        try:
-            resolved_path = os.path.realpath(driver_module_link)
-            if "camera" in resolved_path:
-                return True
-        except OSError:
-            continue
-    return False
-
+    return os.access("/run/cam_server/le_cam_socket", os.F_OK)
 
 def create_camera_source_bin(bin_name=None):
     """

@@ -27,7 +27,7 @@
  ******************************************************************************************
  * Transform Pipeline for camera source:
  *
- * qtiqmmfsrc->capsfilter->queue->qtivtransform->capsfilter->queue--|
+ * camera_src_bin->src_capsfilter->queue->qtivtransform->capsfilter->queue--|
  *     --------------------------------------------------------------
  *     |
  *     |    |->queue->waylandsink
@@ -205,8 +205,8 @@ static gboolean
 create_transform_pipeline (GstTransformAppContext * appctx)
 {
   GstElement *scale_filter, *tee;
-  GstElement *qtiqmmfsrc = NULL;
-  GstElement *qmmfsrc_filter = NULL;
+  GstElement *camera_src_bin = NULL;   /* replaces qtiqmmfsrc */
+  GstElement *src_capsfilter = NULL;   /* replaces qmmfsrc_filter */
   GstElement *filesrc = NULL;
   GstElement *qtdemux = NULL;
   GstElement *vparse = NULL;
@@ -241,13 +241,14 @@ create_transform_pipeline (GstTransformAppContext * appctx)
 
   // Select input source camera/filesrc plugin based on the input
   if (appctx->input_file == NULL) {
-    // Create camera source and the element capability
-    qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
-    qmmfsrc_filter = gst_element_factory_make ("capsfilter", "qmmfsrc_filter");
+    // Create camera source bin (picks qtiqmmfsrc or libcamerasrc automatically)
+    camera_src_bin = create_camera_source_bin ("camera_src_bin");
+    src_capsfilter = gst_element_factory_make ("capsfilter", "src_capsfilter");
 
-    if (!qtiqmmfsrc || !qmmfsrc_filter) {
-      g_printerr ("Failed to create elements qtiqmmfsrc or qmmfsrc_filter!\n");
-      unref_elements (qtiqmmfsrc, qmmfsrc_filter, "NULL");
+    if (!camera_src_bin || !src_capsfilter) {
+      g_printerr ("Failed to create elements camera_src_bin or src_capsfilter!\n");
+      if (camera_src_bin) gst_object_unref (camera_src_bin);
+      if (src_capsfilter) gst_object_unref (src_capsfilter);
       return FALSE;
     }
   } else {
@@ -338,9 +339,10 @@ create_transform_pipeline (GstTransformAppContext * appctx)
     filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
         "NV12", "width", G_TYPE_INT, appctx->input_width, "height", G_TYPE_INT,
         appctx->input_height, "framerate", GST_TYPE_FRACTION, 30, 1,
+        "interlace-mode", G_TYPE_STRING, "progressive",
         "colorimetry", G_TYPE_STRING, "bt601", NULL);
 
-    g_object_set (G_OBJECT (qmmfsrc_filter), "caps", filtercaps, NULL);
+    g_object_set (G_OBJECT (src_capsfilter), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
   }
   // Configure the scale stream capabilities based on width and height
@@ -362,7 +364,7 @@ create_transform_pipeline (GstTransformAppContext * appctx)
 
   if (appctx->input_file == NULL) {
     // Add elements to the pipeline and link them
-    gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, qmmfsrc_filter,
+    gst_bin_add_many (GST_BIN (appctx->pipeline), camera_src_bin, src_capsfilter,
         qtivtransform, scale_filter, tee, encoder, h264parse, mp4mux, filesink,
         waylandsink, NULL);
 
@@ -371,7 +373,7 @@ create_transform_pipeline (GstTransformAppContext * appctx)
     }
 
     // Link camera stream to waylandsink
-    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_filter, queue[0],
+    ret = gst_element_link_many (camera_src_bin, src_capsfilter, queue[0],
         qtivtransform, scale_filter, queue[1], tee, queue[2], waylandsink,
         NULL);
     if (!ret) {
@@ -428,8 +430,8 @@ create_transform_pipeline (GstTransformAppContext * appctx)
   return TRUE;
 
 error:
-  gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, filesrc, qtdemux,
-      qmmfsrc_filter, vparse, vdecoder, qtivtransform, scale_filter, tee,
+  gst_bin_remove_many (GST_BIN (appctx->pipeline), camera_src_bin, src_capsfilter,
+      filesrc, qtdemux, vparse, vdecoder, qtivtransform, scale_filter, tee,
       encoder, pqueue, h264parse, mp4mux, filesink, waylandsink, NULL);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
@@ -458,7 +460,10 @@ main (gint argc, gchar ** argv)
 
   GOptionEntry camera_entries[2] = {};
 
-  gboolean camera_is_available = is_camera_available ();
+  GstElementFactory *libcamera_factory = gst_element_factory_find ("libcamerasrc");
+  gboolean camera_is_available = is_camera_available () || (libcamera_factory != NULL);
+  if (libcamera_factory)
+      gst_object_unref (libcamera_factory);
 
   if (camera_is_available) {
     GOptionEntry temp_camera_entries[] = {
