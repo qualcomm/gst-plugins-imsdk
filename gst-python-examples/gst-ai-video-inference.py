@@ -7,6 +7,7 @@
 
 from gst_utils import gst_run_pipeline, buffer_to_file
 import argparse
+import os
 
 # ------------------------------------------------------------------------------
 # Constants and Configuration
@@ -46,7 +47,7 @@ VIDEO_SOURCE = (
 
 parser = argparse.ArgumentParser(description=DESCRIPTION)
 parser.add_argument('-s', '--source', type=str, default=VIDEO_SOURCE, help='GStreamer source pipeline string')
-parser.add_argument('--model-base-path', type=str, default="/etc/", help='Base directory containing models/ and labels/')
+parser.add_argument('--model-base-path', type=str, default=os.environ["HOME"], help='Base directory containing models/ and labels/')
 args = parser.parse_args()
 MODEL_BASE_PATH = args.model_base_path.rstrip('/')
 MODEL_DIR = f'{MODEL_BASE_PATH}/models' if MODEL_BASE_PATH else '/models'

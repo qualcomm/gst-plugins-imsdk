@@ -940,8 +940,10 @@ gst_app_config_apply_defaults (GstAppConfig * config)
       config->output_config = g_strdup ("");
   }
 
-  if (config->model_base_path == NULL)
-    config->model_base_path = g_strdup ("/etc");
+  if (config->model_base_path == NULL) {
+    const gchar *home = g_getenv ("HOME");
+    config->model_base_path = g_strdup (home);
+  }
 
   if (config->webrtc_id <= 0)
     config->webrtc_id = DEFAULT_WEBRTC_ID;

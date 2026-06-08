@@ -110,7 +110,8 @@ int main(int argc, char * argv[])
   GstBus *bus = NULL;
   GError *error = NULL;
   gchar *source = g_strdup (DEFAULT_INPUT);
-  gchar *model_base_path = g_strdup ("/etc/");
+  const gchar *home = g_getenv ("HOME");
+  gchar *model_base_path = g_strdup_printf ("%s/", home);
   gchar *model_label_base = NULL;
 
   /* Initialize GStreamer before using any GstElement, GstBus or caps API. */

@@ -143,7 +143,8 @@ int main(int argc, char * argv[])
   GstBus *bus = NULL;
   GError *error = NULL;
   gchar *source = g_strdup (DEFAULT_INPUT);
-  gchar *model_base_path = g_strdup ("/etc/");
+  const gchar *home = g_getenv ("HOME");
+  gchar *model_base_path = g_strdup_printf ("%s/", home);
   gchar *model_label_base = NULL;
   gchar *output = g_strdup (DEFAULT_OUTPUT);
 
@@ -181,46 +182,46 @@ int main(int argc, char * argv[])
     // Use a tee element to pass the video frame sequentially,
     // first to mlvconverter, then to metamux.
     "tee name=t1 "
- 
+
     // Stage 1: Preprocess the video for inference
     "t1. ! qtimlvconverter name=detection-preprocess ! queue ! "
- 
+
     // Run inference using yolox model to detect people in the video
     "qtimltflite name=detection-inference delegate=external "
     "external-delegate-path=libQnnTFLiteDelegate.so "
     "external-delegate-options=\"QNNExternalDelegate,backend_type=htp;\" "
     "model=%smodels/yolox_quantized.tflite ! queue ! "
- 
+
     // Postprocess inference results
     "qtimlpostprocess name=detection-postprocess results=8 module=yolov8 "
     "labels=%slabels/coco.txt settings=\"{\\\"confidence\\\": 75.0}\" ! "
     "text/x-raw ! metamux_1. "
- 
+
     // Attch ML result to video frame
     "t1. ! qtimetamux name=metamux_1 ! queue ! "
- 
+
     // Use a tee element to pass the video frame sequentially,
     // first to mlvconverter, then to metamux.
     "tee name=t2 "
- 
+
     // Stage 2: Preprocessing generates a tensor for each result from Stage 1
     "t2. ! qtimlvconverter name=pose-preprocess mode=roi-batch-cumulative "
     "image-disposition=centre ! queue ! "
- 
+
     // Run inference using the hrnet model
     "qtimltflite name=pose-inference delegate=external "
     "external-delegate-path=libQnnTFLiteDelegate.so "
     "external-delegate-options=\"QNNExternalDelegate,backend_type=htp,htp_performance_mode=(string)2;\" "
     "model=%smodels/hrnet_pose_quantized.tflite ! queue ! "
- 
+
     // Postprocess inference results
     "qtimlpostprocess name=pose-postprocess results=1 module=hrnet "
     "labels=%slabels/coco_pose.txt "
     "settings=%slabels/hrnet_pose_settings.json ! text/x-raw ! metamux_2. "
- 
+
     // Attch ML result to video frame
     "t2. ! qtimetamux name=metamux_2 ! "
- 
+
     // Overlay ML result on top of video frame
     "qtivoverlay",
     model_label_base,

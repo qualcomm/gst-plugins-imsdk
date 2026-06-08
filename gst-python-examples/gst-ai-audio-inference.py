@@ -7,6 +7,7 @@
 
 from gst_utils import gst_run_pipeline, buffer_to_file
 import argparse
+import os
 
 # ------------------------------------------------------------------------------
 # Constants and Configuration
@@ -19,6 +20,18 @@ inference and outputs the data to a file via appsink for further processing.
 """
 
 parser = argparse.ArgumentParser(description=DESCRIPTION)
+
+parser.add_argument(
+    '--model-base-path',
+    type=str,
+    default=os.environ["HOME"],
+    help='Base directory containing models/'
+)
+
+args = parser.parse_args()
+
+MODEL_BASE_PATH = args.model_base_path.rstrip('/')
+MODEL_DIR = f'{MODEL_BASE_PATH}/models' if MODEL_BASE_PATH else '/models'
 
 # ------------------------------------------------------------------------------
 # GStreamer Pipeline Definition
@@ -35,7 +48,7 @@ PIPELINE = (
     'qtimlaconverter name=preprocess sample-rate=16000 ! queue ! '
 
     # Run inference using a yamnet model
-    'qtimltflite name=inference delegate=xnnpack model=/etc/models/yamnet.tflite ! queue ! '
+    f'qtimltflite name=inference delegate=xnnpack model={MODEL_DIR}/yamnet.tflite ! queue ! '
 
     # Output appsink
     'appsink name=appsink sync=false emit-signals=true'
