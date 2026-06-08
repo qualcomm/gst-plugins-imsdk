@@ -81,11 +81,11 @@
   "--output_width 1920 --output_height 1080 -o /etc/media/video_transform.mp4 \n"          \
   "All three operations with filesource       \n"                                    \
   "  gst-transform-example -r 90 -f 2 --output_width 1920 --output_height 1080 "     \
-  " -o /etc/media/video_transform.mp4 -i <inputfile>.mp4 \n"                               \
+  " -o /etc/media/video_transform.mp4 -i /etc/media/video_avc.mp4  \n"                               \
   "Execute rotations with camera source \n"                                          \
   "  gst-transform-example -r 270 -o /etc/media/video_transform.mp4 \n"                    \
   "Execute rotations with file source \n"                                            \
-  "  gst-transform-example -r 270 -o /etc/media/video_transform.mp4 -i <inputfile>.mp4 \n" \
+  "  gst-transform-example -r 270 -o /etc/media/video_transform.mp4 -i /etc/media/video_avc.mp4 \n" \
   "\nOutput:\n"                                                                      \
   "  Upon execution, the application presents the output for preview on the "        \
   "display. Once the use case concludes, the recorded output file is saved "         \

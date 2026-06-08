@@ -30,7 +30,7 @@
 #include <gst/gst.h>
 #include <gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILENAME "/etc/media/video.mp4"
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/vid_smartcodec_out.mp4"
 #define DEFAULT_WIDTH           1280
 #define DEFAULT_HEIGHT          720
 #define NOISE_REDUCTION_HIGH_QUALITY 2
@@ -42,7 +42,7 @@
   "bandwidth/storage from camera input and also from filesource"               \
   " using Qualcomm Streamer plugins"                                           \
   "\nCommand For camera source :\n"                                            \
-  "gst-smartcodec-example -w 1920 -h 1080 -o video.mp4 \n"                     \
+  "gst-smartcodec-example -w 1920 -h 1080 -o /etc/media/vid_smartcodec_out.mp4 \n"                     \
   "\nOutput :\n"                                                               \
   " Upon execution,application will generates output as encoded mp4 file"      \
 
@@ -310,7 +310,7 @@ main (gint argc, gchar * argv[])
       "image height"},
   {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
     "Output Filename",
-    "-o /etc/media/video.mp4"},
+    "-o /etc/media/vid_smartcodec_out.mp4"},
   { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 

@@ -40,13 +40,13 @@
   "This includes support for various audio and video formats. \n" \
   "\nCommand:\n" \
   "If codec type is AVC and FLAC:\n" \
-  "  gst-audio-video-playback -v 1 -a 1 -i <avc_flac_file>.mp4 \n" \
+  "  gst-audio-video-playback -v 1 -a 1 -i /etc/media/avc_flac.mp4 \n" \
   "If codec type is HEVC and FLAC:\n" \
-  "  gst-audio-video-playback -v 2 -a 1 -i <hevc_flac_file>.mp4 \n" \
+  "  gst-audio-video-playback -v 2 -a 1 -i /etc/media/hevc_flac.mp4 \n" \
   "If codec type is AVC and MP3:\n" \
-  "  gst-audio-video-playback -v 1 -a 2 -i <avc_mp3_file>.mp4 \n" \
+  "  gst-audio-video-playback -v 1 -a 2 -i /etc/media/avc_mp3.mp4 \n" \
   "If codec type is HEVC and MP3:\n" \
-  "  gst-audio-video-playback -v 2 -a 2 -i <hevc_mp3_file>.mp4 \n" \
+  "  gst-audio-video-playback -v 2 -a 2 -i /etc/media/hevc_mp3.mp4 \n" \
   "\nOutput:\n" \
   "  Upon executing the application, user will observe AVC/HEVC video " \
   "content displayed on the screen, \n" \

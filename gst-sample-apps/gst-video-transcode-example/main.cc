@@ -15,9 +15,9 @@
  *
  * Usage:
  * For Transcoding AVC to HEVC:
- * gst-video-transcode-example -i /etc/media/avc.mp4 -c 1 -o /etc/media/hevc.mp4
+ * gst-video-transcode-example -i /etc/media/video_avc.mp4 -c 1 -o /etc/media/hevc_transcode_out.mp4
  * For Transcoding HEVC to AVC:
- * gst-video-transcode-example -i /etc/media/hevc.mp4 -c 2 -o /etc/media/avc.mp4
+ * gst-video-transcode-example -i /etc/media/video_hevc.mp4 -c 2 -o /etc/media/avc_transcode_out.mp4
  *
  * Help:
  * gst-video-transcode-example --help
@@ -45,8 +45,8 @@
 
 #include <gst_sample_apps_utils.h>
 
-#define DEFAULT_INPUT_FILENAME "/etc/media/video.mp4"
-#define DEFAULT_OUTPUT_FILENAME "/etc/media/transcoded_video.mp4"
+#define DEFAULT_INPUT_FILENAME "/etc/media/video_avc.mp4"
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/hevc_transcode_out.mp4"
 
 #define GST_APP_SUMMARY "This application is designed to showcase video "\
   "transcoding capabilities. It can accept user input files encoded in" \
@@ -54,9 +54,9 @@
   "or AVC format.\n" \
   "\nCommand:\n" \
   "For AVC to HEVC transcode\n" \
-  "  gst-video-transcode-example -i /etc/media/avc.mp4 -c 1 -o /etc/media/hevc.mp4 \n" \
+  "  gst-video-transcode-example -i /etc/media/video_avc.mp4 -c 1 -o /etc/media/hevc_transcode_out.mp4 \n" \
   "For HEVC to AVC transcode\n" \
-  "  gst-video-transcode-example -i /etc/media/hevc.mp4 -c 2 -o /etc/media/avc.mp4 \n" \
+  "  gst-video-transcode-example -i /etc/media/video_hevc.mp4 -c 2 -o /etc/media/avc_transcode_out.mp4 \n" \
   "\nOutput:\n" \
   "  Upon execution, application will generates output mp4 file at given path"
 

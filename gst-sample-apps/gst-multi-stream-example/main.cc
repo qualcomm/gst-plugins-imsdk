@@ -2,6 +2,7 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
+
 /*
 * Gstreamer Application:
 * Gstreamer Application for single camera multistream usecases
@@ -18,20 +19,20 @@
 *
 * *******************************************************************
 * Pipeline for two stream:
-*                               |->capsfilter_dis->waylandsink
-* camera_source_bin->qtivsplit->|
-*                               |->capsfilter_enc->v4l2h264enc->h264parse->mp4mux->filesink
+*                         |->waylandsink
+* qtiqmmfsrc->capsfilter->|
+*                         |->v4l2h264enc->h264parse->mp4mux->filesink
 *
-* camera_source_bin internally chooses:
-*   - qtiqmmfsrc
-*   - or libcamerasrc -> qtivtransform
 * *******************************************************************
 */
+
 #include <glib-unix.h>
+
 #include <gst/gst.h>
+
 #include <gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILENAME "/etc/media/video.mp4"
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/camera_mutistream_out.mp4"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 #define DEFAULT_NUM_OF_STREAM 2
@@ -42,7 +43,7 @@
   "encoded stream. \n " \
   "\nCommand:\n" \
   "For Two Stream \n" \
-  "  gst-multi-stream-example -w 1920 -h 1080 -n 2 -o /etc/media/video.mp4 \n" \
+  "  gst-multi-stream-example -w 1920 -h 1080 -n 2 -o /etc/media/camera_mutistream_out.mp4 \n" \
   "\nOutput:\n" \
   "  Upon execution, application will generates output as preview and " \
   "encoded mp4 file."
@@ -74,14 +75,13 @@ gst_app_context_new ()
   }
 
   // Initialize the context fields
-  ctx->pipeline    = NULL;
-  ctx->mloop       = NULL;
-  ctx->plugins     = NULL;
-  ctx->width       = DEFAULT_WIDTH;
-  ctx->height      = DEFAULT_HEIGHT;
+  ctx->pipeline = NULL;
+  ctx->mloop = NULL;
+  ctx->plugins = NULL;
+  ctx->width = DEFAULT_WIDTH;
+  ctx->height = DEFAULT_HEIGHT;
   ctx->stream_count = DEFAULT_NUM_OF_STREAM;
   ctx->output_file = const_cast<gchar *> (DEFAULT_OUTPUT_FILENAME);
-
   return ctx;
 }
 
@@ -113,6 +113,7 @@ gst_app_context_free (GstMultiStreamAppContext * appctx)
   }
 
   // If specific pointer is not NULL, unref it
+
   if (appctx->mloop != NULL) {
     g_main_loop_unref (appctx->mloop);
     appctx->mloop = NULL;
@@ -123,9 +124,8 @@ gst_app_context_free (GstMultiStreamAppContext * appctx)
     appctx->pipeline = NULL;
   }
 
-  // ✅ Fix: removed & from DEFAULT_OUTPUT_FILENAME — prevents segfault on g_free
   if (appctx->output_file != NULL &&
-      appctx->output_file != (gchar *)(DEFAULT_OUTPUT_FILENAME))
+    appctx->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME))
     g_free ((gpointer)appctx->output_file);
 
   if (appctx != NULL)
@@ -135,7 +135,7 @@ gst_app_context_free (GstMultiStreamAppContext * appctx)
 /**
 * Create GST pipeline involves 3 main steps
 * 1. Create all elements/GST Plugins
-* 2. Set Parameters for each plugin
+* 2. Set Paramters for each plugin
 * 3. Link plugins to create GST pipeline
 *
 * @param appctx Application Context object.
@@ -145,105 +145,86 @@ static gboolean
 create_two_stream_pipe (GstMultiStreamAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *camera_src_bin = NULL;
-  GstElement *qtivsplit      = NULL;
-  GstElement *capsfilter_dis = NULL;
-  GstElement *capsfilter_enc = NULL;
-  GstElement *v4l2h264enc    = NULL;
-  GstElement *h264parse      = NULL;
-  GstElement *mp4mux         = NULL;
-  GstElement *filesink       = NULL;
-  GstElement *waylandsink    = NULL;
-  GstCaps *filtercaps        = NULL;
-  GstStructure *controls     = NULL;
-  GstPad *split_src_0        = NULL;
-  GstPad *split_src_1        = NULL;
-  GstPad *sink_pad           = NULL;
-  gboolean ret               = FALSE;
+  GstElement *qtiqmmfsrc, *capsfilter_dis, *capsfilter_enc, *v4l2h264enc,
+      *h264parse, *mp4mux, *filesink, *waylandsink;
+  GstCaps *filtercaps;
+  GstStructure *controls;
+  GstPad *vpad, *ppad = NULL;
+  gboolean ret = FALSE;
 
-  /**
-   * Source is abstracted through utils:
-   *   create_camera_source_bin()
-   *
-   * Internally that bin chooses:
-   *   - qtiqmmfsrc
-   *   - or libcamerasrc -> qtivtransform
-   *
-   * qtivsplit is used to fan-out the single src pad from camera_source_bin
-   * into two independent output streams (display + encode).
-   */
-  camera_src_bin  = create_camera_source_bin ("camera_source_bin");
-  qtivsplit       = gst_element_factory_make ("qtivsplit",    "qtivsplit");
+  // Create first source element set the first camera
+  qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
 
-  // Create capsfilter element for waylandsink to set properties
-  capsfilter_dis  = gst_element_factory_make ("capsfilter",   "capsfilter_dis");
+  // Get qmmfsrc Element class
+  GstElementClass *qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (qtiqmmfsrc);
+
+  // Get qmmfsrc video pad template
+  GstPadTemplate *qtiqmmfsrc_template =
+      gst_element_class_get_pad_template (qtiqmmfsrc_klass, "video_%u");
+
+  // Request a pad from qmmfsrc
+  vpad = gst_element_request_pad (qtiqmmfsrc, qtiqmmfsrc_template,
+      "video_%u", NULL);
+  if (!vpad) {
+    g_printerr ("Error: video pad cannot be retrieved from qmmfsrc!\n");
+  }
+
+  // Get qmmfsrc preview pad template
+  GstPadTemplate *pqtiqmmfsrc_template =
+      gst_element_class_get_pad_template (qtiqmmfsrc_klass, "video_%u");
+
+  // Request a preview pad from qmmfsrc
+  ppad = gst_element_request_pad (qtiqmmfsrc, pqtiqmmfsrc_template,
+      "video_%u", NULL);
+  if (!vpad || !ppad) {
+    g_printerr ("Error: video pad or preview pad cannot be retrieved from qmmfsrc!\n");
+  }
+
+  g_print ("video Pad received - %s\n",  gst_pad_get_name (vpad));
+
+  g_print ("Preview Pad received - %s\n",  gst_pad_get_name (ppad));
+
+  g_object_set (G_OBJECT (vpad), "type", 0, NULL);
+  g_object_set (G_OBJECT (ppad), "type", 1, NULL);
+  gst_object_unref (vpad);
+  gst_object_unref (ppad);
+
+  // Create capsfilter element for waylandsink to properties
+  capsfilter_dis = gst_element_factory_make ("capsfilter", "capsfilter_dis");
 
   // Create capsfilter element for the encoder to set properties
-  capsfilter_enc  = gst_element_factory_make ("capsfilter",   "capsfilter_enc");
+  capsfilter_enc = gst_element_factory_make ("capsfilter", "capsfilter_enc");
 
   // Create waylandsink element to display
-  waylandsink     = gst_element_factory_make ("waylandsink",  "waylandsink");
+  waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
 
   // Create v4l2h264enc element and set the properties
-  v4l2h264enc     = gst_element_factory_make ("v4l2h264enc",  "v4l2h264enc");
+  v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
+  gst_element_set_enum_property (v4l2h264enc, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (v4l2h264enc, "output-io-mode", "dmabuf-import");
+  controls = gst_structure_from_string (
+      "controls,video_bitrate_mode=0", NULL);
+  g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", controls, NULL);
 
   // Create h264parse element for parsing the stream
-  h264parse       = gst_element_factory_make ("h264parse",    "h264parse");
+  h264parse = gst_element_factory_make ("h264parse", "h264parse");
 
   // Create mp4mux element for muxing the stream
-  mp4mux          = gst_element_factory_make ("mp4mux",       "mp4mux");
+  mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
 
   // Create filesink element for storing the encoding stream
-  filesink        = gst_element_factory_make ("filesink",     "filesink");
+  filesink = gst_element_factory_make ("filesink", "filesink");
 
   // Check if all elements are created successfully
-  if (!camera_src_bin || !qtivsplit || !capsfilter_dis || !capsfilter_enc ||
-      !v4l2h264enc || !h264parse || !mp4mux || !filesink || !waylandsink) {
+  if (!qtiqmmfsrc || !capsfilter_dis || !capsfilter_enc || !v4l2h264enc ||
+      !h264parse || !mp4mux || !filesink || !waylandsink) {
     g_printerr ("\n One element could not be created. Exiting experiment.\n");
-    unref_elements (camera_src_bin, qtivsplit, capsfilter_dis, capsfilter_enc,
-        v4l2h264enc, h264parse, mp4mux, filesink, waylandsink, "NULL");
     return FALSE;
   }
 
-  // Set encoder properties
-  gst_element_set_enum_property (v4l2h264enc, "capture-io-mode", "dmabuf");
-  gst_element_set_enum_property (v4l2h264enc, "output-io-mode",  "dmabuf-import");
-  controls = gst_structure_from_string ("controls,video_bitrate_mode=0", NULL);
-  g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", controls, NULL);
-
-  // Set filesink properties
-  g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
-
-  // Set waylandsink properties
-  g_object_set (G_OBJECT (waylandsink), "sync",       FALSE, NULL);
-  g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE,  NULL);
-  g_object_set (G_OBJECT (waylandsink), "async",      TRUE,  NULL);
-
-  // Configure display stream caps: NV12
-  filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format",    G_TYPE_STRING,     "NV12",
-      "width",     G_TYPE_INT,        appctx->width,
-      "height",    G_TYPE_INT,        appctx->height,
-      "framerate", GST_TYPE_FRACTION, 30, 1,
-      NULL);
-  g_object_set (G_OBJECT (capsfilter_dis), "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
-
-  // Configure encoder stream caps: NV12
-  // Note: qtivsplit outputs NV12 on both pads; encoder handles NV12 input
-  filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format",    G_TYPE_STRING,     "NV12",
-      "width",     G_TYPE_INT,        appctx->width,
-      "height",    G_TYPE_INT,        appctx->height,
-      "framerate", GST_TYPE_FRACTION, 30, 1,
-      NULL);
-  g_object_set (G_OBJECT (capsfilter_enc), "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
-
-  // Append all elements in a list for cleanup
+  // Append all elements in a list
   appctx->plugins = NULL;
-  appctx->plugins = g_list_append (appctx->plugins, camera_src_bin);
-  appctx->plugins = g_list_append (appctx->plugins, qtivsplit);
+  appctx->plugins = g_list_append (appctx->plugins, qtiqmmfsrc);
   appctx->plugins = g_list_append (appctx->plugins, capsfilter_dis);
   appctx->plugins = g_list_append (appctx->plugins, capsfilter_enc);
   appctx->plugins = g_list_append (appctx->plugins, v4l2h264enc);
@@ -252,92 +233,79 @@ create_two_stream_pipe (GstMultiStreamAppContext * appctx)
   appctx->plugins = g_list_append (appctx->plugins, filesink);
   appctx->plugins = g_list_append (appctx->plugins, waylandsink);
 
-  // Add elements to the pipeline
+  // Set filesink_enc properties
+  g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
+
+  // Set waylandsink properties
+  g_object_set (G_OBJECT (waylandsink), "sync", false, NULL);
+  g_object_set (G_OBJECT (waylandsink), "fullscreen", true, NULL);
+  g_object_set (G_OBJECT (waylandsink), "async", true, NULL);
+
+  // Configure the stream caps
+  filtercaps = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, "NV12",
+      "width", G_TYPE_INT, appctx->width,
+      "height", G_TYPE_INT, appctx->height,
+      "framerate", GST_TYPE_FRACTION, 30, 1,
+      NULL);
+
+  g_object_set (G_OBJECT (capsfilter_dis), "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
+
+  // Configure the stream caps
+  filtercaps = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, "NV12_Q08C",
+      "width", G_TYPE_INT, appctx->width,
+      "height", G_TYPE_INT, appctx->height,
+      "framerate", GST_TYPE_FRACTION, 30, 1,
+      NULL);
+
+  g_object_set (G_OBJECT (capsfilter_enc), "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
+
+  // Add elements to the pipeline and link them
   g_print ("\n Adding all elements to the pipeline...\n");
-  gst_bin_add_many (GST_BIN (appctx->pipeline), camera_src_bin, qtivsplit,
-      capsfilter_dis, capsfilter_enc, v4l2h264enc, h264parse,
-      mp4mux, filesink, waylandsink, NULL);
-
-  // Step 1: Link camera_source_bin -> qtivsplit
-  ret = gst_element_link (camera_src_bin, qtivsplit);
-  if (!ret) {
-    g_printerr ("\n camera_source_bin -> qtivsplit cannot be linked. Exiting.\n");
-    g_list_free (appctx->plugins);
-    appctx->plugins = NULL;
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), camera_src_bin, qtivsplit,
-        capsfilter_dis, capsfilter_enc, v4l2h264enc, h264parse,
-        mp4mux, filesink, waylandsink, NULL);
-    return FALSE;
-  }
-
-  // Step 2: Request two src pads from qtivsplit
-  split_src_0 = gst_element_request_pad_simple (qtivsplit, "src_%u");
-  split_src_1 = gst_element_request_pad_simple (qtivsplit, "src_%u");
-
-  if (!split_src_0 || !split_src_1) {
-    g_printerr ("\n Could not request src pads from qtivsplit. Exiting.\n");
-    if (split_src_0) gst_object_unref (split_src_0);
-    if (split_src_1) gst_object_unref (split_src_1);
-    g_list_free (appctx->plugins);
-    appctx->plugins = NULL;
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), camera_src_bin, qtivsplit,
-        capsfilter_dis, capsfilter_enc, v4l2h264enc, h264parse,
-        mp4mux, filesink, waylandsink, NULL);
-    return FALSE;
-  }
+  gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_dis,
+      capsfilter_enc, v4l2h264enc, h264parse, mp4mux, filesink, waylandsink, NULL);
 
   g_print ("\n Link display elements...\n");
-
-  // Step 3: Link qtivsplit src_0 -> capsfilter_dis -> waylandsink
-  sink_pad = gst_element_get_static_pad (capsfilter_dis, "sink");
-  ret = (gst_pad_link (split_src_0, sink_pad) == GST_PAD_LINK_OK);
-  gst_object_unref (sink_pad);
-  gst_object_unref (split_src_0);
-  ret &= gst_element_link (capsfilter_dis, waylandsink);
+  // Linking the display stream
+  ret = gst_element_link_many (qtiqmmfsrc, capsfilter_dis, waylandsink, NULL);
   if (!ret) {
     g_printerr ("\n Display Pipeline elements cannot be linked. Exiting.\n");
-    gst_object_unref (split_src_1);
-    g_list_free (appctx->plugins);
-    appctx->plugins = NULL;
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), camera_src_bin, qtivsplit,
-        capsfilter_dis, capsfilter_enc, v4l2h264enc, h264parse,
-        mp4mux, filesink, waylandsink, NULL);
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_dis,
+        capsfilter_enc, v4l2h264enc, h264parse, mp4mux, filesink, waylandsink,
+        NULL);
     return FALSE;
   }
 
   g_print ("\n Link encoder elements...\n");
-
-  // Step 4: Link qtivsplit src_1 -> capsfilter_enc -> v4l2h264enc -> h264parse -> mp4mux -> filesink
-  sink_pad = gst_element_get_static_pad (capsfilter_enc, "sink");
-  ret = (gst_pad_link (split_src_1, sink_pad) == GST_PAD_LINK_OK);
-  gst_object_unref (sink_pad);
-  gst_object_unref (split_src_1);
-  ret &= gst_element_link_many (capsfilter_enc, v4l2h264enc, h264parse,
+  // Linking the encoder stream
+  ret = gst_element_link_many (qtiqmmfsrc, capsfilter_enc, v4l2h264enc, h264parse,
       mp4mux, filesink, NULL);
   if (!ret) {
     g_printerr ("\n Video Encoder Pipeline elements cannot be linked. Exiting.\n");
-    g_list_free (appctx->plugins);
-    appctx->plugins = NULL;
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), camera_src_bin, qtivsplit,
-        capsfilter_dis, capsfilter_enc, v4l2h264enc, h264parse,
-        mp4mux, filesink, waylandsink, NULL);
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_dis,
+        capsfilter_enc, v4l2h264enc, h264parse, mp4mux, filesink, waylandsink,
+        NULL);
     return FALSE;
   }
 
   g_print ("\n All elements are linked successfully\n");
+
   return TRUE;
 }
 
 gint
 main (gint argc, gchar *argv[])
 {
-  GOptionContext *ctx         = NULL;
-  GMainLoop *mloop            = NULL;
-  GstBus *bus                 = NULL;
-  GstElement *pipeline        = NULL;
-  gboolean ret                = FALSE;
+  GOptionContext *ctx = NULL;
+  GMainLoop *mloop = NULL;
+  GstBus *bus = NULL;
+  GstElement *pipeline = NULL;
+  gboolean ret = FALSE;
   GstMultiStreamAppContext *appctx = NULL;
-  guint intrpt_watch_id       = 0;
+  guint intrpt_watch_id = 0;
 
   // create the application context
   appctx = gst_app_context_new ();
@@ -356,9 +324,9 @@ main (gint argc, gchar *argv[])
       &appctx->stream_count, "num_of_streams", "Stream count for single camera" },
     { "output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
       "Output Filename",
-      "-o /etc/media/video.mp4" },
+      "-o /etc/media/video_mutistream_out.mp4" },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
-  };
+    };
 
   // Parse command line entries.
   if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
@@ -398,6 +366,7 @@ main (gint argc, gchar *argv[])
     gst_app_context_free (appctx);
     return -1;
   }
+
   appctx->pipeline = pipeline;
 
   // Build the pipeline
@@ -434,14 +403,15 @@ main (gint argc, gchar *argv[])
   g_signal_connect (bus, "message::state-changed", G_CALLBACK (state_changed_cb),
       pipeline);
   g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
-  g_signal_connect (bus, "message::error",   G_CALLBACK (error_cb),   mloop);
-  g_signal_connect (bus, "message::eos",     G_CALLBACK (eos_cb),     mloop);
+  g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), mloop);
+  g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), mloop);
   gst_object_unref (bus);
 
   // Register function for handling interrupt signals with the main loop
   intrpt_watch_id = g_unix_signal_add (SIGINT, handle_interrupt_signal, appctx);
 
-  // Set the pipeline to the PAUSED state
+  // Set the pipeline to the PAUSED state, On successful transition
+  // move application state to PLAYING state in state_changed_cb function
   g_print ("\n Setting pipeline to PAUSED state ...\n");
   switch (gst_element_set_state (pipeline, GST_STATE_PAUSED)) {
     case GST_STATE_CHANGE_FAILURE:
@@ -472,6 +442,7 @@ main (gint argc, gchar *argv[])
   // Set the pipeline to the NULL state
   g_print ("\n Setting pipeline to NULL state ...\n");
   gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+
   g_print ("Encoded mp4 File %s\n", appctx->output_file);
 
   // Free the application context

@@ -13,15 +13,15 @@
  * multifilesrc ! jpegdec ! videoconvert ! qtivtransform ! waylandsink
  *
  * Supported input modes:
- * 1. Sequence input  : /etc/media/frame_%d.jpg
+ * 1. Sequence input  : /etc/media/imagefiles_%d.jpg
  *    - Plays from frame 0 up to the last available frame, then exits on EOS.
  *
- * 2. Single image    : /etc/media/frame_1.jpg
+ * 2. Single image    : /etc/media/imagefiles_1.jpg
  *    - Keeps redisplaying the same image until interrupted.
  *
  * Usage:
- * gst-jpg-decode-example -i /etc/media/frame_%d.jpg
- * gst-jpg-decode-example -i /etc/media/frame_1.jpg
+ * gst-jpg-decode-example -i /etc/media/imagefiles_%d.jpg
+ * gst-jpg-decode-example -i /etc/media/imagefiles_1.jpg
  */
 
 #include <glib-unix.h>
@@ -32,13 +32,13 @@
 
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
-#define DEFAULT_INPUT_PATH "/etc/media/frame_%d.jpg"
+#define DEFAULT_INPUT_PATH "/etc/media/imagefiles_%d.jpg"
 
 #define GST_APP_SUMMARY                                                        \
   "This application showcases JPEG decoding on waylandsink.\n"                 \
   "\nExamples:\n"                                                              \
-  "  Sequence input : gst-jpg-decode-example -i /etc/media/frame_%d.jpg\n"    \
-  "  Single image   : gst-jpg-decode-example -i /etc/media/frame_1.jpg\n"
+  "  Sequence input : gst-jpg-decode-example -i /etc/media/imagefiles_%d.jpg\n"    \
+  "  Single image   : gst-jpg-decode-example -i /etc/media/imagefiles_1.jpg\n"
 
 /* Structure to hold the application context */
 struct GstComposeAppContext : GstAppContext {

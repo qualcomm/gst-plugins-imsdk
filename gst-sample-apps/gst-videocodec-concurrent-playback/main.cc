@@ -16,8 +16,8 @@
 * gst-videocodec-concurrent-playback --help
 *
 * Usage:
-* gst-videocodec-concurrent-playback -i <h264_file>.mp4 -i <h265_file>.mp4
-*                                    -o <filename>.yuv
+* gst-videocodec-concurrent-playback -i /etc/media/video_avc.mp4 -i /etc/media/video_hevc.mp4
+*                                    -o /etc/media/h265_dump.yuv
 *
 * *******************************************************************
 * Pipeline 1: filesrc->qtdemux->h264parse->v4l2h264dec->waylandsink
@@ -35,7 +35,7 @@
 
 #define ARRAY_LENGTH 20
 #define STREAM_CNT 2
-#define DEFAULT_AVC_FILESOURCE "/etc/media/video.mp4"
+#define DEFAULT_AVC_FILESOURCE "/etc/media/video_avc.mp4"
 #define DEFAULT_HEVC_FILESOURCE "/etc/media/video_hevc.mp4"
 #define DEFAULT_YUV_FILESINK "/etc/media/h265_dump.yuv"
 
@@ -53,8 +53,8 @@
   "engine decoding the different video codecs content concurrently. \n" \
   "The first file should be H264 and the second file should be HEVC with MP4 container.\n" \
   "\nCommand:\n" \
-  "  gst-videocodec-concurrent-playback -i /etc/media/video.mp4 -i /etc/media/video_hevc.mp4 "\
-  "-o <filename>.yuv \n" \
+  "  gst-videocodec-concurrent-playback -i /etc/media/video_avc.mp4 -i /etc/media/video_hevc.mp4 "\
+  "-o /etc/media/h265_dump.yuv \n" \
   "\nOutput:\n" \
   "  H264 content goes to the display and HEVC content is dumped to YUV file.\n"
 
@@ -219,12 +219,12 @@ main (gint argc, gchar * argv[])
     { "input_file", 'i', 0,
       G_OPTION_ARG_FILENAME_ARRAY, &appctx->in_files,
       " Two mp4 Input Filenames - First is AVC & second HEVC codec in order.",
-      "  e.g. -i /etc/media/<h264_file>.mp4 -i /etc/media/<h265_file>.mp4"
+      "  e.g. -i /etc/media/video_avc.mp4 -i /etc/media/video_hevc.mp4"
     },
     { "output_file", 'o', 0,
       G_OPTION_ARG_FILENAME, &appctx->out_file,
       "Output Filename",
-      "  e.g. -o /etc/media/<filename>.yuv"
+      "  e.g. -o /etc/media/h265_dump.yuv"
     },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };

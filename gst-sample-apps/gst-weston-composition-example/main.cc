@@ -17,14 +17,14 @@
 *
 * Usage:
 * For qtivcomposer composing picture in picture:
-* gst-weston-composition-example -t 0 -i /etc/media/<h264_file>.mp4
+* gst-weston-composition-example -t 0 -i /etc/media/video_avc.mp4
 * For qtivcomposer composing side by side:
-* gst-weston-composition-example -t 1 -i /etc/media/<h264_file>.mp4
+* gst-weston-composition-example -t 1 -i /etc/media/video_avc.mp4
 *
 * ***********************************************************************
 *
 * For qtivcomposer composition pipeline:
-*            camera_source_bin->capsfilter->|
+*                   qtiqmmfsrc->capsfilter->|
                                             |->qtivcomposer->waylandsink
 * filesrc->qtdemux->h264parse->v4l2h264dec=>|
 * ***********************************************************************
@@ -37,7 +37,7 @@
 
 #include <gst_sample_apps_utils.h>
 
-#define INPUT_FILE_PATH "/etc/media/video.mp4"
+#define INPUT_FILE_PATH "/etc/media/video_avc.mp4"
 
 #define GST_APP_SUMMARY                                                       \
   "This application showcases the composition of various sources,           " \
@@ -181,11 +181,10 @@ static gboolean
 create_pipe_qtivcomposer (GstComposeAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *waylandsink, *capsfilter, *dis_capsfilter;
+  GstElement *qtiqmmfsrc, *waylandsink, *capsfilter, *dis_capsfilter;
   GstElement *filesrc, *qtdemux, *h264parse, *v4l2h264dec, *qtivcomposer;
   GstCaps *filtercaps;
   guint ret = FALSE;
-  GstElement *camera_src_bin = NULL;
   GstPad *composer_sink_1, *composer_sink_2;
 
   // Create Source element for reading from a file and set the location
@@ -206,22 +205,10 @@ create_pipe_qtivcomposer (GstComposeAppContext * appctx)
   g_object_set (G_OBJECT (dis_capsfilter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
-  /**
- * Source is abstracted through utils:
- *   create_camera_source_bin()
- *
- * Internally that bin chooses:
- *   - qtiqmmfsrc
- *   - or libcamerasrc -> qtivtransform
- */
-  camera_src_bin = create_camera_source_bin ("camera_source_bin");
+  // create camera source element and add capsfilter
+  qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
 
   capsfilter = gst_element_factory_make ("capsfilter", "capsfilter");
-  if (!camera_src_bin || !capsfilter) {
-    g_printerr (
-      "\nCamera source bin or capsfilter could not be created. Exiting.\n");
-    return FALSE;
-  }
 
   filtercaps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "NV12",
@@ -242,17 +229,17 @@ create_pipe_qtivcomposer (GstComposeAppContext * appctx)
   waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
   g_object_set (G_OBJECT (waylandsink), "fullscreen", true, NULL);
 
-  gst_bin_add_many (GST_BIN (appctx->pipeline), camera_src_bin, capsfilter,
+  gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
       qtivcomposer, filesrc, qtdemux, h264parse, v4l2h264dec,
       dis_capsfilter, waylandsink, NULL);
 
   g_print ("\n Linking qtivcomposer elements ..\n");
 
-  ret = gst_element_link_many (camera_src_bin, capsfilter, qtivcomposer,
+  ret = gst_element_link_many (qtiqmmfsrc, capsfilter, qtivcomposer,
       waylandsink, NULL);
   if (!ret) {
     g_printerr ("\n Pipeline elements cannot be linked. Exiting.\n");
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), camera_src_bin,
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
         capsfilter, qtivcomposer, waylandsink, NULL);
     return FALSE;
   }
@@ -280,7 +267,7 @@ create_pipe_qtivcomposer (GstComposeAppContext * appctx)
   gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
 
   // Append all elements in a list
-  appctx->plugins = g_list_append (appctx->plugins, camera_src_bin);
+  appctx->plugins = g_list_append (appctx->plugins, qtiqmmfsrc);
   appctx->plugins = g_list_append (appctx->plugins, capsfilter);
   appctx->plugins = g_list_append (appctx->plugins, dis_capsfilter);
   appctx->plugins = g_list_append (appctx->plugins, qtivcomposer);
@@ -384,7 +371,7 @@ main (gint argc, gchar *argv[])
     },
     { "input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
       "input AVC mp4 Filename",
-      "  e.g. -i /etc/media/<h264_file>.mp4"
+      "  e.g. -i /etc/media/video_avc.mp4"
     },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
