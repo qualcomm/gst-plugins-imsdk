@@ -1451,18 +1451,17 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
 
   /* tee_queue is the stable entry point for the common output branch. */
   tee_queue = gst_app_make_element ("queue", "tee_queue");
-  output_queue = gst_app_make_element ("queue", "output_queue");
   tee = gst_app_make_element ("tee", "output_tee");
 
-  if (!tee_queue || !tee || !output_queue)
+  if (!tee_queue || !tee)
     goto error;
 
   if (meta_head != NULL)
     *meta_head = NULL;
 
-  gst_bin_add_many (GST_BIN (appctx->pipeline), tee_queue, tee, output_queue, NULL);
+  gst_bin_add_many (GST_BIN (appctx->pipeline), tee_queue, tee, NULL);
 
-  if (!gst_element_link_many(tee_queue, tee, output_queue, NULL)) {
+  if (!gst_element_link_many(tee_queue, tee, NULL)) {
     g_printerr ("ERROR: Failed to link output queue to tee.\n");
     goto error;
   }
@@ -1481,7 +1480,13 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
     if (!display_queue || !display_sink)
       goto error;
 
-    g_object_set (G_OBJECT (display_sink), "sync", FALSE, NULL);
+    // Enable sync in case of offline input
+    if (g_strcmp0 (appctx->config.input_type, "file") == 0 &&
+        g_strcmp0 (appctx->config.output_type, "webrtc") != 0)
+      g_object_set (G_OBJECT (display_sink), "sync", TRUE, NULL);
+    else
+      g_object_set (G_OBJECT (display_sink), "sync", FALSE, NULL);
+
     g_object_set (G_OBJECT (display_sink), "fullscreen", TRUE, NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
@@ -1501,19 +1506,20 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
      * H.264 file output: encode raw frames, parse the stream, mux it into MP4,
      * and write it to disk. The explicit encoder keeps hardware usage visible.
      */
+    output_queue = gst_app_make_element ("queue", "output_queue");
     encoder = gst_app_create_h264_encoder ();
     parse = gst_app_make_element ("h264parse", "output_h264_parse");
     mux = gst_app_make_element ("mp4mux", "output_mp4_mux");
     sink = gst_app_make_element ("filesink", "file_sink");
-    if (!encoder || !parse || !mux || !sink)
+    if (!output_queue || !encoder || !parse || !mux || !sink)
       goto error;
 
     g_object_set (G_OBJECT (sink), "location", appctx->config.output_config, NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
-        encoder, parse, mux, sink, NULL);
+        output_queue, encoder, parse, mux, sink, NULL);
 
-    ret = gst_element_link_many (output_queue, encoder, parse, mux, sink, NULL);
+    ret = gst_element_link_many (tee, output_queue, encoder, parse, mux, sink, NULL);
     if (!ret) {
       g_printerr ("ERROR: Failed to link file output branch.\n");
       goto error;
@@ -1523,10 +1529,11 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
      * RTSP output: encode raw frames, prepare the H.264 stream, payload it as
      * RTP, and push it to an existing RTSP server through rtspclientsink.
      */
+    output_queue = gst_app_make_element ("queue", "output_queue");
     encoder = gst_app_create_h264_encoder ();
     parse = gst_app_make_element ("h264parse", "output_h264_parse");
     sink = gst_app_make_element ("qtirtspbin", "rtsp_bin");
-    if (!encoder || !parse || !sink)
+    if (!output_queue || !encoder || !parse || !sink)
       goto error;
 
     g_object_set (G_OBJECT (parse), "config-interval", 1, NULL);
@@ -1537,9 +1544,9 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
         NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
-        encoder, parse, sink, NULL);
+        output_queue, encoder, parse, sink, NULL);
 
-    ret = gst_element_link_many (output_queue, encoder, parse, sink, NULL);
+    ret = gst_element_link_many (tee, output_queue, encoder, parse, sink, NULL);
     if (!ret) {
       g_printerr ("ERROR: Failed to link RTSP output branch.\n");
       goto error;
@@ -1568,11 +1575,12 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
     GstCaps *rtp_caps = NULL;
     GstPadLinkReturn pad_ret = GST_PAD_LINK_REFUSED;
 
+    output_queue = gst_app_make_element ("queue", "output_queue");
     encoder = gst_app_create_h264_encoder ();
     parse = gst_app_make_element ("h264parse", "webrtc_h264_parse");
     pay = gst_app_make_element ("rtph264pay", "webrtc_h264_pay");
     appctx->webrtc = gst_app_make_element ("webrtcbin", "webrtc_bin");
-    if (!encoder || !parse || !pay || !appctx->webrtc)
+    if (!output_queue || !encoder || !parse || !pay || !appctx->webrtc)
       goto error;
 
     g_object_set (G_OBJECT (parse), "config-interval", -1, NULL);
@@ -1593,9 +1601,9 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
     appctx->ws_local_id = (guint) appctx->config.webrtc_id;
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
-        encoder, parse, pay, appctx->webrtc, NULL);
+        output_queue, encoder, parse, pay, appctx->webrtc, NULL);
 
-    ret = gst_element_link_many (output_queue, encoder, parse, pay, NULL);
+    ret = gst_element_link_many (tee, output_queue, encoder, parse, pay, NULL);
     if (!ret) {
       g_printerr ("ERROR: Failed to link WebRTC H.264 encoder branch.\n");
       goto error;
@@ -1687,7 +1695,7 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head,
     }
 
     if (meta_head)
-        *meta_head = meta_queue;
+      *meta_head = meta_queue;
   }
 
   /*
