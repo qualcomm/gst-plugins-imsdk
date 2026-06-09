@@ -164,6 +164,8 @@ typedef struct GstAppContext
   SoupWebsocketConnection *ws_conn;
   guint ws_local_id;
 
+  gboolean has_offline_input;
+
   /*
    * Shutdown guard shared by Ctrl+C, WebRTC signalling disconnects, bus
    * errors, and cleanup paths. WebRTC/live pipelines may not reliably produce
@@ -1129,6 +1131,8 @@ gst_app_create_single_input_branch (GstAppContext * appctx, gint input_index,
       goto error;
     }
   } else if (g_strcmp0 (input_type, "file") == 0) {
+    appctx->has_offline_input = TRUE;
+
     name = g_strdup_printf ("input_%02d_file_src", input_index);
     source = gst_app_make_element ("filesrc", name);
     g_free (name);
@@ -1285,16 +1289,15 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head)
    * the user/demo section.
    */
   tee_queue = gst_app_make_element ("queue", "tee_queue");
-  output_queue = gst_app_make_element ("queue", "output_queue");
   tee = gst_app_make_element ("tee", "output_tee");
 
-  if (!tee_queue || !tee || !output_queue)
+  if (!tee_queue || !tee)
     goto error;
 
 
-  gst_bin_add_many (GST_BIN (appctx->pipeline), tee_queue, tee, output_queue, NULL);
+  gst_bin_add_many (GST_BIN (appctx->pipeline), tee_queue, tee, NULL);
 
-  if (!gst_element_link_many(tee_queue, tee, output_queue, NULL)) {
+  if (!gst_element_link_many(tee_queue, tee, NULL)) {
     g_printerr ("ERROR: Failed to link output queue to tee.\n");
     goto error;
   }
@@ -1318,7 +1321,13 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head)
     if (!display_queue || !display_sink)
       goto error;
 
-    g_object_set (G_OBJECT (display_sink), "sync", FALSE, NULL);
+    // Enable sync in case of offline input
+    if (appctx->has_offline_input &&
+        g_strcmp0 (appctx->config.output_type, "webrtc") != 0)
+      g_object_set (G_OBJECT (display_sink), "sync", TRUE, NULL);
+    else
+      g_object_set (G_OBJECT (display_sink), "sync", FALSE, NULL);
+
     g_object_set (G_OBJECT (display_sink), "fullscreen", TRUE, NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
@@ -1338,19 +1347,20 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head)
      * H.264 file output: encode raw frames, parse the stream, mux it into MP4,
      * and write it to disk. The explicit encoder keeps hardware usage visible.
      */
+    output_queue = gst_app_make_element ("queue", "output_queue");
     encoder = gst_app_create_h264_encoder ();
     parse = gst_app_make_element ("h264parse", "output_h264_parse");
     mux = gst_app_make_element ("mp4mux", "output_mp4_mux");
     sink = gst_app_make_element ("filesink", "file_sink");
-    if (!encoder || !parse || !mux || !sink)
+    if (!output_queue || !encoder || !parse || !mux || !sink)
       goto error;
 
     g_object_set (G_OBJECT (sink), "location", appctx->config.output_config, NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
-        encoder, parse, mux, sink, NULL);
+        output_queue, encoder, parse, mux, sink, NULL);
 
-    ret = gst_element_link_many (output_queue, encoder, parse, mux, sink, NULL);
+    ret = gst_element_link_many (tee, output_queue, encoder, parse, mux, sink, NULL);
     if (!ret) {
       g_printerr ("ERROR: Failed to link file output branch.\n");
       goto error;
@@ -1360,10 +1370,11 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head)
      * RTSP output: encode raw frames, prepare the H.264 stream, payload it as
      * RTP, and push it to an existing RTSP server through rtspclientsink.
      */
+    output_queue = gst_app_make_element ("queue", "output_queue");
     encoder = gst_app_create_h264_encoder ();
     parse = gst_app_make_element ("h264parse", "output_h264_parse");
     sink = gst_app_make_element ("qtirtspbin", "rtsp_bin");
-    if (!encoder || !parse || !sink)
+    if (!output_queue || !encoder || !parse || !sink)
       goto error;
 
     g_object_set (G_OBJECT (parse), "config-interval", 1, NULL);
@@ -1374,9 +1385,9 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head)
         NULL);
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
-        encoder, parse, sink, NULL);
+        output_queue, encoder, parse, sink, NULL);
 
-    ret = gst_element_link_many (output_queue, encoder, parse, sink, NULL);
+    ret = gst_element_link_many (tee, output_queue, encoder, parse, sink, NULL);
     if (!ret) {
       g_printerr ("ERROR: Failed to link RTSP output branch.\n");
       goto error;
@@ -1394,11 +1405,12 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head)
     GstCaps *rtp_caps = NULL;
     GstPadLinkReturn pad_ret = GST_PAD_LINK_REFUSED;
 
+    output_queue = gst_app_make_element ("queue", "output_queue");
     encoder = gst_app_create_h264_encoder ();
     parse = gst_app_make_element ("h264parse", "webrtc_h264_parse");
     pay = gst_app_make_element ("rtph264pay", "webrtc_h264_pay");
     appctx->webrtc = gst_app_make_element ("webrtcbin", "webrtc_bin");
-    if (!encoder || !parse || !pay || !appctx->webrtc)
+    if (!output_queue || !encoder || !parse || !pay || !appctx->webrtc)
       goto error;
 
     g_object_set (G_OBJECT (parse), "config-interval", -1, NULL);
@@ -1419,9 +1431,9 @@ gst_app_create_output_pipe (GstAppContext * appctx, GstElement ** output_head)
     appctx->ws_local_id = (guint) appctx->config.webrtc_id;
 
     gst_bin_add_many (GST_BIN (appctx->pipeline),
-        encoder, parse, pay, appctx->webrtc, NULL);
+        output_queue, encoder, parse, pay, appctx->webrtc, NULL);
 
-    ret = gst_element_link_many (output_queue, encoder, parse, pay, NULL);
+    ret = gst_element_link_many (tee, output_queue, encoder, parse, pay, NULL);
     if (!ret) {
       g_printerr ("ERROR: Failed to link WebRTC H.264 encoder branch.\n");
       goto error;
@@ -1664,9 +1676,6 @@ gst_app_create_user_pipe (GstAppContext * appctx,
     GstElement *tee = NULL;
     GstElement *direct_queue = NULL;
     GstElement *ml_input_queue = NULL;
-    GstElement *ml_videorate = NULL;
-    GstElement *ml_videorate_capsfilter = NULL;
-    GstCaps *ml_videorate_caps = NULL;
     GstElement *mlvconverter = NULL;
     GstElement *preproc_queue = NULL;
     GstElement *mltflite = NULL;
@@ -1682,23 +1691,6 @@ gst_app_create_user_pipe (GstAppContext * appctx,
     name = g_strdup_printf ("input_%02d_direct_queue", i);
     direct_queue = gst_app_make_element ("queue", name);
     g_free (name);
-
-    name = g_strdup_printf ("input_%02d_ml_videorate", i);
-    ml_videorate = gst_app_make_element ("videorate", name);
-    if (ml_videorate != NULL)
-      g_object_set (G_OBJECT (ml_videorate), "drop-only", TRUE, NULL);
-    g_free (name);
-
-    name = g_strdup_printf ("input_%02d_ml_videorate_capsfilter", i);
-    ml_videorate_capsfilter = gst_app_make_element ("capsfilter", name);
-    if (!ml_videorate_capsfilter)
-      return FALSE;
-
-    ml_videorate_caps = gst_caps_new_simple ("video/x-raw",
-        "framerate", GST_TYPE_FRACTION, 15, 1, NULL);
-    g_object_set (G_OBJECT (ml_videorate_capsfilter), "caps", ml_videorate_caps,
-        NULL);
-    gst_caps_unref (ml_videorate_caps);
 
     name = g_strdup_printf ("input_%02d_ml_input_queue", i);
     ml_input_queue = gst_app_make_element ("queue", name);
@@ -1767,7 +1759,7 @@ gst_app_create_user_pipe (GstAppContext * appctx,
     postproc_queue = gst_app_make_element ("queue", name);
     g_free (name);
 
-    if (!tee || !direct_queue || !ml_videorate || !ml_videorate_capsfilter ||
+    if (!tee || !direct_queue ||
         !ml_input_queue || !mlvconverter || !preproc_queue || !mltflite ||
         !inference_queue || !mlpostprocess ||
         !postproc_queue) {
@@ -1776,7 +1768,7 @@ gst_app_create_user_pipe (GstAppContext * appctx,
     }
 
     gst_bin_add_many (GST_BIN (appctx->pipeline), tee, direct_queue,
-        ml_videorate, ml_videorate_capsfilter, ml_input_queue, mlvconverter, preproc_queue, mltflite,
+        ml_input_queue, mlvconverter, preproc_queue, mltflite,
         inference_queue, mlpostprocess, postproc_queue, NULL);
 
     if (!gst_element_link_many (input_tails[i], tee, NULL)) {
@@ -1789,7 +1781,7 @@ gst_app_create_user_pipe (GstAppContext * appctx,
       return FALSE;
     }
 
-    if (!gst_element_link_many (tee, ml_videorate, ml_videorate_capsfilter,
+    if (!gst_element_link_many (tee,
         ml_input_queue, mlvconverter, preproc_queue, mltflite,
         inference_queue, mlpostprocess, postproc_queue, NULL)) {
       g_printerr ("ERROR: Failed to link input %d ML tee branch.\n", i);
