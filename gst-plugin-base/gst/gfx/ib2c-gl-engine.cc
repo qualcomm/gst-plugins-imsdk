@@ -1144,6 +1144,10 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
       subsurface.planes[0].stride *= n_components;
     }
 
+    // Calculate the number of padding bytes in the original stride.
+    uint32_t padding = subsurface.planes[0].stride -
+        (subsurface.width * n_components * bitdepth / 8);
+
     // Overwrite formats to corresponding 4 channeled format if necessary.
     // This will make it compatible for creating EGL image and use in compute.
     if (n_components != 4) {
@@ -1178,21 +1182,18 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
     subsurface.width = subsurface.planes[0].stride / bpp;
 
-    // Exact size needed for computation.
-    uint32_t size = surface.width * surface.height *
-        Format::NumComponents(surface.format) * bytedepth;
+    // Decrease the width with original stride padding equivalent in pixels.
+    // This is to account for stride when calculating pixel X and Y values.
+    subsurface.width -= padding / bpp;
 
-    // Calculate the aligned height value rounded up based on size.
+    // Calculate the aligned height value rounded up based on surface size.
+    uint32_t size = subsurface.size - subsurface.planes[0].offset;
+
     subsurface.height =
-        std::ceil(size / static_cast<float>(subsurface.width) / bpp);
+        std::ceil(size / static_cast<float>(subsurface.planes[0].stride));
 
-    // Round up to multiple of 4
-    subsurface.height = ((subsurface.height + 3) &  ~3);
-
-    // Sanity check for size of the allocated bufffer
-    if (size > subsurface.size - subsurface.planes[0].offset)
-      throw Exception("Allocated buffer size is not big enough! Actual: ",
-          subsurface.size, ", Expected: ", size);
+    // Round down to multiple of 4 due to freedreno limitations.
+    subsurface.height = subsurface.height & (~3);
 
     imgsurfaces.push_back(subsurface);
   } else {
