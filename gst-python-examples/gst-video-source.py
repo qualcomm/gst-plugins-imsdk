@@ -7,6 +7,7 @@
 
 from gst_utils import gst_run_pipeline, nv12_buffer_to_jpeg
 import argparse
+import os
 
 # ------------------------------------------------------------------------------
 # Constants and Configuration
@@ -17,7 +18,7 @@ This application sets up a GStreamer pipeline for capturing video frames.
 """
 
 VIDEO_SOURCE = (
-    "filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! "
+    f"filesrc location={os.environ['HOME']}/media/video.mp4 ! qtdemux ! h264parse ! "
     "v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12"
 )
 

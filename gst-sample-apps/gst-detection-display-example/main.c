@@ -52,9 +52,7 @@
  * These values are only defaults. The user can override them through the
  * command-line options declared in main().
  */
-#define DEFAULT_INPUT_FILE "/etc/media/Draw_1080p_180s_30FPS.mp4"
-#define DEFAULT_MODEL  "/etc/models/yolov8_det_quantized.tflite"
-#define DEFAULT_LABELS  "/etc/labels/yolov8.json"
+#define DEFAULT_INPUT_FILE "%s/media/Draw_1080p_180s_30FPS.mp4"
 
 typedef struct _GstAppContext GstAppContext;
 
@@ -527,14 +525,14 @@ main (gint argc, gchar * argv[])
   GstElement *pipeline = NULL;
   gboolean ret = FALSE;
   GstAppContext appctx = {};
+  const gchar *home = g_getenv ("HOME");
+  gchar *model_base_path = g_strdup_printf ("%s/", home);
 
   /*
    * Initialize defaults before option parsing. GOption can replace these
    * pointers if the user provides --file, --model_file, or --label_file.
    */
-  appctx.file = g_strdup (DEFAULT_INPUT_FILE);
-  appctx.model = g_strdup (DEFAULT_MODEL);
-  appctx.labels = g_strdup (DEFAULT_LABELS);
+  appctx.file = g_strdup_printf (DEFAULT_INPUT_FILE, home);
 
   /*
    * Command-line options.
@@ -544,14 +542,10 @@ main (gint argc, gchar * argv[])
    */
   GOptionEntry entries[] = {
     { "file", 'f', 0, G_OPTION_ARG_STRING, &appctx.file,
-      "Input file - by default takes /etc/media/Draw_1080p_180s_30FPS.mp4"
+      "Input file - by default takes ${HOME}/media/Draw_1080p_180s_30FPS.mp4"
     },
-    { "model_file", 'm', 0, G_OPTION_ARG_STRING, &appctx.model,
-      "Model file - by default takes /etc/models/yolov8_det_quantized.tflite"
-    },
-    { "label_file", 'l', 0, G_OPTION_ARG_STRING, &appctx.labels,
-      "Labels file - by default takes /etc/labels/yolov8.json"
-    },
+    { "model-base-path", 0, 0, G_OPTION_ARG_STRING, &model_base_path,
+      "Directory containing models/ and labels/", NULL },
     { NULL }
   };
 
@@ -580,6 +574,10 @@ main (gint argc, gchar * argv[])
     gst_app_config_free (&appctx);
     return -EFAULT;
   }
+
+  appctx.model = g_strdup_printf (
+      "%s/models/yolov8_det_quantized.tflite", model_base_path);
+  appctx.labels = g_strdup_printf ("%s/labels/yolov8.json", model_base_path);
 
   /*
    * Initialize GStreamer explicitly. The option group above also allows
@@ -698,6 +696,7 @@ main (gint argc, gchar * argv[])
   g_print ("Setting pipeline to NULL state ...\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
 
+  g_free (model_base_path);
   gst_app_config_free (&appctx);
 
   /*

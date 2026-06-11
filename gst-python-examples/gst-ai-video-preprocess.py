@@ -7,6 +7,7 @@
 
 from gst_utils import gst_run_pipeline, buffer_to_file
 import argparse
+import os
 
 # ------------------------------------------------------------------------------
 # Constants and Configuration
@@ -21,7 +22,7 @@ It supports various video input sources.
 
 # H.264 offline video input (MP4 format). Resolution is determined by the video. Decoder does not support rescaling.
 VIDEO_SOURCE = (
-    "filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! "
+    f"filesrc location={os.environ['HOME']}/media/video.mp4 ! qtdemux ! h264parse ! "
     "v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12"
 )
 

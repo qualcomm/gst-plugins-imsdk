@@ -20,7 +20,7 @@ quantized ResNet101 model. It supports various video input sources and output ty
 
 # H.264 offline video input (MP4 format). Resolution is determined by the video. Decoder does not support rescaling.
 VIDEO_SOURCE = (
-    "filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! "
+    f"filesrc location={os.environ['HOME']}/media/video.mp4 ! qtdemux ! h264parse ! "
     "v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12"
 )
 
@@ -83,7 +83,7 @@ PIPELINE = (
     'qtimltflite name=inference delegate=external '
     'external-delegate-path=libQnnTFLiteDelegate.so '
     'external-delegate-options="QNNExternalDelegate,backend_type=htp;" '
-    f'model={MODEL_DIR}/resnext101-w8a8.tflite ! queue ! '
+    f'model={MODEL_DIR}/resnet101-w8a8.tflite ! queue ! '
 
     # Postprocess inference results
     'qtimlpostprocess name=postprocess results=1 module=mobilenet-softmax '

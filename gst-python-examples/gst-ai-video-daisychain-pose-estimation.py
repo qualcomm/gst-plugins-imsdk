@@ -22,7 +22,7 @@ for visualization. It supports various input sources and output types.
 
 # H.264 offline video input (MP4 format). Resolution is determined by the video. Decoder does not support rescaling.
 VIDEO_SOURCE = (
-    "filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! "
+    f"filesrc location={os.environ['HOME']}/media/video.mp4 ! qtdemux ! h264parse ! "
     "v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12"
 )
 
@@ -89,8 +89,8 @@ PIPELINE = (
 
     # Postprocess inference results
     'qtimlpostprocess name=detection-postprocess results=8 module=yolov8 '
-    f'labels={LABEL_DIR}/coco.txt settings="{{\\"confidence\\": 75.0}}" ! '
-    'text/x-raw ! metamux_1. '
+    f'labels={LABEL_DIR}/coco.txt settings="{{\\"confidence\\": 75.0}}" '
+    'bbox-stabilization=true ! text/x-raw ! metamux_1. '
 
     # Attch ML result to video frame
     't1. ! qtimetamux name=metamux_1 ! queue ! '

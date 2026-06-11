@@ -19,7 +19,7 @@
  * Default input branch used by the sample application.
  */
 #define DEFAULT_INPUT \
-  "filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! "\
+  "filesrc location=%s/media/video.mp4 ! qtdemux ! h264parse ! "\
   "v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12"
 
 /*
@@ -140,9 +140,9 @@ int main(int argc, char * argv[])
   guint interrupt_watch_id = 0;
   GstBus *bus = NULL;
   GError *error = NULL;
-  gchar *source = g_strdup (DEFAULT_INPUT);
   const gchar *home = g_getenv ("HOME");
   gchar *model_base_path = g_strdup_printf ("%s/", home);
+  gchar *source = g_strdup_printf (DEFAULT_INPUT, home);
   gchar *model_label_base = NULL;
   gchar *output = g_strdup (DEFAULT_OUTPUT);
 
