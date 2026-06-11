@@ -482,7 +482,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
 
   // Elements for sinks
   GstElement *queue[QUEUE_COUNT] = {NULL}, *qtivcomposer = NULL;
-  GstElement *waylandsink = NULL, *composer_caps = NULL, *composer_tee = NULL;
+  GstElement *waylandsink = NULL, *composer_tee = NULL;
   GstElement *v4l2_encoder = NULL, *enc_tee = NULL;
   GstElement *file_encoder_parse = NULL, *rtsp_encoder_parse = NULL;
   GstElement *mp4mux = NULL, *filesink = NULL, *fpsdisplaysink = NULL;
@@ -853,13 +853,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
     goto error_clean_elements;
   }
 
-  // Use capsfilter to define the composer output settings
-  composer_caps = gst_element_factory_make ("capsfilter", "composer_caps");
-  if (!composer_caps) {
-    g_printerr ("Failed to create composer_caps\n");
-    goto error_clean_elements;
-  }
-
   composer_tee = gst_element_factory_make ("tee", "composer_tee");
   if (!composer_tee) {
     g_printerr ("Failed to create composer tee\n");
@@ -1029,17 +1022,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
     }
   }
 
-  // 2.4 Set the properties for composer output
-  filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, DEFAULT_DISPLAY_WIDTH,
-      "height", G_TYPE_INT, DEFAULT_DISPLAY_HEIGHT,
-      "interlace-mode", G_TYPE_STRING, "progressive",
-      "colorimetry", G_TYPE_STRING, "bt601", NULL);
-  g_object_set (G_OBJECT (composer_caps), "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
-
-  // 2.5 Set the properties for Wayland compositor and fpsdisplay
+  // 2.4 Set the properties for Wayland compositor and fpsdisplay
   if (options->out_display) {
     g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
     g_object_set (G_OBJECT (waylandsink), "sync", FALSE, NULL);
@@ -1051,7 +1034,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
     g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
   }
 
-  // 2.5 Set the properties for file/rtsp sink
+  // 2.4 Set the properties for file/rtsp sink
   if (options->out_file || options->out_rtsp) {
     gst_element_set_enum_property (v4l2_encoder, "capture-io-mode",
         "dmabuf");
@@ -1111,7 +1094,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
   }
 
   gst_bin_add_many (GST_BIN (appctx->pipeline), qtivcomposer,
-      composer_caps, composer_tee, NULL);
+      composer_tee, NULL);
 
   if (options->out_display) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink, NULL);
@@ -1223,7 +1206,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
   }
 
   ret = gst_element_link_many (
-      qtivcomposer, queue[0], composer_caps, composer_tee, NULL);
+      qtivcomposer, queue[0], composer_tee, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for"
         " qtivcomposer -> composer_tee.\n");
@@ -1324,8 +1307,7 @@ error_clean_elements:
     cleanup_gst (&queue[i], NULL);
   }
 
-  cleanup_gst (&qtivcomposer,
-      &composer_caps, &composer_tee, NULL);
+  cleanup_gst (&qtivcomposer, &composer_tee, NULL);
 
   if (options->out_display) {
     cleanup_gst (&waylandsink, &fpsdisplaysink, NULL);
