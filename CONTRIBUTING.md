@@ -26,7 +26,7 @@ In general, contributors should develop on branches based off of `main` and pull
 1. Create an upstream `remote` to make it easier to keep your branches up-to-date:
 
     ```bash
-    git remote add upstream https://github.com/qualcomm/gst-plugins-imsdk>.git
+    git remote add upstream https://github.com/qualcomm/gst-plugins-imsdk.git
     ```
 
 1. Make your changes, add tests, and make sure the tests still pass.
