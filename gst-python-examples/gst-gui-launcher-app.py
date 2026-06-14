@@ -369,7 +369,7 @@ class DemoWindow(Gtk.Window):
                     self.popup.show_all()
 
                     # URL of the file to be downloaded
-                    url = "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/main/qualcomm-linux/scripts/download_artifacts.sh"
+                    url = "https://raw.githubusercontent.com/qualcomm/sample-apps-for-qualcomm-linux/main/qualcomm-linux/scripts/download_artifacts.sh"
 
                     if not os.path.exists("/etc/media"):
                         os.makedirs("/etc/media", exist_ok=True)
