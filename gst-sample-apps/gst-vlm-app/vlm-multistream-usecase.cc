@@ -12,6 +12,7 @@
 #include <libsoup/soup.h>
 #include <queue>
 #include <string>
+#include <algorithm>
 
 #include "GenieVLM.h"
 

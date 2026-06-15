@@ -6,6 +6,7 @@
 #include <glib.h>
 #include <gst/gst.h>
 #include <string>
+#include <algorithm>
 #include "GenieVLM.h"
 
 std::string
