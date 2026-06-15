@@ -39,8 +39,6 @@
  *   --input-type and --input-config exactly N times. N can be 1..31.
  *
  *   Supported input types per input:
- *     --input-type=usb   --input-config=/dev/video0
- *     --input-type=isp   --input-config=0
  *     --input-type=rtsp  --input-config=rtsp://...
  *     --input-type=file  --input-config=/path/to/video.mp4
  *
@@ -57,6 +55,7 @@
  *   --input-config=/opt/qcom/media/ppe.mp4 \
  *   --input-type=file \
  *   --input-config=/opt/qcom/media/draw.mp4 \
+ *   --num-npus=2
  *
  * Notes:
  *   - RTSP input currently assumes H.264 RTP video. If a demo needs H.265 or
@@ -80,9 +79,6 @@
 #include <json-glib/json-glib.h>
 #include <libsoup/soup.h>
 
-#define DEFAULT_WIDTH 1920
-#define DEFAULT_HEIGHT 1080
-#define DEFAULT_FRAMERATE 30
 #define DEFAULT_RTSP_LATENCY_MS 200
 #define DEFAULT_WEBRTC_ID 1010
 #define GST_APP_MAX_INPUTS 31
@@ -133,10 +129,8 @@ typedef struct GstAppConfig
   gchar *output_config;
   gchar *model_base_path;
   gboolean no_display;
-  gint width;
-  gint height;
-  gint framerate;
   gint webrtc_id;
+  gint num_npus;
 } GstAppConfig;
 
 /*
@@ -797,9 +791,7 @@ cleanup:
 static gboolean
 gst_app_is_valid_input_type (const gchar * type)
 {
-  return g_strcmp0 (type, "usb") == 0 ||
-      g_strcmp0 (type, "isp") == 0 ||
-      g_strcmp0 (type, "rtsp") == 0 ||
+  return g_strcmp0 (type, "rtsp") == 0 ||
       g_strcmp0 (type, "file") == 0;
 }
 
@@ -884,6 +876,9 @@ gst_app_config_apply_defaults (GstAppConfig * config)
 
   if (config->webrtc_id <= 0)
     config->webrtc_id = DEFAULT_WEBRTC_ID;
+
+  if (config->num_npus < 1)
+    config->num_npus = 1;
 }
 
 /*
@@ -922,13 +917,12 @@ gst_app_config_validate (const GstAppConfig * config)
     const gchar *input_cfg = config->input_configs[i];
 
     if (!gst_app_is_valid_input_type (type)) {
-      g_printerr ("ERROR: Unsupported input type '%s' at index %d. Use usb, isp, rtsp or file.\n",
+      g_printerr ("ERROR: Unsupported input type '%s' at index %d. Use rtsp or file.\n",
           GST_STR_NULL (type), i);
       return FALSE;
     }
 
-    if ((g_strcmp0 (type, "usb") == 0 ||
-            g_strcmp0 (type, "rtsp") == 0 ||
+    if ((g_strcmp0 (type, "rtsp") == 0 ||
             g_strcmp0 (type, "file") == 0) &&
         (input_cfg == NULL || input_cfg[0] == '\0')) {
       g_printerr ("ERROR: --input-config is required for input %d of type '%s'.\n",
@@ -951,8 +945,8 @@ gst_app_config_validate (const GstAppConfig * config)
     return FALSE;
   }
 
-  if (config->width <= 0 || config->height <= 0 || config->framerate <= 0) {
-    g_printerr ("ERROR: width, height and framerate must be positive values.\n");
+  if (config->num_npus < 1) {
+    g_printerr("ERROR: --num-npus must be >= 1.\n");
     return FALSE;
   }
 
@@ -1048,89 +1042,7 @@ gst_app_create_single_input_branch (GstAppContext * appctx, gint input_index,
 
   gst_bin_add (GST_BIN (appctx->pipeline), queue);
 
-  if (g_strcmp0 (input_type, "usb") == 0) {
-    name = g_strdup_printf ("input_%02d_usb_camera_src", input_index);
-    source = gst_app_make_element ("v4l2src", name);
-    g_free (name);
-    if (!source)
-      goto error;
-
-    g_object_set (G_OBJECT (source), "device", input_config, NULL);
-
-    name = g_strdup_printf ("input_%02d_capsfilter", input_index);
-    capsfilter = gst_app_make_element ("capsfilter", name);
-    g_free (name);
-    if (!capsfilter)
-      goto error;
-
-    caps = gst_caps_new_simple ("video/x-raw",
-        "width", G_TYPE_INT, appctx->config.width,
-        "height", G_TYPE_INT, appctx->config.height,
-        NULL);
-    g_object_set (G_OBJECT (capsfilter), "caps", caps, NULL);
-    gst_caps_unref (caps);
-    caps = NULL;
-
-    name = g_strdup_printf ("input_%02d_qtivtransform", input_index);
-    qtivtransform = gst_app_make_element ("qtivtransform", name);
-    g_free (name);
-    if (!qtivtransform)
-      goto error;
-
-    gst_bin_add_many (GST_BIN (appctx->pipeline), source, capsfilter,
-        qtivtransform, NULL);
-
-    ret = gst_element_link_many (source, capsfilter, qtivtransform, queue, NULL);
-    if (!ret) {
-      g_printerr ("ERROR: Failed to link USB input %d.\n", input_index);
-      goto error;
-    }
-  } else if (g_strcmp0 (input_type, "isp") == 0) {
-    name = g_strdup_printf ("input_%02d_isp_camera_src", input_index);
-    source = gst_app_make_element ("qtiqmmfsrc", name);
-    g_free (name);
-    if (!source)
-      goto error;
-
-    gint camera_id = 0;
-
-    if (input_config != NULL && input_config[0] != '\0') {
-      char *endptr = NULL;
-      camera_id = (gint) strtol(input_config, &endptr, 10);
-
-      if (endptr == input_config || *endptr != '\0' || camera_id < 0) {
-        g_printerr("WARNING: Invalid ISP camera id '%s', using 0\n",
-                  input_config);
-        camera_id = 0;
-      }
-    }
-
-    g_object_set(G_OBJECT(source), "camera", camera_id, NULL);
-
-    name = g_strdup_printf ("input_%02d_capsfilter", input_index);
-    capsfilter = gst_app_make_element ("capsfilter", name);
-    g_free (name);
-    if (!capsfilter)
-      goto error;
-
-    caps = gst_caps_new_simple ("video/x-raw",
-        "format", G_TYPE_STRING, "NV12",
-        "width", G_TYPE_INT, appctx->config.width,
-        "height", G_TYPE_INT, appctx->config.height,
-        "framerate", GST_TYPE_FRACTION, appctx->config.framerate, 1,
-        NULL);
-    g_object_set (G_OBJECT (capsfilter), "caps", caps, NULL);
-    gst_caps_unref (caps);
-    caps = NULL;
-
-    gst_bin_add_many (GST_BIN (appctx->pipeline), source, capsfilter, NULL);
-
-    ret = gst_element_link_many (source, capsfilter, queue, NULL);
-    if (!ret) {
-      g_printerr ("ERROR: Failed to link ISP input %d.\n", input_index);
-      goto error;
-    }
-  } else if (g_strcmp0 (input_type, "file") == 0) {
+  if (g_strcmp0 (input_type, "file") == 0) {
     appctx->has_offline_input = TRUE;
 
     name = g_strdup_printf ("input_%02d_file_src", input_index);
@@ -1709,7 +1621,7 @@ gst_app_create_user_pipe (GstAppContext * appctx,
     name = g_strdup_printf ("input_%02d_detection_inference", i);
     mltflite = gst_app_make_element ("qtimltflite", name);
     if (mltflite != NULL) {
-      gint device_id = i % 2;
+      gint device_id = i % appctx->config.num_npus;
 
       gchar *delegate_str = g_strdup_printf(
           "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)%d,"
@@ -2160,18 +2072,15 @@ main (int argc, char * argv[])
   gboolean success = FALSE;
   gint result = 0;
 
-  appctx.config.width = DEFAULT_WIDTH;
-  appctx.config.height = DEFAULT_HEIGHT;
-  appctx.config.framerate = DEFAULT_FRAMERATE;
   appctx.config.webrtc_id = DEFAULT_WEBRTC_ID;
 
   GOptionEntry entries[] = {
     { "input-count", 0, 0, G_OPTION_ARG_INT, &appctx.config.input_count,
       "Number of input streams. Valid range: 1..31", "N" },
     { "input-type", 0, 0, G_OPTION_ARG_STRING_ARRAY, &appctx.config.input_types,
-      "Input type for one input. Repeat this option N times: usb, isp, rtsp or file", "TYPE" },
+      "Input type for one input. Repeat this option N times: rtsp or file", "TYPE" },
     { "input-config", 0, 0, G_OPTION_ARG_STRING_ARRAY, &appctx.config.input_configs,
-      "Input config for one input. Repeat this option N times; use an empty value for isp", "CONFIG" },
+      "Input config for one input. Repeat this option N times", "CONFIG" },
     { "output-type", 0, 0, G_OPTION_ARG_STRING, &appctx.config.output_type,
       "Output type: none, file, rtsp, or webrtc", "TYPE" },
     { "output-config", 0, 0, G_OPTION_ARG_STRING, &appctx.config.output_config,
@@ -2180,14 +2089,10 @@ main (int argc, char * argv[])
       "Base path for models and labels (expects /models and /labels inside)", "PATH" },
     { "no-display", 0, 0, G_OPTION_ARG_NONE, &appctx.config.no_display,
       "Disable on-screen display", NULL },
-    { "width", 'w', 0, G_OPTION_ARG_INT, &appctx.config.width,
-      "Composed output width", "WIDTH" },
-    { "height", 'h', 0, G_OPTION_ARG_INT, &appctx.config.height,
-      "Composed output height", "HEIGHT" },
-    { "framerate", 'f', 0, G_OPTION_ARG_INT, &appctx.config.framerate,
-      "Input/output raw video framerate", "FPS" },
     { "webrtc-id", 0, 0, G_OPTION_ARG_INT, &appctx.config.webrtc_id,
       "Local WebRTC signalling id", "ID" },
+    { "num-npus", 0, 0, G_OPTION_ARG_INT, &appctx.config.num_npus,
+      "Number of NPUs to use (default=1)", "N" },
     { NULL }
   };
   option_ctx = g_option_context_new ("- Runs a gstreamer pipeline with up to 31 "
