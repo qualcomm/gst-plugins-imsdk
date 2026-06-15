@@ -61,3 +61,9 @@ usr/bin/gst-gesture-recognition
 usr/bin/gst-ppe-detection
 usr/bin/gst-restricted-zone
 usr/bin/gst-video-wall
+usr/bin/gst-vlm-multistream-usecase
+usr/bin/gst-vlm-multistream-usecase-ipc
+usr/bin/gst-vlm-rz-usecase
+usr/bin/gst-vlm-rz-usecase-ipc
+usr/bin/standalone-genie-vlm-test
+usr/lib/${DEB_HOST_MULTIARCH}/libgenie-vlm.so

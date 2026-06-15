@@ -161,6 +161,7 @@ struct VLMAppContext {
   std::vector<std::string> vlm_engines;
   std::string logger_level;
   gboolean profile_enabled;
+  std::string signalling_server;
   // ROI control from JSON (optional - used by downstream meta module too)
   gboolean attach_jpeg;
   guint process_interval_ms;
@@ -1231,6 +1232,12 @@ parse_json (const gchar * config_file, VLMAppContext * appctx)
   }
   root_obj = json_node_get_object (root);
 
+  if (json_object_has_member (root_obj, "signalling_server")) {
+    appctx->signalling_server =
+        json_object_get_string_member (root_obj, "signalling_server");
+    g_print ("Successfully set signalling server to: %s\n", appctx->signalling_server.c_str ());
+  }
+
   if (json_object_has_member (root_obj, "profile"))
     appctx->profile_enabled =
       json_object_get_boolean_member (root_obj, "profile");
@@ -1762,13 +1769,15 @@ on_ws_message (SoupWebsocketConnection * conn, SoupWebsocketDataType type,
     g_print ("[webrtc][%u] Registration successful\n", stream_idx);
     return;
   } else if (g_strcmp0 (txt, "SESSION_OK") == 0) {
-    g_print ("[webrtc][%u] Peer connected", stream_idx);
+    g_print ("[webrtc][%u] Peer connected\n", stream_idx);
     return;
   } else if (g_strcmp0 (txt, "OFFER_REQUEST") == 0) {
-    g_print ("[webrtc][%u] OFFER_REQUEST", stream_idx);
+    g_print ("[webrtc][%u] OFFER_REQUEST\n", stream_idx);
+    gst_element_set_state (appctx->pipelines[stream_idx],
+      GST_STATE_PLAYING);
     return;
   } else if (g_str_has_prefix (txt, "ERROR")) {
-    g_printerr ("[webrtc][%u] %s", stream_idx, txt);
+    g_printerr ("[webrtc][%u] %s\n", stream_idx, txt);
     return;
   }
 
@@ -1973,11 +1982,12 @@ webrtc_connect_signalling (VLMAppContext * appctx)
   if (!appctx)
     return FALSE;
 
-  const gchar * url = g_getenv ("WEBRTC_SERVER");
   // fallback peer if not in JSON
   const gchar * peer_env = g_getenv ("WEBRTC_PEER");
 
-  appctx->ws_url = url ? url : "ws://127.0.0.1:8443";
+  appctx->ws_url = !appctx->signalling_server.empty() ?
+      appctx->signalling_server : "ws://127.0.0.1:8443";
+
   guint fallback_peer =
     peer_env ? (guint) g_ascii_strtoll (peer_env, NULL, 10) : 0;
 
