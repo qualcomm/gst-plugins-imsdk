@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <dlfcn.h>
 #include <unistd.h>
 
@@ -113,13 +114,55 @@ gst_ml_audio_conversion_feature_get_type (void)
   return gtype;
 }
 
+// Read an integer field from the "params" structure, falling back to the
+// provided default value when the field is missing.
+static gint
+gst_ml_audio_converter_get_param_int (GstMLAudioConverter * mlconverter,
+    const gchar * field, gint default_value)
+{
+  gint result = default_value;
+
+  if (mlconverter->params != NULL &&
+      gst_structure_has_field (mlconverter->params, field))
+    gst_structure_get_int (mlconverter->params, field, &result);
+
+  return result;
+}
+
+// Append a tensor dimension list to the "dimensions" GST_TYPE_ARRAY.
+// The variadic arguments are the individual dimension sizes (gint), the
+// list MUST be terminated with a negative value.
+static void
+gst_ml_audio_converter_append_tensor (GValue * dimensions, gint first, ...)
+{
+  GValue entry = G_VALUE_INIT, dimension = G_VALUE_INIT;
+  va_list args;
+  gint dim = first;
+
+  g_value_init (&entry, GST_TYPE_ARRAY);
+  g_value_init (&dimension, G_TYPE_INT);
+
+  va_start (args, first);
+  while (dim >= 0) {
+    g_value_set_int (&dimension, dim);
+    gst_value_array_append_value (&entry, &dimension);
+    dim = va_arg (args, gint);
+  }
+  va_end (args);
+
+  g_value_unset (&dimension);
+
+  gst_value_array_append_value (dimensions, &entry);
+  g_value_unset (&entry);
+}
+
 static GstCaps *
 gst_ml_audio_converter_translate_audio_caps (GstMLAudioConverter * mlconverter,
   GstCaps * caps)
 {
   GstCaps *result = NULL;
   GstStructure *structure = NULL;
-  GValue dimensions = G_VALUE_INIT, entry = G_VALUE_INIT, dimension = G_VALUE_INIT;
+  GValue dimensions = G_VALUE_INIT;
   const GValue *value;
 
   if (gst_caps_is_empty (caps) || gst_caps_is_any (caps))
@@ -132,16 +175,41 @@ gst_ml_audio_converter_translate_audio_caps (GstMLAudioConverter * mlconverter,
   structure = gst_caps_get_structure (caps, 0);
 
   g_value_init (&dimensions, GST_TYPE_ARRAY);
-  g_value_init (&entry, GST_TYPE_ARRAY);
-  g_value_init (&dimension, G_TYPE_INT);
 
-  g_value_set_int (&dimension, mlconverter->sample_rate);
+  // The output tensor shape depends on the configured feature. For features
+  // that produce a time-frequency representation (e.g. LMFE) the shape is
+  // multi-dimensional and must be derived from the preprocessing parameters,
+  // otherwise downstream multi-dim tensor caps cannot be negotiated.
+  switch (mlconverter->feature) {
+    case GST_AUDIO_FEATURE_LMFE:
+    case GST_AUDIO_FEATURE_MFE:
+    {
+      gint n_hop, n_mels, n_windows;
+      gdouble chunklen = 0.0;
 
-  gst_value_array_append_value (&entry, &dimension);
-  g_value_unset (&dimension);
+      n_hop = gst_ml_audio_converter_get_param_int (mlconverter, "nhop", 160);
+      n_mels = gst_ml_audio_converter_get_param_int (mlconverter, "nmels", 64);
 
-  gst_value_array_append_value (&dimensions, &entry);
-  g_value_unset (&entry);
+      if (mlconverter->params != NULL &&
+          gst_structure_has_field (mlconverter->params, "chunklen"))
+        gst_structure_get_double (mlconverter->params, "chunklen", &chunklen);
+
+      // Number of frames (windows) produced by the STFT step.
+      n_windows = (n_hop > 0) ?
+          (gint) ((chunklen * mlconverter->sample_rate) / n_hop) : 0;
+
+      // Shape: [batch=1, channels=1, windows, mels].
+      gst_ml_audio_converter_append_tensor (&dimensions,
+          1, 1, n_windows, n_mels, -1);
+      break;
+    }
+    case GST_AUDIO_FEATURE_RAW:
+    default:
+      // Raw samples are emitted as a single dimensional tensor.
+      gst_ml_audio_converter_append_tensor (&dimensions,
+          mlconverter->sample_rate, -1);
+      break;
+  }
 
   gst_caps_set_value (result, "dimensions", &dimensions);
   g_value_unset (&dimensions);
@@ -376,6 +444,9 @@ gst_ml_audio_converter_fixate_caps (GstBaseTransform * base,
 
     value = gst_structure_get_value (caps_struct, "dimensions");
 
+    // Only impose the converter computed dimensions when downstream did not
+    // already provide fixed dimensions. This preserves a downstream supplied
+    // multi-dimensional tensor shape (e.g. <<1,1,96,64>>) during negotiation.
     if (NULL == value || !gst_value_is_fixed (value)) {
       value = gst_structure_get_value (
         gst_caps_get_structure (mlcaps, 0), "dimensions");
