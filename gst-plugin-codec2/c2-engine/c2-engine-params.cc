@@ -24,6 +24,10 @@ static const std::unordered_map<std::string, uint32_t> kH265Profiles = {
   { "main-still-picture", GST_C2_PROFILE_HEVC_MAIN_STILL },
 };
 
+static const std::unordered_map<std::string, uint32_t> kHeicProfiles = {
+  { "main-10-still-picture", GST_C2_PROFILE_HEVC_MAIN10_STILL },
+};
+
 static const std::unordered_map<std::string, uint32_t> kAACProfiles = {
   { "lc", GST_C2_PROFILE_AAC_LC },
   { "main", GST_C2_PROFILE_AAC_MAIN },
@@ -128,6 +132,15 @@ gst_c2_utils_h265_profile_from_string (const gchar * profile)
 }
 
 guint
+gst_c2_utils_heic_profile_from_string (const gchar * profile)
+{
+  if (kHeicProfiles.count(profile) != 0)
+    return kHeicProfiles.at(profile);
+
+  return GST_C2_PROFILE_INVALID;
+}
+
+guint
 gst_c2_utils_aac_profile_from_string (const gchar * profile)
 {
   if (kAACProfiles.count(profile) != 0)
@@ -152,6 +165,15 @@ gst_c2_utils_h265_profile_to_string (guint profile)
       [&](const auto& m) { return m.second == profile; });
 
   return (it != kH265Profiles.end()) ? it->first.c_str() : NULL;
+}
+
+const gchar *
+gst_c2_utils_heic_profile_to_string (guint profile)
+{
+  auto it = std::find_if(kHeicProfiles.begin(), kHeicProfiles.end(),
+      [&](const auto& m) { return m.second == profile; });
+
+  return (it != kHeicProfiles.end()) ? it->first.c_str() : NULL;
 }
 
 const gchar *

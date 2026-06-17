@@ -1434,6 +1434,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   const gchar *name = NULL, *string = NULL;
   GstC2Profile profile = GST_C2_PROFILE_INVALID;
   GstC2Level level = GST_C2_LEVEL_INVALID;
+  GstC2PoolType pool_type = GST_C2_POOL_TYPE_UNSPECIFIED;
   guint32 param = 0;
   gint32 outwidth = 0, outheight = 0;
   gboolean success = FALSE;
@@ -1505,6 +1506,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   } else if (gst_structure_has_name (structure, "image/heic")) {
     name = "c2.qti.heic.encoder";
     c2venc->stream_format = GST_C2_HEIC_NONE;
+    pool_type = GST_C2_POOL_TYPE_DEFAULT_LINEAR;
   }
 
   if (name == NULL) {
@@ -1523,7 +1525,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 
   if (c2venc->engine == NULL) {
     c2venc->engine = gst_c2_engine_new (c2venc->name, GST_C2_MODE_VIDEO_ENCODE,
-        &callbacks, c2venc);
+        &callbacks, pool_type, c2venc);
     g_return_val_if_fail (c2venc->engine != NULL, FALSE);
   }
 
@@ -1533,6 +1535,8 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
       profile = gst_c2_utils_h264_profile_from_string (string);
     else if (gst_structure_has_name (structure, "video/x-h265"))
       profile = gst_c2_utils_h265_profile_from_string (string);
+    else if (gst_structure_has_name (structure, "image/heic"))
+      profile = gst_c2_utils_heic_profile_from_string (string);
 
     if (profile == GST_C2_PROFILE_INVALID) {
       GST_ERROR_OBJECT (c2venc, "Unsupported profile '%s'!", string);
@@ -1608,6 +1612,11 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 
     if (level >= GST_C2_LEVEL_HEVC_HIGH_4 && level <= GST_C2_LEVEL_HEVC_HIGH_6_2)
       gst_structure_set (structure, "tier", G_TYPE_STRING, "high", NULL);
+  } else if (gst_structure_has_name (structure, "image/heic")) {
+    if (profile != GST_C2_PROFILE_INVALID) {
+      string = gst_c2_utils_heic_profile_to_string (profile);
+      gst_structure_set (structure, "profile", G_TYPE_STRING, string, NULL);
+    }
   }
   c2venc->profile = profile;
 

@@ -2467,7 +2467,9 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
         imgparam.format = ::qmmf::recorder::ImageFormat::kNV12UBWC;
         break;
       case GST_VIDEO_FORMAT_P010_10LE:
-        imgparam.format = ::qmmf::recorder::ImageFormat::kP010;
+        imgparam.format = (ipad->subformat == GST_IMAGE_SUBFORMAT_HEIF) ?
+            ::qmmf::recorder::ImageFormat::kP010HEIF :
+            ::qmmf::recorder::ImageFormat::kP010;
         break;
       case GST_VIDEO_FORMAT_NV12_Q10LE32C:
         imgparam.format = ::qmmf::recorder::ImageFormat::kTP10UBWC;

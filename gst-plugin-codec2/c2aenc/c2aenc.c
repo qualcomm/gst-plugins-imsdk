@@ -274,7 +274,7 @@ gst_c2_aenc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
 
   if (c2aenc->engine == NULL) {
     c2aenc->engine = gst_c2_engine_new (c2aenc->name, GST_C2_MODE_AUDIO_ENCODE,
-        &callbacks, c2aenc);
+        &callbacks, GST_C2_POOL_TYPE_UNSPECIFIED, c2aenc);
     g_return_val_if_fail (c2aenc->engine != NULL, FALSE);
   }
 

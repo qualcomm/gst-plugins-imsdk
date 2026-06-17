@@ -21,6 +21,7 @@
 #define MMM_COLOR_FMT_NV12_UBWC        COLOR_FMT_NV12_UBWC
 #define MMM_COLOR_FMT_NV12_BPP10_UBWC  COLOR_FMT_NV12_BPP10_UBWC
 #define MMM_COLOR_FMT_P010             COLOR_FMT_P010
+#define MMM_COLOR_FMT_P010_512         COLOR_FMT_P010_512
 #define MMM_COLOR_FMT_Y_META_STRIDE    VENUS_Y_META_STRIDE
 #define MMM_COLOR_FMT_Y_META_SCANLINES VENUS_Y_META_SCANLINES
 #define MMM_COLOR_FMT_Y_SCANLINES      VENUS_Y_SCANLINES
@@ -233,7 +234,7 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
-static const std::unordered_map<uint32_t, C2Config::profile_t> kProfileMap = {
+static const std::unordered_map<uint32_t, uint32_t> kProfileMap = {
   { GST_C2_PROFILE_AVC_BASELINE,
       C2Config::profile_t::PROFILE_AVC_BASELINE },
   { GST_C2_PROFILE_AVC_CONSTRAINED_BASELINE,
@@ -250,6 +251,10 @@ static const std::unordered_map<uint32_t, C2Config::profile_t> kProfileMap = {
       C2Config::profile_t::PROFILE_HEVC_MAIN_10 },
   { GST_C2_PROFILE_HEVC_MAIN_STILL,
       C2Config::profile_t::PROFILE_HEVC_MAIN_STILL },
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR >= 1)
+  { GST_C2_PROFILE_HEVC_MAIN10_STILL,
+      qc2::HEVC_PROFILE_MAIN10_STILL_PIC },
+#endif // (CODEC2_CONFIG_VERSION_MAJOR == 2 && CODEC2_CONFIG_VERSION_MINOR >= 1)
   { GST_C2_PROFILE_AAC_LC,
       C2Config::profile_t::PROFILE_AAC_LC },
   { GST_C2_PROFILE_AAC_MAIN,
@@ -691,7 +696,8 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       uint32_t level = ((*reinterpret_cast<guint32*>(payload)) >> 16) & 0xFFFF;
 
       if (profile != GST_C2_PROFILE_INVALID) {
-        plinfo.profile = kProfileMap.at(profile);
+        plinfo.profile =
+            static_cast<C2Config::profile_t>(kProfileMap.at(profile));
       }
       if (level != GST_C2_LEVEL_INVALID) {
         plinfo.level = kLevelMap.at(level);
@@ -1856,9 +1862,21 @@ bool GstC2Utils::ImportHandleInfo(GstBuffer* buffer,
       break;
 #endif // GBM_FORMAT_NV12_UBWC_FLEX
     case C2PixelFormat::kP010:
-      handle->mInts.format = GBM_FORMAT_YCbCr_420_P010_VENUS;
-      handle->mInts.slice_height =
-          MMM_COLOR_FMT_Y_SCANLINES(MMM_COLOR_FMT_P010, height);
+      if (GST_BUFFER_FLAG_IS_SET (buffer, GST_VIDEO_BUFFER_FLAG_HEIC)) {
+#if defined(GBM_FORMAT_YCbCr_420_P010_512) && defined(GBM_BO_USAGE_PRIVATE_HEIF_P010)
+        handle->mInts.format = GBM_FORMAT_YCbCr_420_P010_512;
+        handle->mInts.usage_lo |= GBM_BO_USAGE_PRIVATE_HEIF_P010;
+        handle->mInts.slice_height =
+            MMM_COLOR_FMT_Y_SCANLINES(MMM_COLOR_FMT_P010_512, height);
+#else
+        GST_ERROR ("P010 HEIF is not supported in GBM!");
+        return false;
+#endif  // (GBM_FORMAT_YCbCr_420_P010_512 && GBM_BO_USAGE_PRIVATE_HEIF_P010)
+      } else {
+        handle->mInts.format = GBM_FORMAT_YCbCr_420_P010_VENUS;
+        handle->mInts.slice_height =
+            MMM_COLOR_FMT_Y_SCANLINES(MMM_COLOR_FMT_P010, height);
+      }
       break;
 #ifdef GBM_FORMAT_YCbCr_420_P010_FLEX
     case C2PixelFormat::kP010_FLEX:

@@ -213,7 +213,7 @@ gst_c2_adec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
 
   if (c2adec->engine == NULL) {
     c2adec->engine = gst_c2_engine_new (name, GST_C2_MODE_AUDIO_DECODE,
-        &callbacks, c2adec);
+        &callbacks, GST_C2_POOL_TYPE_UNSPECIFIED, c2adec);
     g_return_val_if_fail (c2adec->engine != NULL, FALSE);
 
     c2adec->name = g_strdup (name);

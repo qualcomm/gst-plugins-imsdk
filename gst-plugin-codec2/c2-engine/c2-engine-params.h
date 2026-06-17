@@ -111,6 +111,7 @@ typedef enum {
   GST_C2_PROFILE_HEVC_MAIN,
   GST_C2_PROFILE_HEVC_MAIN10,
   GST_C2_PROFILE_HEVC_MAIN_STILL,
+  GST_C2_PROFILE_HEVC_MAIN10_STILL,
 
   GST_C2_PROFILE_AAC_LC,
   GST_C2_PROFILE_AAC_MAIN,
@@ -421,10 +422,12 @@ struct _GstC2TemporalLayer {
 
 guint gst_c2_utils_h264_profile_from_string (const gchar * profile);
 guint gst_c2_utils_h265_profile_from_string (const gchar * profile);
+guint gst_c2_utils_heic_profile_from_string (const gchar * profile);
 guint gst_c2_utils_aac_profile_from_string (const gchar * profile);
 
 const gchar * gst_c2_utils_h264_profile_to_string (guint profile);
 const gchar * gst_c2_utils_h265_profile_to_string (guint profile);
+const gchar * gst_c2_utils_heic_profile_to_string (guint profile);
 const gchar * gst_c2_utils_aac_profile_to_string (guint profile);
 guint gst_c2_utils_aac_profile_to_aot (guint profile);
 
