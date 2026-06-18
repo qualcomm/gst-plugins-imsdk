@@ -333,7 +333,6 @@ cleanup_gst (void *first_elem, ...)
 gboolean
 is_camera_available ()
 {
-  gboolean is_qmmf_on = FALSE;
   GError *error = NULL;
 
   GOptionEntry entries[] = { { NULL } };
@@ -347,15 +346,20 @@ is_camera_available ()
   GstRegistry *gst_reg = gst_registry_get ();
   GstPlugin *gst_plugin = NULL;
 
-  if (gst_reg)
-    gst_plugin = gst_registry_find_plugin (gst_reg, "qtiqmmfsrc");
-
-  if (gst_plugin) {
-    gst_object_unref (gst_plugin);
-    is_qmmf_on = TRUE;
+  if (!gst_reg)
+    return FALSE;
+  // Check presence of either camera plugin
+  gst_plugin = gst_registry_find_plugin(gst_reg, "qtiqmmfsrc");
+  if (!gst_plugin) {
+    gst_plugin = gst_registry_find_plugin(gst_reg, "qticamsrc");
   }
 
-  return is_qmmf_on;
+  if (gst_plugin) {
+    gst_object_unref(gst_plugin);
+    return TRUE;
+  }
+
+  return FALSE;
 }
 
 gboolean
