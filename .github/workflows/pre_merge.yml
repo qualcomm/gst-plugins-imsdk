@@ -1,0 +1,25 @@
+name: IMSDK UAT Compilation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: [self-hosted, GHA-Framework-Stg-SelfHosted-RG]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run build
+        env:
+          SDK_URL: ${{ secrets.SDK_URL }}
+        run: |
+          chmod +x ci/build.sh
+          ./ci/build.sh
