@@ -4,9 +4,7 @@ project(GST_PLUGIN_QTI_OSS_META_PARSE
   LANGUAGES C
 )
 
-include_directories(
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-)
+include_directories($<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
 find_package(PkgConfig)
 
@@ -20,6 +18,7 @@ pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQ
 pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_QCOM_UTILS REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
 pkg_check_modules(GST_QCOM_VIDEO REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+pkg_check_modules(JSON REQUIRED json-glib-1.0)
 
 # Generate configuration header file with plugin describing definitions
 configure_file(config.h.in config.h @ONLY)

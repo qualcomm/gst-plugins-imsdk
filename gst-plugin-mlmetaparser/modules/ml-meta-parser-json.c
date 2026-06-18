@@ -41,11 +41,11 @@ struct _GstParserSubModule {
   GstDataType datatype;
 
   // Image dimensions.
-  gint width;
-  gint height;
+  gint        width;
+  gint        height;
 
   // Property from plugin
-  gboolean attach_frame;
+  gboolean    attach_frame;
 };
 
 static void
@@ -268,16 +268,23 @@ gst_parser_module_process_pose_structure (GstParserSubModule * submodule,
 
       gst_structure_get_double (subparams, "x", &x);
       gst_structure_get_double (subparams, "y", &y);
+      gst_structure_get_double (subparams, "confidence", &confidence);
       gst_structure_get_uint (subparams, "color", &color);
 
       json_builder_begin_object (submodule->builder);
 
       json_builder_set_member_name (submodule->builder, "keypoint");
       json_builder_add_string_value (submodule->builder, name);
+
       json_builder_set_member_name (submodule->builder, "x");
       json_builder_add_double_value (submodule->builder, x);
+
       json_builder_set_member_name (submodule->builder, "y");
       json_builder_add_double_value (submodule->builder, y);
+
+      json_builder_set_member_name (submodule->builder, "confidence");
+      json_builder_add_double_value (submodule->builder, confidence);
+
       json_builder_set_member_name (submodule->builder, "color");
       json_builder_add_int_value (submodule->builder, color);
 
@@ -575,6 +582,9 @@ gst_parser_module_process_landmarks_meta (GstParserSubModule * submodule,
   guint idx = 0;
 
   json_builder_begin_object (submodule->builder);
+
+  json_builder_set_member_name (submodule->builder, "confidence");
+  json_builder_add_double_value (submodule->builder, lmkmeta->confidence);
 
   json_builder_set_member_name (submodule->builder, "keypoints");
   json_builder_begin_array (submodule->builder);
@@ -883,6 +893,8 @@ gst_parser_module_process_video_buffer (GstParserSubModule * submodule,
     GstBuffer * buffer)
 {
   GList *metalist = NULL, *list = NULL;
+  gchar *encoded = NULL;
+  GstMapInfo memmap = { 0, };
 
   // Parse root ROI metas and add array section if there are any available.
   metalist = gst_buffer_get_video_region_of_interest_metas_parent_id (buffer, -1);
@@ -943,6 +955,27 @@ gst_parser_module_process_video_buffer (GstParserSubModule * submodule,
   }
 
   GST_JSON_END_META_ARRAY (submodule->builder, metalist);
+
+  if (!submodule->attach_frame)
+    return TRUE;
+
+  if (!gst_buffer_map (buffer, &memmap, GST_MAP_READ)) {
+    GST_ERROR ("Failed to map %" GST_PTR_FORMAT "!", buffer);
+    return FALSE;
+  }
+
+  encoded = g_base64_encode (memmap.data, memmap.size);
+  gst_buffer_unmap (buffer, &memmap);
+
+  if (encoded == NULL) {
+    GST_ERROR ("Failed to encode buffer image data!");
+    return FALSE;
+  }
+
+  json_builder_set_member_name (submodule->builder, "buffer_base64");
+  json_builder_add_string_value (submodule->builder, encoded);
+  g_free (encoded);
+
   return TRUE;
 }
 
@@ -1006,14 +1039,18 @@ gst_parser_module_configure (gpointer instance, GstStructure * settings)
 
   if (submodule->datatype == GST_DATA_TYPE_VIDEO ||
       submodule->datatype == GST_DATA_TYPE_JPEG) {
-    success = gst_structure_get (settings,
-        "width", G_TYPE_INT, &(submodule->width),
-        "height", G_TYPE_INT, &(submodule->height), NULL);
+    success = gst_structure_get (settings, "width", G_TYPE_INT,
+        &(submodule->width), "height", G_TYPE_INT, &(submodule->height), NULL);
+  }
+
+  if (!success) {
+    GST_ERROR ("Failed to get image dimensions type!");
+    return success;
   }
 
   if (gst_structure_has_field (settings, "attach-frame")) {
     if (submodule->datatype == GST_DATA_TYPE_JPEG) {
-      gst_structure_get_boolean (settings, "attach-frame",
+      success = gst_structure_get_boolean (settings, "attach-frame",
           &(submodule->attach_frame));
     } else {
       GST_WARNING ("Property 'attach-frame' only compatible with JPEG data type!");
@@ -1028,7 +1065,6 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
 {
   GstParserSubModule *submodule = GST_PARSER_SUB_MODULE_CAST (instance);
-  GstMapInfo map = { 0 };
   JsonNode *root = NULL;
   JsonGenerator *generator = NULL;
   gchar *string = NULL, *timestamp = NULL;
@@ -1044,27 +1080,10 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
     success = gst_parser_module_process_text_buffer (submodule, inbuffer);
   } else {
     GST_ERROR ("Unsupported data type!");
-    return success;
   }
 
-  if (submodule->attach_frame) {
-    if (gst_buffer_map (inbuffer, &map, GST_MAP_READ)) {
-      gchar *base64_encoded = g_base64_encode (map.data, map.size);
-
-      gst_buffer_unmap (inbuffer, &map);
-      if (base64_encoded != NULL) {
-        json_builder_set_member_name (submodule->builder, "buffer_base64");
-        json_builder_add_string_value (submodule->builder, base64_encoded);
-        g_free (base64_encoded);
-      } else {
-        GST_ERROR ("Failed to encode buffer image data!");
-        return FALSE;
-      }
-    } else {
-      GST_ERROR ("Failed to map %" GST_PTR_FORMAT "!", inbuffer);
-      return FALSE;
-    }
-  }
+  if (!success)
+    goto cleanup;
 
   // Add timestamp as string becuase JSON doesn't support 64 bit integer values.
   timestamp = g_strdup_printf ("%" G_GINT64_FORMAT, GST_BUFFER_PTS (inbuffer));
@@ -1092,9 +1111,10 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
 
   GST_TRACE ("Size: %u, Output: '%s'", size, string);
 
-  g_object_unref (generator);
-  json_node_free (root);
-  json_builder_reset (submodule->builder);
+cleanup:
+  g_clear_pointer (&generator, g_object_unref);
+  g_clear_pointer (&root, json_node_free);
 
+  json_builder_reset (submodule->builder);
   return success;
 }
