@@ -40,6 +40,7 @@ Depends:
  gstreamer1.0-plugins-qcom-metatransform,
  gstreamer1.0-plugins-qcom-mlaclassification,
  gstreamer1.0-plugins-qcom-mlaconverter,
+ gstreamer1.0-plugins-qcom-mlbin,
  gstreamer1.0-plugins-qcom-mldemux,
  gstreamer1.0-plugins-qcom-mlmetaextractor,
  gstreamer1.0-plugins-qcom-mlmetaparser,
@@ -109,6 +110,14 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
 Description: GStreamer plugin for Qualcomm: mlaconverter.
+
+Package: gstreamer1.0-plugins-qcom-mlbin
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Description: GStreamer plugin for Qualcomm: mlbin.
 
 Package: gstreamer1.0-plugins-qcom-mldemux
 Section: libs
