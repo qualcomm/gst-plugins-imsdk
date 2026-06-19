@@ -11,8 +11,8 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted, GHA-Framework-Stg-SelfHosted-RG]
-
+    group: GHA-Framework-Stg-SelfHosted-RG
+    labels: [self-hosted, framework-stg-u2404-x64-od-ephem]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
