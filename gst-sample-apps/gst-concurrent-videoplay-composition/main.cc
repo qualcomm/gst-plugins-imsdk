@@ -13,7 +13,7 @@
  * The output is shown on the display.
  *
  * Usage:
- * gst-concurrent-videoplay-composition -c 2 -i <h264_file>.mp4 -i <h264_file>.mp4
+ * gst-concurrent-videoplay-composition -c 2 -i /etc/media/video_avc.mp4 -i /etc/media/video_avc.mp4
  *
  * Help:
  * gst-concurrent-videoplay-composition --help
@@ -42,7 +42,7 @@
 #define EIGHT_STREAM_CNT 8
 #define SIXTEEN_STREAM_CNT 16
 
-#define INPUT_FILE_PATH "/etc/media/video.mp4"
+#define INPUT_FILE_PATH "/etc/media/video_avc.mp4"
 
 #define GST_APP_SUMMARY "This application performs concurrent " \
   "video playback for AVC codec and composition on display (video wall).\n" \
@@ -52,10 +52,10 @@
   "an MP4 file encoded with the AVC codec. \n" \
   "\nCommand:\n" \
   "concurrent playback for two sessions \n" \
-  "  gst-concurrent-videoplay-composition -c 2 -i <h264_file>.mp4 " \
-  "-i <h264_file>.mp4 \n" \
+  "  gst-concurrent-videoplay-composition -c 2 -i video_avc.mp4 " \
+  "-i video_avc.mp4 \n" \
   "concurrent playback for four sessions \n " \
-  "  gst-concurrent-videoplay-composition -c 4 -i <h264_file>.mp4 \n" \
+  "  gst-concurrent-videoplay-composition -c 4 -i video_avc.mp4 \n" \
   "\nOutput:\n" \
   "  Upon executing the application, concurrent video playback can be " \
   "observed on the display."
@@ -221,7 +221,7 @@ main (gint argc, gchar *argv[])
       "No of stream for decode and composition", "2, 4, 8 or 16" },
     { "input_file", 'i', 0, G_OPTION_ARG_FILENAME_ARRAY, &appctx->input_files,
       "Input AVC Filenames - Path of AVC files to be played with filenames",
-      "e.g. -i /etc/media/<h264_file>.mp4 -i /etc/media/<h264_file>.mp4" },
+      "e.g. -i /etc/media/video_avc.mp4 -i /etc/media/video_avc.mp4" },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 

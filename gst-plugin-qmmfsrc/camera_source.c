@@ -58,16 +58,9 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_SLAVE                     FALSE
 #define DEFAULT_PROP_CAMERA_LDC_MODE                  FALSE
 #define DEFAULT_PROP_CAMERA_LCAC_MODE                 FALSE
-#ifndef EIS_MODES_ENABLE
-#define DEFAULT_PROP_CAMERA_EIS_MODE                  FALSE
-#else
 #define DEFAULT_PROP_CAMERA_EIS_MODE                  EIS_OFF
-#endif // EIS_MODES_ENABLE
-#ifndef VHDR_MODES_ENABLE
 #define DEFAULT_PROP_CAMERA_SHDR_MODE                 FALSE
-#else
 #define DEFAULT_PROP_CAMERA_VHDR_MODE                 VHDR_OFF
-#endif // VHDR_MODES_ENABLE
 #define DEFAULT_PROP_CAMERA_ADRC                      FALSE
 #define DEFAULT_PROP_CAMERA_CONTROL_MODE              CONTROL_MODE_AUTO
 #define DEFAULT_PROP_CAMERA_EFFECT_MODE               EFFECT_MODE_OFF
@@ -100,9 +93,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_MULTI_ROI                 FALSE
 #define DEFAULT_PROP_CAMERA_PHYSICAL_CAMERA_SWITCH    -1
 #define DEFAULT_PROP_CAMERA_PAD_ACTIVAION_MODE        GST_PAD_ACTIVATION_MODE_NORMAL
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
 #define DEFAULT_PROP_CAMERA_MULTICAMERA_HINT          FALSE
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
 #define DEFAULT_PROP_CAMERA_SW_TNR                    FALSE
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
@@ -135,11 +126,8 @@ enum
   PROP_CAMERA_LDC,
   PROP_CAMERA_LCAC,
   PROP_CAMERA_EIS,
-#ifndef VHDR_MODES_ENABLE
   PROP_CAMERA_SHDR,
-#else
   PROP_CAMERA_VHDR,
-#endif // VHDR_MODES_ENABLE
   PROP_CAMERA_ADRC,
   PROP_CAMERA_CONTROL_MODE,
   PROP_CAMERA_EFFECT_MODE,
@@ -180,9 +168,7 @@ enum
   PROP_CAMERA_INPUT_ROI_INFO,
   PROP_CAMERA_PHYSICAL_CAMERA_SWITCH,
   PROP_CAMERA_PAD_ACTIVATION_MODE,
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
   PROP_CAMERA_MULTICAMERA_HINT,
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
   PROP_CAMERA_SW_TNR,
   PROP_CAMERA_STATIC_METADATAS,
 };
@@ -494,19 +480,18 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
 }
 
 static GString *
-gst_qmmfsrc_create_video_static_src_caps () {
+gst_qmmfsrc_create_video_static_src_caps (gpointer caps) {
   GString *static_src_caps = g_string_new (NULL);
   GstQmmfSrcResolutionRange jpeg_res;
   GstQmmfSrcResolutionRange bayer_res;
   GstQmmfSrcResolutionRange raw_res;
 
   // Get JPEG resolution range
-  gst_qmmfsrc_get_jpeg_resolution_range(&jpeg_res);
+  gst_qmmfsrc_get_jpeg_resolution_range(caps, &jpeg_res);
   // Get Bayer resolution range
-  gst_qmmfsrc_get_bayer_resolution_range(&bayer_res);
+  gst_qmmfsrc_get_bayer_resolution_range(caps, &bayer_res);
   // Get video/x-raw resolution range
-
-  gst_qmmfsrc_get_raw_resolution_range(&raw_res);
+  gst_qmmfsrc_get_raw_resolution_range(caps, &raw_res);
 
   g_string_append_printf (static_src_caps, "image/jpeg, "        \
       "width = (int) [ %u, %u ], "   \
@@ -514,18 +499,18 @@ gst_qmmfsrc_create_video_static_src_caps () {
       "framerate = (fraction) [ 0/1, %u/1 ]; ",
       jpeg_res.min_width, jpeg_res.max_width,
       jpeg_res.min_height, jpeg_res.max_height,
-      gst_qmmfsrc_get_max_fps ());
+      gst_qmmfsrc_get_max_fps (caps));
 
   g_string_append (static_src_caps, "video/x-raw, format = (string) " \
       "{ NV12, NV16, NV12_Q08C, RGB");
 
-  if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_YUY2))
+  if (gst_qmmfsrc_check_format (caps, HAL_PIXEL_FORMAT_YUY2))
     g_string_append (static_src_caps, ", YUY2");
 
-  if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_UYVY))
+  if (gst_qmmfsrc_check_format (caps, HAL_PIXEL_FORMAT_UYVY))
     g_string_append (static_src_caps, ", UYVY");
 
-  if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
+  if (gst_qmmfsrc_check_format (caps, HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
     g_string_append (static_src_caps, ", P010_10LE, NV12_Q10LE32C");
 
   g_string_append_printf (static_src_caps,
@@ -535,7 +520,7 @@ gst_qmmfsrc_create_video_static_src_caps () {
     "framerate = (fraction) [ 0/1, %u/1 ]; ",
     raw_res.min_width, raw_res.max_width,
     raw_res.min_height, raw_res.max_height,
-    gst_qmmfsrc_get_max_fps ());
+    gst_qmmfsrc_get_max_fps (caps));
 
   g_string_append_printf (static_src_caps, "video/x-bayer, "         \
       "format = (string) { bggr, rggb, gbrg, grbg, mono }, "  \
@@ -545,24 +530,24 @@ gst_qmmfsrc_create_video_static_src_caps () {
       "framerate = (fraction) [ 0/1, %u/1 ]",
       raw_res.min_width, bayer_res.max_width,
       raw_res.min_height, bayer_res.max_height,
-      gst_qmmfsrc_get_max_fps ());
+      gst_qmmfsrc_get_max_fps (caps));
 
   return static_src_caps;
 }
 
 static GString *
-gst_qmmfsrc_create_image_static_src_caps () {
+gst_qmmfsrc_create_image_static_src_caps (gpointer caps) {
   GString *static_src_caps = g_string_new (NULL);
   GstQmmfSrcResolutionRange jpeg_res;
   GstQmmfSrcResolutionRange bayer_res;
   GstQmmfSrcResolutionRange raw_res;
 
   // Get JPEG resolution range
-  gst_qmmfsrc_get_jpeg_resolution_range (&jpeg_res);
+  gst_qmmfsrc_get_jpeg_resolution_range (caps, &jpeg_res);
   // Get Bayer resolution range
-  gst_qmmfsrc_get_bayer_resolution_range (&bayer_res);
+  gst_qmmfsrc_get_bayer_resolution_range (caps, &bayer_res);
   // Get video/x-raw resolution range
-  gst_qmmfsrc_get_raw_resolution_range (&raw_res);
+  gst_qmmfsrc_get_raw_resolution_range (caps, &raw_res);
 
   g_string_append_printf (static_src_caps, "image/jpeg, "        \
       "width = (int) [ %u, %u ], "   \
@@ -570,12 +555,12 @@ gst_qmmfsrc_create_image_static_src_caps () {
       "framerate = (fraction) [ 0/1, %u/1 ]; ",
       jpeg_res.min_width, jpeg_res.max_width,
       jpeg_res.min_height, jpeg_res.max_height,
-      gst_qmmfsrc_get_max_fps ());
+      gst_qmmfsrc_get_max_fps (caps));
 
   g_string_append (static_src_caps, "video/x-raw, format = (string) " \
       "{ NV21");
 
-  if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
+  if (gst_qmmfsrc_check_format (caps, HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
     g_string_append (static_src_caps, ", NV12, P010_10LE, NV12_Q10LE32C");
 
   g_string_append_printf (static_src_caps,
@@ -585,7 +570,7 @@ gst_qmmfsrc_create_image_static_src_caps () {
     "framerate = (fraction) [ 0/1, %u/1 ]; ",
     raw_res.min_width, raw_res.max_width,
     raw_res.min_height, raw_res.max_height,
-    gst_qmmfsrc_get_max_fps ());
+    gst_qmmfsrc_get_max_fps (caps));
 
   g_string_append_printf (static_src_caps, "video/x-bayer, "         \
       "format = (string) { bggr, rggb, gbrg, grbg, mono }, "  \
@@ -595,18 +580,18 @@ gst_qmmfsrc_create_image_static_src_caps () {
       "framerate = (fraction) [ 0/1, %u/1 ]",
       raw_res.min_width, bayer_res.max_width,
       raw_res.min_height, bayer_res.max_height,
-      gst_qmmfsrc_get_max_fps ());
+      gst_qmmfsrc_get_max_fps (caps));
 
   return static_src_caps;
 }
 
 static GstCaps *
-gst_qmmfsrc_video_src_caps (void)
+gst_qmmfsrc_video_src_caps (gpointer feature_caps)
 {
   static GstCaps *caps = NULL;
   static gsize inited = 0;
   GstQmmfSrcResolutionRange raw_res;
-  GString *video_src_caps = gst_qmmfsrc_create_video_static_src_caps ();
+  GString *video_src_caps = gst_qmmfsrc_create_video_static_src_caps (feature_caps);
   GstStaticCaps gst_qmmfsrc_video_static_src_caps =
       GST_STATIC_CAPS (video_src_caps->str);
 
@@ -614,16 +599,16 @@ gst_qmmfsrc_video_src_caps (void)
     caps = gst_static_caps_get (&gst_qmmfsrc_video_static_src_caps);
 
     if (gst_gbm_qcom_backend_is_supported ()) {
-      gst_qmmfsrc_get_raw_resolution_range(&raw_res);
+      gst_qmmfsrc_get_raw_resolution_range(feature_caps, &raw_res);
       GString *gbm_caps_str = g_string_new (
           "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "
           "format = (string) { NV12, NV16, NV12_Q08C");
 
-      if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_YUY2))
+      if (gst_qmmfsrc_check_format (feature_caps, HAL_PIXEL_FORMAT_YUY2))
         g_string_append (gbm_caps_str, ", YUY2");
-      if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_UYVY))
+      if (gst_qmmfsrc_check_format (feature_caps, HAL_PIXEL_FORMAT_UYVY))
         g_string_append (gbm_caps_str, ", UYVY");
-      if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
+      if (gst_qmmfsrc_check_format (feature_caps, HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
         g_string_append (gbm_caps_str, ", P010_10LE, NV12_Q10LE32C");
 
       g_string_append_printf (gbm_caps_str,
@@ -633,7 +618,7 @@ gst_qmmfsrc_video_src_caps (void)
           "framerate = (fraction) [ 0/1, %u/1 ]",
           raw_res.min_width, raw_res.max_width,
           raw_res.min_height, raw_res.max_height,
-          gst_qmmfsrc_get_max_fps ());
+          gst_qmmfsrc_get_max_fps (feature_caps));
 
       GstCaps *tmplcaps = gst_caps_from_string (gbm_caps_str->str);
       g_string_free (gbm_caps_str, TRUE);
@@ -648,12 +633,12 @@ gst_qmmfsrc_video_src_caps (void)
 }
 
 static GstCaps *
-gst_qmmfsrc_image_src_caps (void)
+gst_qmmfsrc_image_src_caps (gpointer feature_caps)
 {
   static GstCaps *caps = NULL;
   static gsize inited = 0;
   GstQmmfSrcResolutionRange raw_res;
-  GString *image_src_caps = gst_qmmfsrc_create_image_static_src_caps ();
+  GString *image_src_caps = gst_qmmfsrc_create_image_static_src_caps (feature_caps);
   GstStaticCaps gst_qmmfsrc_image_static_src_caps =
       GST_STATIC_CAPS (image_src_caps->str);
 
@@ -661,12 +646,12 @@ gst_qmmfsrc_image_src_caps (void)
     caps = gst_static_caps_get (&gst_qmmfsrc_image_static_src_caps);
 
     if (gst_gbm_qcom_backend_is_supported ()) {
-      gst_qmmfsrc_get_raw_resolution_range(&raw_res);
+      gst_qmmfsrc_get_raw_resolution_range(feature_caps, &raw_res);
       GString *gbm_caps_str = g_string_new (
           "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "
           "format = (string) { NV21");
 
-      if (gst_qmmfsrc_check_format (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
+      if (gst_qmmfsrc_check_format (feature_caps, HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED))
         g_string_append (gbm_caps_str, ", NV12, NV12_Q08C, P010_10LE, NV12_Q10LE32C");
 
       g_string_append_printf (gbm_caps_str,
@@ -676,7 +661,7 @@ gst_qmmfsrc_image_src_caps (void)
           "framerate = (fraction) [ 0/1, %u/1 ]",
           raw_res.min_width, raw_res.max_width,
           raw_res.min_height, raw_res.max_height,
-          gst_qmmfsrc_get_max_fps ());
+          gst_qmmfsrc_get_max_fps (feature_caps));
 
       GstCaps *tmplcaps = gst_caps_from_string (gbm_caps_str->str);
       g_string_free (gbm_caps_str, TRUE);
@@ -692,17 +677,17 @@ gst_qmmfsrc_image_src_caps (void)
 }
 
 static GstPadTemplate *
-gst_qmmfsrc_video_src_template (void)
+gst_qmmfsrc_video_src_template (gpointer feature_caps)
 {
   return gst_pad_template_new_with_gtype ("video_%u", GST_PAD_SRC, GST_PAD_REQUEST,
-      gst_qmmfsrc_video_src_caps (), GST_TYPE_QMMFSRC_VIDEO_PAD);
+      gst_qmmfsrc_video_src_caps (feature_caps), GST_TYPE_QMMFSRC_VIDEO_PAD);
 }
 
 static GstPadTemplate *
-gst_qmmfsrc_image_src_template (void)
+gst_qmmfsrc_image_src_template (gpointer feature_caps)
 {
   return gst_pad_template_new_with_gtype ("image_%u", GST_PAD_SRC, GST_PAD_REQUEST,
-      gst_qmmfsrc_image_src_caps (), GST_TYPE_QMMFSRC_IMAGE_PAD);
+      gst_qmmfsrc_image_src_caps (feature_caps), GST_TYPE_QMMFSRC_IMAGE_PAD);
 }
 
 static void
@@ -825,6 +810,10 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
+    success = gst_pad_set_active (pad, TRUE);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Failed to activate video pad!");
+
     success = qmmfsrc_video_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Failed to fixate video caps!");
@@ -839,6 +828,9 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
+    success = gst_pad_set_active (pad, TRUE);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Failed to activate image pad!");
     success = qmmfsrc_image_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Failed to fixate image caps!");
@@ -1298,17 +1290,14 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_EIS, value);
       break;
-#ifndef VHDR_MODES_ENABLE
     case PROP_CAMERA_SHDR:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SHDR, value);
       break;
-#else
     case PROP_CAMERA_VHDR:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_VHDR, value);
       break;
-#endif // VHDR_MODES_ENABLE
     case PROP_CAMERA_ADRC:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_ADRC, value);
@@ -1460,12 +1449,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
     case PROP_CAMERA_PAD_ACTIVATION_MODE:
       qmmfsrc->pad_activation_mode = g_value_get_enum(value);
       break;
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
     case PROP_CAMERA_MULTICAMERA_HINT:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_MULTICAMERA_HINT, value);
       break;
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PROP_CAMERA_SW_TNR:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
            PARAM_CAMERA_SW_TNR, value);
@@ -1504,17 +1491,14 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_EIS, value);
       break;
-#ifndef VHDR_MODES_ENABLE
     case PROP_CAMERA_SHDR:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SHDR, value);
       break;
-#else
     case PROP_CAMERA_VHDR:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_VHDR, value);
       break;
-#endif // VHDR_MODES_ENABLE
     case PROP_CAMERA_ADRC:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_ADRC, value);
@@ -1670,12 +1654,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_PAD_ACTIVATION_MODE:
       g_value_set_enum(value, qmmfsrc->pad_activation_mode);
       break;
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
     case PROP_CAMERA_MULTICAMERA_HINT:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_MULTICAMERA_HINT, value);
       break;
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PROP_CAMERA_SW_TNR:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SW_TNR, value);
@@ -1731,16 +1713,16 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_debug, "qtiqmmfsrc", 0, "QTI QMMF Source");
 
   gst_qmmf_boost_with_perflock (1000);
-  gst_qmmf_context_get_static_meta ();
+  gst_qmmf_context_get_static_meta (&klass->feature_caps);
 
   gobject->set_property = GST_DEBUG_FUNCPTR (qmmfsrc_set_property);
   gobject->get_property = GST_DEBUG_FUNCPTR (qmmfsrc_get_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (qmmfsrc_finalize);
 
   gst_element_class_add_pad_template (gstelement,
-      gst_qmmfsrc_video_src_template ());
+      gst_qmmfsrc_video_src_template (klass->feature_caps));
   gst_element_class_add_pad_template (gstelement,
-      gst_qmmfsrc_image_src_template ());
+      gst_qmmfsrc_image_src_template (klass->feature_caps));
 
   gst_element_class_set_static_metadata (
       gstelement, "Camera Source", "Source/Video",
@@ -1764,33 +1746,33 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       g_param_spec_boolean ("lcac", "LCAC",
           "Lateral Chromatic Aberration Correction", DEFAULT_PROP_CAMERA_LCAC_MODE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-#ifndef EIS_MODES_ENABLE
-  g_object_class_install_property (gobject, PROP_CAMERA_EIS,
-      g_param_spec_boolean ("eis", "EIS",
-          "Electronic Image Stabilization mode to reduce the effects of camera shake",
-          DEFAULT_PROP_CAMERA_EIS_MODE,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-#else
-  g_object_class_install_property (gobject, PROP_CAMERA_EIS,
-      g_param_spec_enum ("eis", "EIS",
-          "Electronic Image Stabilization mode to reduce the effects of camera shake",
-          GST_TYPE_QMMFSRC_EIS_MODE, DEFAULT_PROP_CAMERA_EIS_MODE,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-#endif // EIS_MODES_ENABLE
-#ifndef VHDR_MODES_ENABLE
-    g_object_class_install_property (gobject, PROP_CAMERA_SHDR,
-        g_param_spec_boolean ("shdr", "SHDR",
-            "Super High Dynamic Range Imaging", DEFAULT_PROP_CAMERA_SHDR_MODE,
-            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-            GST_PARAM_MUTABLE_PLAYING));
-#else
+  if (gst_qmmfsrc_check_eis_modes_support (klass->feature_caps)) {
+    g_object_class_install_property (gobject, PROP_CAMERA_EIS,
+        g_param_spec_enum ("eis", "EIS",
+            "Electronic Image Stabilization mode to reduce the effects of camera shake",
+            GST_TYPE_QMMFSRC_EIS_MODE, DEFAULT_PROP_CAMERA_EIS_MODE,
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  } else {
+    g_object_class_install_property (gobject, PROP_CAMERA_EIS,
+        g_param_spec_boolean ("eis", "EIS",
+            "Electronic Image Stabilization on/off",
+            FALSE,
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  }
+  if (gst_qmmfsrc_check_vhdr_modes_support (klass->feature_caps)) {
     g_object_class_install_property (gobject, PROP_CAMERA_VHDR,
         g_param_spec_enum ("vhdr", "VHDR",
             "Video High Dynamic Range Imaging Modes",
             GST_TYPE_QMMFSRC_VHDR_MODE, DEFAULT_PROP_CAMERA_VHDR_MODE,
             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
             GST_PARAM_MUTABLE_PLAYING));
-#endif // VHDR_MODES_ENABLE
+  } else {
+    g_object_class_install_property (gobject, PROP_CAMERA_SHDR,
+        g_param_spec_boolean ("shdr", "SHDR",
+            "Super High Dynamic Range Imaging", DEFAULT_PROP_CAMERA_SHDR_MODE,
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+            GST_PARAM_MUTABLE_PLAYING));
+  }
   g_object_class_install_property (gobject, PROP_CAMERA_ADRC,
       g_param_spec_boolean ("adrc", "ADRC",
           "Automatic Dynamic Range Compression", DEFAULT_PROP_CAMERA_ADRC,
@@ -2012,7 +1994,7 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           G_TYPE_HASH_TABLE,
           G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
-  if (gst_qmmfsrc_check_logical_cam_support ()) {
+  if (gst_qmmfsrc_check_logical_cam_support (klass->feature_caps)) {
     g_object_class_install_property (gobject, PROP_CAMERA_MULTI_CAM_EXPOSURE_TIME,
         gst_param_spec_array ("multi-camera-exp-time", "Multi Camera Exposure Time",
             "The exposure time (in nano-seconds) for each camera in multi camera"
@@ -2050,8 +2032,8 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
               G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
-#ifdef FEATURE_LOGICAL_CAMERA_SENSOR_SWITCH
-  if (gst_qmmfsrc_check_logical_cam_support ()) {
+  if (gst_qmmfsrc_check_logical_cam_sensor_switch_support (klass->feature_caps) &&
+      gst_qmmfsrc_check_logical_cam_support (klass->feature_caps)) {
     g_object_class_install_property (gobject, PROP_CAMERA_PHYSICAL_CAMERA_SWITCH,
         g_param_spec_int ("camera-switch-index", "set camera index for "
             "logical camera", "logica camera is a camera having a group of two"
@@ -2067,7 +2049,6 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
             G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
             GST_PARAM_MUTABLE_PLAYING));
   }
-#endif
   g_object_class_install_property (gobject, PROP_CAMERA_PAD_ACTIVATION_MODE,
       g_param_spec_enum ("video-pads-activation-mode", "Video Pad Activation Mode",
           "set video pad activation mode, by default is normal, use \"signal\" to "
@@ -2077,16 +2058,16 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           DEFAULT_PROP_CAMERA_PAD_ACTIVAION_MODE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
-  g_object_class_install_property (gobject, PROP_CAMERA_MULTICAMERA_HINT,
-      g_param_spec_boolean ("multicamera-hint", "multicamera-hint",
-          "multicamera-hint if enabled, this flag will make camera hardwares "
-          "to work in offline which is useful when camera sensors are more then "
-          "camera hardwares, it has impact on memory usage and latency.",
-          DEFAULT_PROP_CAMERA_MULTICAMERA_HINT,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
-  if (gst_qmmfsrc_check_sw_tnr_support ()) {
+  if (gst_qmmfsrc_check_offline_ife_support (klass->feature_caps)) {
+    g_object_class_install_property (gobject, PROP_CAMERA_MULTICAMERA_HINT,
+        g_param_spec_boolean ("multicamera-hint", "multicamera-hint",
+            "multicamera-hint if enabled, this flag will make camera hardwares "
+            "to work in offline which is useful when camera sensors are more then "
+            "camera hardwares, it has impact on memory usage and latency.",
+            DEFAULT_PROP_CAMERA_MULTICAMERA_HINT,
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  }
+  if (gst_qmmfsrc_check_sw_tnr_support (klass->feature_caps)) {
     g_object_class_install_property (gobject, PROP_CAMERA_SW_TNR,
         g_param_spec_boolean ("sw-tnr", "SW TNR",
             "this flag will enable sw based TNR.",
@@ -2155,6 +2136,10 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
   QMMFSRC_RETURN_IF_FAIL (qmmfsrc, qmmfsrc->context != NULL,
       "Failed to create context");
 
+  // Copy feature_caps from class to context
+  GstQmmfSrcClass *klass = GST_QMMFSRC_GET_CLASS (qmmfsrc);
+  gst_qmmf_context_set_feature_caps (qmmfsrc->context, klass->feature_caps);
+
   // Camera ID
   g_value_init (&value, G_TYPE_UINT);
   g_value_set_uint (&value, DEFAULT_PROP_CAMERA_ID);
@@ -2179,18 +2164,16 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
   gst_qmmf_context_set_camera_param (qmmfsrc->context, PARAM_CAMERA_LCAC, &value);
   g_value_unset (&value);
 
-  // EIS
-#ifndef EIS_MODES_ENABLE
-  g_value_init (&value, G_TYPE_BOOLEAN);
-  g_value_set_boolean (&value, DEFAULT_PROP_CAMERA_EIS_MODE);
+  // EIS — init with enum if modes supported, bool otherwise
+  if (gst_qmmfsrc_check_eis_modes_support (klass->feature_caps)) {
+    g_value_init (&value, GST_TYPE_QMMFSRC_EIS_MODE);
+    g_value_set_enum (&value, DEFAULT_PROP_CAMERA_EIS_MODE);
+  } else {
+    g_value_init (&value, G_TYPE_BOOLEAN);
+    g_value_set_boolean (&value, FALSE);
+  }
   gst_qmmf_context_set_camera_param (qmmfsrc->context, PARAM_CAMERA_EIS, &value);
   g_value_unset (&value);
-#else
-  g_value_init (&value, GST_TYPE_QMMFSRC_EIS_MODE);
-  g_value_set_enum (&value, DEFAULT_PROP_CAMERA_EIS_MODE);
-  gst_qmmf_context_set_camera_param (qmmfsrc->context, PARAM_CAMERA_EIS, &value);
-  g_value_unset (&value);
-#endif // EIS_MODES_ENABLE
 
   // ADRC (default: FALSE)
   g_value_init (&value, G_TYPE_BOOLEAN);
@@ -2381,14 +2364,6 @@ gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data)
 
   iface->get_child_by_index = gst_qmmsrc_child_proxy_get_child_by_index;
   iface->get_children_count = gst_qmmsrc_child_proxy_get_children_count;
-}
-
-static void __attribute__((destructor))
-qmmfsrc_plugin_cleanup(void)
-{
-  // Clean up the static metadata table
-  GST_INFO ("Cleanup of static metadata table");
-  gst_qmmf_cleanup_static_metas();
 }
 
 static gboolean

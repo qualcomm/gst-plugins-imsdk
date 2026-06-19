@@ -42,6 +42,7 @@
 #include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/utils/common-utils.h>
+#include <gst/video/gstvideooriginmeta.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
@@ -492,6 +493,7 @@ gst_video_transform_prepare_output_buffer (GstBaseTransform * base,
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (base);
   GstBufferPool *pool = vtrans->outpool;
   gboolean passthrough = FALSE, writable = TRUE, success = FALSE;
+  GstVideoOriginMeta *origin_meta;
 
   // Check whether passthrough should be true/false based on parameters.
   gst_video_transform_determine_passthrough (vtrans);
@@ -535,6 +537,39 @@ gst_video_transform_prepare_output_buffer (GstBaseTransform * base,
     GST_ELEMENT_WARNING (vtrans, STREAM, NOT_IMPLEMENTED,
         ("could not copy metadata"), (NULL));
   }
+
+  // Check ininfo validity before adding origin meta
+  if (vtrans->ininfo == NULL) {
+    GST_ERROR_OBJECT (vtrans, "ininfo is NULL, cannot add origin meta");
+    gst_buffer_unref (*outbuffer);
+    *outbuffer = NULL;
+    return GST_FLOW_ERROR;
+  }
+
+  // Validate that ininfo contains valid dimensions
+  if (vtrans->ininfo->width == 0 || vtrans->ininfo->height == 0) {
+    GST_ERROR_OBJECT (vtrans,
+        "ininfo has invalid dimensions (%dx%d), cannot add origin meta",
+        vtrans->ininfo->width, vtrans->ininfo->height);
+    gst_buffer_unref (*outbuffer);
+    *outbuffer = NULL;
+    return GST_FLOW_ERROR;
+  }
+
+  origin_meta = gst_buffer_add_video_origin_meta (*outbuffer,
+      vtrans->ininfo->width, vtrans->ininfo->height);
+  if (origin_meta == NULL) {
+    GST_ERROR_OBJECT (vtrans, "failed to add video frame origin meta");
+    gst_buffer_unref (*outbuffer);
+    *outbuffer = NULL;
+    return GST_FLOW_ERROR;
+  }
+
+  origin_meta->crop = vtrans->crop;
+
+  GST_TRACE_OBJECT (vtrans, "Origin Meta: Width: %d, Height: %d, Crop: [%d, %d, "
+      "%d, %d]" , origin_meta->width, origin_meta->height, origin_meta->crop.x,
+      origin_meta->crop.y, origin_meta->crop.w, origin_meta->crop.h);
 
   return GST_FLOW_OK;
 }
@@ -1615,6 +1650,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   const GstVideoMeta *meta = NULL;
   gboolean success = FALSE;
 
+  GST_TRACE_OBJECT (vtrans, "Input %" GST_PTR_FORMAT, inbuffer);
+
   // GAP buffer, nothing to do. Propagate output buffer downstream.
   if (gst_buffer_get_size (outbuffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
@@ -1683,6 +1720,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GST_LOG_OBJECT (vtrans, "Conversion took %" G_GINT64_FORMAT ".%03"
       G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
+
+  GST_TRACE_OBJECT (vtrans, "Output %" GST_PTR_FORMAT, outbuffer);
 
   if (!success) {
     GST_ERROR_OBJECT (vtrans, "Failed to process composition!");

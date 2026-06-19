@@ -34,9 +34,9 @@
   "This audio decoding application allows users to decode audio files " \
   "such as MP3, WAV, or FLAC. \n" \
   "\nCommand \n" \
-  "  For mp3: gst-audio-decode-example -i /etc/media/<filename>.mp3  -f 1 \n" \
-  "  For wav: gst-audio-decode-example -i /etc/media/<filename>.wav  -f 2 \n" \
-  "  For flac: gst-audio-decode-example -i /etc/media/<filename>.flac  -f 3" \
+  "  For mp3: gst-audio-decode-example -i /etc/media/audio.mp3  -f 1 \n" \
+  "  For wav: gst-audio-decode-example -i /etc/media/audio.wav  -f 2 \n" \
+  "  For flac: gst-audio-decode-example -i /etc/media/audio.flac  -f 3" \
   "\nOutput:\n" \
   "\n  Upon executing the application user can perceive the audio over speaker"
 

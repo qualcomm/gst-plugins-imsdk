@@ -8,6 +8,7 @@ set(TARGET_NAME gstqtivideobase)
 
 add_library(${TARGET_NAME} SHARED
   gstimagepool.c
+  gstvideooriginmeta.c
   gstvideoclassificationmeta.c
   gstvideolandmarksmeta.c
   video-converter-engine.c
@@ -20,6 +21,7 @@ add_library(${TARGET_NAME} SHARED
 
 set(TARGET_HEADERS
   gstimagepool.h
+  gstvideooriginmeta.h
   gstvideoclassificationmeta.h
   gstvideolandmarksmeta.h
   video-converter-engine.h
@@ -91,3 +93,70 @@ install(
   FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
   DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/pkgconfig
 )
+
+if(GIR_SCANNER AND GIR_COMPILER AND PYTHON_SITEPACKAGES_DIR)
+  # Generate GIR and typelib files for Python
+  set(GIR_TARGET_NAME "GstQtiVideo-1.0.gir")
+
+  add_custom_command(
+    OUTPUT ${GIR_TARGET_NAME}
+    COMMAND ${GIR_SCANNER}
+            --warn-all --verbose
+            --namespace=GstQtiVideo
+            --nsversion=1.0
+            --identifier-prefix=GstVideo
+            --identifier-prefix=Gst
+            --symbol-prefix=gst_video
+            --symbol-prefix=gst
+            --library=${TARGET_NAME}
+            --output=${GIR_TARGET_NAME}
+            --include=Gst-1.0
+            --include=GstAllocators-1.0
+            --include=GstVideo-1.0
+            --include=GstQtiAllocators-1.0
+            --include=GstQtiGfx-1.0
+            --include=GstQtiCommon-1.0
+            --add-include-path=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/utils
+            --add-include-path=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/allocators
+            --add-include-path=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/gfx
+            --cflags-begin -I${QTI_PLUGINS_BASE_SOURCE_DIR} --cflags-end
+    ${CMAKE_CURRENT_SOURCE_DIR}/video-utils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/video-utils.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/video-converter-engine.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/video-converter-engine.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstvideoclassificationmeta.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstvideoclassificationmeta.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstvideolandmarksmeta.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstvideolandmarksmeta.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstimagepool.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstimagepool.c
+    DEPENDS ${TARGET_NAME}
+            GstQtiAllocators-1.0
+            GstQtiGfx-1.0
+            GstQtiCommon-1.0
+  )
+
+  set(TYPELIB_TARGET_NAME "GstQtiVideo-1.0.typelib")
+
+  add_custom_command(
+    OUTPUT ${TYPELIB_TARGET_NAME}
+    COMMAND ${GIR_COMPILER} ${GIR_TARGET_NAME}
+            --includedir=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/utils
+            --includedir=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/allocators
+            --includedir=${QTI_PLUGINS_BASE_BINARY_DIR}/gst/gfx
+            --output=${TYPELIB_TARGET_NAME}
+    DEPENDS ${GIR_TARGET_NAME}
+  )
+
+  add_custom_target(GstQtiVideo-1.0 ALL DEPENDS ${TYPELIB_TARGET_NAME})
+
+  install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/${GIR_TARGET_NAME}
+    DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_DATADIR}/gir-1.0/
+  )
+
+  install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/${TYPELIB_TARGET_NAME}
+    DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/girepository-1.0/
+  )
+endif()

@@ -136,22 +136,12 @@ struct _GstQmmfContext {
   gboolean          ldc;
   /// Camera property to Enable or Disable Lateral Chromatic Aberration Correction.
   gboolean          lcac;
-#ifndef EIS_MODES_ENABLE
-  /// Camera property to Enable or Disable Electronic Image Stabilization.
-  gboolean          eis;
-#else
   /// Camera property to select Electronic Image Stabilization mode.
   gint              eis;
-#endif // EIS_MODES_ENABLE
-  /// Camera property to select Electronic Image Stabilization mode.
-  gint              eis_enum;
-#ifndef VHDR_MODES_ENABLE
   /// Camera property to Enable or Disable Super High Dynamic Range.
   gboolean          shdr;
-#else
   /// Camera property for Video High Dynamic Range modes.
   gint              vhdr;
-#endif // VHDR_MODES_ENABLE
   /// Camera property to Enable or Disable Auto Dynamic Range Compression.
   gboolean          adrc;
   /// Overall mode of 3A
@@ -222,10 +212,8 @@ struct _GstQmmfContext {
   gboolean          input_roi_enable;
   /// Number of Input ROI's
   gint32            input_roi_count;
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
   /// Offline IFE enable for multicamera usecase
   gboolean          multicamera_hint;
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
   gboolean          sw_tnr;
   /// Capabilities of each camera
   GHashTable        *static_metas;
@@ -246,6 +234,9 @@ struct _GstQmmfContext {
 
   /// Super FrameRate Base
   gint32            superframerate;
+
+  /// Feature capability map pointer.
+  gpointer          feature_caps;
 
   /// QMMF Recorder instance.
   ::qmmf::recorder::Recorder *recorder;
@@ -1304,6 +1295,9 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
     // Propagate original camera timestamp in media dependent OFFSET_END field.
     GST_BUFFER_OFFSET_END (gstbuffer) = buffer.timestamp;
 
+    // Propagate original camera frame index in media dependent OFFSET field.
+    GST_BUFFER_OFFSET (gstbuffer) = buffer.seqnum;
+
     GST_QMMF_CONTEXT_LOCK (context);
     // Initialize the timestamp base value for buffer synchronization.
     context->tsbase = (GST_CLOCK_TIME_NONE == context->tsbase) ?
@@ -1414,6 +1408,9 @@ image_data_callback (GstQmmfContext * context, GstPad * pad,
 
   // Propagate original camera timestamp in media dependent OFFSET_END field.
   GST_BUFFER_OFFSET_END (gstbuffer) = buffer.timestamp;
+
+  // Propagate original camera frame index in media dependent OFFSET field.
+  GST_BUFFER_OFFSET (gstbuffer) = buffer.seqnum;
 
   GST_QMMF_CONTEXT_LOCK (context);
   // Initialize the timestamp base value for buffer synchronization.
@@ -1615,11 +1612,17 @@ camera_event_callback (GstQmmfContext * context,
 }
 
 void
-gst_qmmf_context_get_static_meta ()
+gst_qmmf_context_set_feature_caps (GstQmmfContext * context, gpointer caps)
+{
+  g_return_if_fail (context != NULL);
+  context->feature_caps = caps;
+}
+
+void
+gst_qmmf_context_get_static_meta (gpointer *caps)
 {
   ::qmmf::recorder::Recorder *recorder;
   ::qmmf::recorder::RecorderCb cbs;
-  std::vector<::camera::CameraMetadata> infolist;
   gint status = 0;
 
   recorder = new ::qmmf::recorder::Recorder ();
@@ -1627,22 +1630,53 @@ gst_qmmf_context_get_static_meta ()
   QMMFSRC_RETURN_IF_FAIL_WITH_CLEAN (NULL, status == 0,
       delete recorder;, "QMMF Recorder Connect failed!");
 
-  int32_t ret = recorder->GetCamStaticInfo (infolist);
-  if (ret != 0)
-    g_warning ("Failed to get camera static info !");
+  auto *map = new ::qmmf::recorder::FeatureCapabilityMap ();
+  int32_t ret = recorder->GetFeatureCapabilities (*map);
+  if (ret != 0) {
+    GST_WARNING ("Failed to get feature capabilities (ret=%d)", ret);
+    delete map;
+    map = nullptr;
+  } else {
+    GST_INFO ("Feature capabilities: %zu entries", map->size ());
+    for (const auto& [key, cap] : *map) {
+      switch (cap.type) {
+        case ::qmmf::recorder::TYPE_BOOL:
+          GST_INFO ("  feature[%d] = bool(%s)", static_cast<int>(key),
+                    cap.bool_value ? "true" : "false");
+          break;
+        case ::qmmf::recorder::TYPE_INT32:
+          GST_INFO ("  feature[%d] = int32(%d)", static_cast<int>(key),
+                    cap.int_value);
+          break;
+        case ::qmmf::recorder::TYPE_FLOAT:
+          GST_INFO ("  feature[%d] = float(%.2f)", static_cast<int>(key),
+                    cap.float_value);
+          break;
+        default:
+          GST_INFO ("  feature[%d] = unknown type(%d)", static_cast<int>(key),
+                    static_cast<int>(cap.type));
+          break;
+      }
+    }
 
-  for (guint i = 0; i < infolist.size(); ++i) {
-    /* Allocate a new CameraMetadata entry */
-    ::camera::CameraMetadata *metadata = new ::camera::CameraMetadata(infolist[i]);
-    /* Insert the copy into the hash table; the key remains the same index */
-    g_hash_table_insert (gst_qmmf_get_static_metas (), GUINT_TO_POINTER (i), metadata);
+    // Log camera server version from the three int keys
+    {
+      int32_t major = 0, minor = 0, patch = 0;
+      auto it = map->find (::qmmf::recorder::CAMERA_FEATURE_SERVER_MAJOR_VERSION);
+      if (it != map->end ()) major = it->second.int_value;
+      it = map->find (::qmmf::recorder::CAMERA_FEATURE_SERVER_MINOR_VERSION);
+      if (it != map->end ()) minor = it->second.int_value;
+      it = map->find (::qmmf::recorder::CAMERA_FEATURE_SERVER_PATCH_VERSION);
+      if (it != map->end ()) patch = it->second.int_value;
+      GST_INFO ("Camera server version: %d.%d.%d", major, minor, patch);
+    }
   }
-
-  if (gst_qmmf_get_static_metas () == NULL)
-    GST_WARNING ("\n\n static meta is not populated\n");
 
   recorder->Disconnect ();
   delete recorder;
+
+  if (caps)
+    *caps = map;
 }
 
 GstQmmfContext *
@@ -1653,12 +1687,13 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
   ::qmmf::recorder::RecorderCb cbs;
   gint status = 0;
 
-  context = g_slice_new0 (GstQmmfContext);
+  context = new GstQmmfContext ();
   g_return_val_if_fail (context != NULL, NULL);
 
+  g_mutex_init (&context->lock);
   context->recorder = new ::qmmf::recorder::Recorder();
   QMMFSRC_RETURN_VAL_IF_FAIL_WITH_CLEAN (NULL, context->recorder != NULL,
-      g_slice_free (GstQmmfContext, context);,
+      g_mutex_clear (&context->lock); delete context;,
       NULL, "QMMF Recorder creation failed!");
 
   context->state = GST_STATE_NULL;
@@ -1683,7 +1718,8 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
 
   status = context->recorder->Connect (cbs);
   QMMFSRC_RETURN_VAL_IF_FAIL_WITH_CLEAN (NULL, status == 0,
-      delete context->recorder; g_slice_free (GstQmmfContext, context);,
+      g_mutex_clear (&context->metadata_lock); g_mutex_clear (&context->lock);
+      delete context->recorder; delete context;,
       NULL, "QMMF Recorder Connect failed!");
 
   context->defogtable = gst_structure_new_empty ("org.quic.camera.defog");
@@ -1705,7 +1741,8 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
 
   status = gst_qmmf_context_get_cam_static_info (context);
   QMMFSRC_RETURN_VAL_IF_FAIL_WITH_CLEAN (NULL, status == 0,
-      delete context->recorder; g_slice_free (GstQmmfContext, context);,
+      g_mutex_clear (&context->metadata_lock); g_mutex_clear (&context->lock);
+      delete context->recorder; delete context;,
       NULL, "Get Camera Static Info failed!");
 
   GST_INFO ("Created QMMF context: %p", context);
@@ -1774,9 +1811,10 @@ gst_qmmf_context_free (GstQmmfContext * context)
 
   g_mutex_unlock (&context->metadata_lock);
   g_mutex_clear (&context->metadata_lock);
+  g_mutex_clear (&context->lock);
 
   GST_INFO ("Destroyed QMMF context: %p", context);
-  g_slice_free (GstQmmfContext, context);
+  delete context;
 }
 
 void
@@ -1865,52 +1903,54 @@ gst_qmmf_context_open (GstQmmfContext * context)
   lcac.enable = context->lcac;
   xtraparam.Update (::qmmf::recorder::QMMF_LCAC, lcac);
 
-  // EIS
-#ifndef EIS_MODES_ENABLE
-  ::qmmf::recorder::EISSetup eis;
-  eis.enable = context->eis;
-  xtraparam.Update (::qmmf::recorder::QMMF_EIS, eis);
-#else
-  ::qmmf::recorder::EISModeSetup eis;
-  if (context->eis == EIS_OFF) {
-    eis.mode = ::qmmf::recorder::EisMode::kEisOff;
-  } else if (context->eis == EIS_ON_SINGLE_STREAM) {
-    eis.mode = ::qmmf::recorder::EisMode::kEisSingleStream;
+  // EIS - Check capability at runtime
+  if (gst_qmmfsrc_check_eis_modes_support(context->feature_caps)) {
+    // Hardware supports EIS modes - use enum-based setup
+    ::qmmf::recorder::EISModeSetup eis;
+    if (context->eis == EIS_OFF) {
+      eis.mode = ::qmmf::recorder::EisMode::kEisOff;
+    } else if (context->eis == EIS_ON_SINGLE_STREAM) {
+      eis.mode = ::qmmf::recorder::EisMode::kEisSingleStream;
+    } else {
+      eis.mode = ::qmmf::recorder::EisMode::kEisDualStream;
+    }
+    xtraparam.Update (::qmmf::recorder::QMMF_EIS_MODE, eis);
   } else {
-    eis.mode = ::qmmf::recorder::EisMode::kEisDualStream;
+    // Hardware only supports boolean EIS - map enum to boolean
+    ::qmmf::recorder::EISSetup eis;
+    eis.enable = (context->eis != EIS_OFF);
+    xtraparam.Update (::qmmf::recorder::QMMF_EIS, eis);
   }
-  xtraparam.Update (::qmmf::recorder::QMMF_EIS_MODE, eis);
-#endif // EIS_MODES_ENABLE
 
-  // SHDR
+  // SHDR/VHDR - Check capability at runtime
   ::qmmf::recorder::VideoHDRMode hdr;
-#ifndef VHDR_MODES_ENABLE
-  hdr.enable = context->shdr;
-#else
-  switch (context->vhdr) {
-    case VHDR_OFF:
-      hdr.mode = ::qmmf::recorder::VHDRMode::kVHDROff;
-      break;
-    case SHDR_MODE_RAW:
-      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRRaw;
-      break;
-    case SHDR_MODE_YUV:
-      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRYuv;
-      break;
-    case SHDR_RAW_SWITCH_ENABLE:
-      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRRawSwitchEnable;
-      break;
-    case SHDR_YUV_SWITCH_ENABLE:
-      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRYUVSwitchEnable;
-      break;
-    case QBC_HDR_MODE_VIDEO:
-      hdr.mode = ::qmmf::recorder::VHDRMode::kQBCHDRVideo;
-      break;
-    case QBC_HDR_MODE_SNAPSHOT:
-      hdr.mode = ::qmmf::recorder::VHDRMode::kQBCHDRSnapshot;
-      break;
+  if (gst_qmmfsrc_check_vhdr_modes_support (context->feature_caps)) {
+    switch (context->vhdr) {
+      case VHDR_OFF:
+        hdr.mode = ::qmmf::recorder::VHDRMode::kVHDROff;
+        break;
+      case SHDR_MODE_RAW:
+        hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRRaw;
+        break;
+      case SHDR_MODE_YUV:
+        hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRYuv;
+        break;
+      case SHDR_RAW_SWITCH_ENABLE:
+        hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRRawSwitchEnable;
+        break;
+      case SHDR_YUV_SWITCH_ENABLE:
+        hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRYUVSwitchEnable;
+        break;
+      case QBC_HDR_MODE_VIDEO:
+        hdr.mode = ::qmmf::recorder::VHDRMode::kQBCHDRVideo;
+        break;
+      case QBC_HDR_MODE_SNAPSHOT:
+        hdr.mode = ::qmmf::recorder::VHDRMode::kQBCHDRSnapshot;
+        break;
+    }
+  } else {
+    hdr.enable = context->shdr;
   }
-#endif // VHDR_MODES_ENABLE
   xtraparam.Update (::qmmf::recorder::QMMF_VIDEO_HDR_MODE, hdr);
 
   // ForceSensorMode
@@ -1936,14 +1976,14 @@ gst_qmmf_context_open (GstQmmfContext * context)
   ::qmmf::recorder::InputROISetup qmmf_input_roi;
   qmmf_input_roi.enable = context->input_roi_enable;
   xtraparam.Update (::qmmf::recorder::QMMF_INPUT_ROI, qmmf_input_roi);
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
-  // Offline IFE
-  ::qmmf::recorder::OfflineIFE qmmf_offline_ife;
-  qmmf_offline_ife.enable = context->multicamera_hint;
-  xtraparam.Update (::qmmf::recorder::QMMF_OFFLINE_IFE, qmmf_offline_ife);
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
+    // Offline IFE
+  if (gst_qmmfsrc_check_offline_ife_support (context->feature_caps)) {
+    ::qmmf::recorder::OfflineIFE qmmf_offline_ife;
+    qmmf_offline_ife.enable = context->multicamera_hint;
+    xtraparam.Update (::qmmf::recorder::QMMF_OFFLINE_IFE, qmmf_offline_ife);
+  }
 
-  if (gst_qmmfsrc_check_sw_tnr_support ()) {
+  if (gst_qmmfsrc_check_sw_tnr_support (context->feature_caps)) {
     ::qmmf::recorder::SWTNR sw_tnr;
     sw_tnr.enable = context->sw_tnr;
     xtraparam.Update (::qmmf::recorder::QMMF_SW_TNR, sw_tnr);
@@ -2182,7 +2222,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
   if (vpad->type == VIDEO_TYPE_PREVIEW)
     params.flags |= ::qmmf::recorder::VideoFlags::kPreview;
 
-  if (gst_qmmfsrc_check_logical_cam_support ()) {
+  if (gst_qmmfsrc_check_logical_cam_support (context->feature_caps)) {
     if (!context->logical_cam_info.is_logical_cam) {
       GST_WARNING ("Non logical multi camera(%u), logical-stream-type makes no "
           "sense.", context->camera_id);
@@ -2457,7 +2497,7 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
     xtraparam.Update(::qmmf::recorder::QMMF_STREAM_USECASE, usecase_select);
   }
 
-  if (gst_qmmfsrc_check_logical_cam_support ()) {
+  if (gst_qmmfsrc_check_logical_cam_support (context->feature_caps)) {
     if (!context->logical_cam_info.is_logical_cam) {
       GST_WARNING ("Non logical multi camera(%u), logical-stream-type makes no "
           "sense.", context->camera_id);
@@ -3096,13 +3136,11 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       context->lcac = g_value_get_boolean (value);
       return;
     case PARAM_CAMERA_EIS:
-#ifndef EIS_MODES_ENABLE
-      context->eis = g_value_get_boolean (value);
-#else
-      context->eis = g_value_get_enum (value);
-#endif // EIS_MODES_ENABLE
+      if (gst_qmmfsrc_check_eis_modes_support (context->feature_caps))
+        context->eis = g_value_get_enum (value);
+      else
+        context->eis = g_value_get_boolean (value) ? EIS_ON_SINGLE_STREAM : EIS_OFF;
       return;
-#ifndef VHDR_MODES_ENABLE
     case PARAM_CAMERA_SHDR: {
       gboolean new_shdr = g_value_get_boolean (value);
       if (context->shdr != new_shdr) {
@@ -3110,18 +3148,17 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
         if (context->state != GST_STATE_NULL)
           recorder->SetSHDR (context->camera_id, context->shdr);
       }
+      return;
     }
-#else
     case PARAM_CAMERA_VHDR: {
       gint new_vhdr = g_value_get_enum (value);
       if (context->vhdr != new_vhdr) {
         context->vhdr = new_vhdr;
-       if (context->state != GST_STATE_NULL)
+        if (context->state != GST_STATE_NULL)
           recorder->SetVHDR (context->camera_id, context->vhdr);
       }
-    }
-#endif // VHDR_MODES_ENABLE
       return;
+    }
     case PARAM_CAMERA_SENSOR_MODE:
       context->sensormode = g_value_get_int (value);
       return;
@@ -3137,11 +3174,9 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_INPUT_ROI:
       context->input_roi_enable = g_value_get_boolean (value);
       return;
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
     case PARAM_CAMERA_MULTICAMERA_HINT:
       context->multicamera_hint = g_value_get_boolean (value);
       return;
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PARAM_CAMERA_SW_TNR:
       context->sw_tnr = g_value_get_boolean (value);
       return;
@@ -3745,19 +3780,16 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_value_set_boolean (value, context->lcac);
       break;
     case PARAM_CAMERA_EIS:
-#ifndef EIS_MODES_ENABLE
-      g_value_set_boolean (value, context->eis);
-#else
-      g_value_set_enum (value, context->eis);
-#endif // EIS_MODES_ENABLE
+      if (gst_qmmfsrc_check_eis_modes_support (context->feature_caps))
+        g_value_set_enum (value, context->eis);
+      else
+        g_value_set_boolean (value, context->eis != EIS_OFF);
       break;
-#ifndef VHDR_MODES_ENABLE
     case PARAM_CAMERA_SHDR:
       g_value_set_boolean (value, context->shdr);
-#else
+      break;
     case PARAM_CAMERA_VHDR:
       g_value_set_enum (value, context->vhdr);
-#endif // VHDR_MODES_ENABLE
       break;
     case PARAM_CAMERA_ADRC:
       g_value_set_boolean (value, context->adrc);
@@ -3827,11 +3859,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_value_set_int (value, context->superframerate);
       break;
     }
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
     case PARAM_CAMERA_MULTICAMERA_HINT:
       g_value_set_boolean (value, context->multicamera_hint);
       break;
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PARAM_CAMERA_SW_TNR:
       g_value_set_boolean (value, context->sw_tnr);
       break;

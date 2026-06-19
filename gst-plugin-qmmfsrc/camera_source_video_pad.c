@@ -923,14 +923,19 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
 
-  if (gst_qmmfsrc_check_logical_cam_support ()) {
-    g_object_class_install_property (gobject, PROP_VIDEO_LOGICAL_STREAM_TYPE,
-        g_param_spec_enum ("logical-stream-type", "Stream type for logical camera",
-            "Type of the stream for logical camera.",
-            GST_TYPE_QMMFSRC_PAD_LOGICAL_STREAM_TYPE,
-            DEFAULT_PROP_LOGICAL_STREAM_TYPE,
-            G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-            GST_PARAM_MUTABLE_PAUSED));
+  {
+    GstQmmfSrcClass *qmmfsrc_klass =
+        GST_QMMFSRC_CLASS (g_type_class_peek (GST_TYPE_QMMFSRC));
+    gpointer feature_caps = qmmfsrc_klass ? qmmfsrc_klass->feature_caps : NULL;
+    if (gst_qmmfsrc_check_logical_cam_support (feature_caps)) {
+      g_object_class_install_property (gobject, PROP_VIDEO_LOGICAL_STREAM_TYPE,
+          g_param_spec_enum ("logical-stream-type", "Stream type for logical camera",
+              "Type of the stream for logical camera.",
+              GST_TYPE_QMMFSRC_PAD_LOGICAL_STREAM_TYPE,
+              DEFAULT_PROP_LOGICAL_STREAM_TYPE,
+              G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+              GST_PARAM_MUTABLE_PAUSED));
+    }
   }
 
   g_object_class_install_property (gobject, PROP_VIDEO_WRAP_META,

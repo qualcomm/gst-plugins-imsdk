@@ -17,9 +17,9 @@
 *
 * Usage:
 * For qtivcomposer composing picture in picture:
-* gst-weston-composition-example -t 0 -i /etc/media/<h264_file>.mp4
+* gst-weston-composition-example -t 0 -i /etc/media/video_avc.mp4
 * For qtivcomposer composing side by side:
-* gst-weston-composition-example -t 1 -i /etc/media/<h264_file>.mp4
+* gst-weston-composition-example -t 1 -i /etc/media/video_avc.mp4
 *
 * ***********************************************************************
 *
@@ -37,7 +37,7 @@
 
 #include <gst_sample_apps_utils.h>
 
-#define INPUT_FILE_PATH "/etc/media/video.mp4"
+#define INPUT_FILE_PATH "/etc/media/video_avc.mp4"
 
 #define GST_APP_SUMMARY                                                       \
   "This application showcases the composition of various sources,           " \
@@ -371,7 +371,7 @@ main (gint argc, gchar *argv[])
     },
     { "input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
       "input AVC mp4 Filename",
-      "  e.g. -i /etc/media/<h264_file>.mp4"
+      "  e.g. -i /etc/media/video_avc.mp4"
     },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };

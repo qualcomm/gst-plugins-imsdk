@@ -230,8 +230,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *waylandsink = NULL, *fpsdisplaysink = NULL;
   GstCaps *pad_filter = NULL , *filtercaps = NULL;
   GstStructure *delegate_options;
-  gboolean ret = FALSE;
-  gchar element_name[128], settings[128];
+  gboolean ret = FALSE, is_v66 = FALSE;
+  char * delegate_str = NULL;
+  gchar element_name[128], settings[128], delegate_backend[128];
   gint primary_camera_preview_width = PRIMARY_CAMERA_PREVIEW_OUTPUT_WIDTH;
   gint primary_camera_preview_height = PRIMARY_CAMERA_PREVIEW_OUTPUT_HEIGHT;
   gint secondary_camera_preview_width = SECONDARY_CAMERA_PREVIEW_OUTPUT_WIDTH;
@@ -239,6 +240,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   gint camera_framerate = DEFAULT_CAMERA_FRAME_RATE;
   gint module_id;
   GValue value = G_VALUE_INIT;
+
+  is_v66 = is_v66_arch ();
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     queue[i] = NULL;
@@ -514,10 +517,16 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
           "delegate", tflite_delegate, NULL);
     } else if (options->use_dsp) {
-      g_print ("Using DSP Delegate\n");
-      delegate_options =
-          gst_structure_from_string ("QNNExternalDelegate,backend_type=htp;",
-          NULL);
+      if (is_v66) {
+        snprintf (delegate_backend, sizeof (delegate_backend), "dsp");
+      } else {
+        snprintf (delegate_backend, sizeof (delegate_backend), "htp");
+      }
+      g_print ("Using backend: %s\n", delegate_backend);
+      delegate_str = g_strdup_printf (
+        "QNNExternalDelegate,backend_type=%s;",
+        delegate_backend);
+      delegate_options = gst_structure_from_string (delegate_str, NULL);
       g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
       g_object_set (G_OBJECT (qtimlelement), "external-delegate-path",
@@ -525,6 +534,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_object_set (G_OBJECT (qtimlelement), "external-delegate-options",
           delegate_options, NULL);
       gst_structure_free (delegate_options);
+      g_free (delegate_str);
     } else {
       g_printerr ("Invalid Runtime Selected\n");
       goto error_clean_elements;
@@ -539,6 +549,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   // 2.9 Set the properties of waylandsink
+
   g_object_set (G_OBJECT (waylandsink), "sync", TRUE, NULL);
   g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
 
@@ -547,6 +558,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE, NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
+  g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
 
   // 2.11 Set the caps filter for detection_filter
   pad_filter = gst_caps_new_simple ("video/x-raw", NULL, NULL);

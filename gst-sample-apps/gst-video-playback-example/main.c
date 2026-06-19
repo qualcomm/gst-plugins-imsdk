@@ -20,7 +20,7 @@
 
 #define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*)(obj))
 
-#define DEFAULT_INPUT_FILESOURCE  "/etc/media/video.mp4"
+#define DEFAULT_INPUT_FILESOURCE  "/etc/media/video_avc.mp4"
 
 #define GST_APP_SUMMARY \
   "This application enables users to create and utilize a video pipeline " \

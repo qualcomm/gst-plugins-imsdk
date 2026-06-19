@@ -48,6 +48,7 @@
 #include <netinet/in.h>
 #include <net/if.h>
 #include <signal.h>
+#include "gst_sample_apps_utils.h"
 
 /* --- Configuration ------------------------------------------- */
 #define DEFAULT_WIDTH     1920
@@ -240,26 +241,38 @@ static void build_pipeline(char *out, size_t sz,
                             int output_type,
                             int width, int height)
 {
-    const char *caps_fmt =
-        "video/x-raw,format=NV12_Q08C,width=%d,height=%d,framerate=30/1";
+    int camx = is_camx_present();
 
     char caps[256];
-    snprintf(caps, sizeof(caps), caps_fmt, width, height);
+    if (camx)
+        snprintf(caps, sizeof(caps),
+            "video/x-raw,format=NV12_Q08C,width=%d,height=%d,framerate=30/1",
+            width, height);
+    else
+        snprintf(caps, sizeof(caps),
+            "video/x-raw,format=NV12,width=%d,height=%d,framerate=30/1,interlace-mode=progressive,colorimetry=bt601",
+            width, height);
+
+    char src[512];
+    if (camx)
+        snprintf(src, sizeof(src), "qtiqmmfsrc name=camsrc video_0::type=preview");
+    else
+        snprintf(src, sizeof(src), "libcamerasrc ! qtivtransform");
 
     switch (output_type) {
     case 0: /* Preview */
         snprintf(out, sz,
             "pipeline_create " PIPELINE_NAME
-            " \"qtiqmmfsrc name=camsrc video_0::type=preview"
+            " \"%s"
             " ! %s"
             " ! waylandsink fullscreen=true async=true sync=false\"",
-            caps);
+            src, caps);
         break;
 
     case 1: /* MP4 Encode */
         snprintf(out, sz,
             "pipeline_create " PIPELINE_NAME
-            " \"qtiqmmfsrc name=camsrc video_0::type=preview"
+            " \"%s"
             " ! %s"
             " ! queue"
             " ! v4l2h264enc capture-io-mode=4 output-io-mode=5 extra-controls=\\\"controls,video_bitrate=6000000;\\\""
@@ -268,16 +281,16 @@ static void build_pipeline(char *out, size_t sz,
             " ! mp4mux"
             " ! queue"
             " ! filesink location=/opt/output.mp4\"",
-            caps);
+            src, caps);
         break;
 
     case 2: /* YUV Dump */
         snprintf(out, sz,
             "pipeline_create " PIPELINE_NAME
-            " \"qtiqmmfsrc name=camsrc video_0::type=preview"
+            " \"%s"
             " ! %s"
             " ! filesink location=/opt/output.yuv\"",
-            caps);
+            src, caps);
         break;
 
     default:

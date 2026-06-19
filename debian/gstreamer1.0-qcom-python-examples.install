@@ -1,3 +1,6 @@
+usr/bin/gst-ai-audio-inference.py
+usr/bin/gst-ai-audio-postprocess.py
+usr/bin/gst-ai-audio-preprocess.py
 usr/bin/gst-ai-object-detection.py
 usr/bin/gst-camera-encode.py
 usr/bin/gst-camera-opencv-resize.py
@@ -14,6 +17,17 @@ usr/bin/gst-multi-camera-stream-example.py
 usr/bin/gst-opencv-transform.py
 usr/bin/gst-parallel-inference.py
 usr/bin/gst-rtspsrc-detection-display.py
+usr/bin/gst-ai-video-classification-and-detection.py
+usr/bin/gst-ai-video-classification.py
+usr/bin/gst-ai-video-daisychain-pose-estimation.py
+usr/bin/gst-ai-video-detection.py
+usr/bin/gst-ai-video-inference.py
+usr/bin/gst-ai-video-postprocess.py
+usr/bin/gst-ai-video-preprocess-crop.py
+usr/bin/gst-ai-video-preprocess.py
+usr/bin/gst-ai-video-segmentation.py
+usr/bin/gst-video-source.py
+usr/bin/gst_utils.py
 usr/bin/Qdemo
-usr/qdemo/Qdemo.gif /usr/share/qdemo/
-usr/qdemo/Qdemo.png /usr/share/qdemo/
+usr/share/qdemo/Qdemo.gif /usr/share/qdemo/
+usr/share/qdemo/Qdemo.png /usr/share/qdemo/

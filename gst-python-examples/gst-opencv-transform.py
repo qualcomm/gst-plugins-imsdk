@@ -17,7 +17,7 @@ gi.require_version('Gst', '1.0')
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
-DEFAULT_INPUT_FILESOURCE = "/etc/media/video.mp4"
+DEFAULT_INPUT_FILESOURCE = "/etc/media/video_avc.mp4"
 
 # Constants
 DESCRIPTION = """

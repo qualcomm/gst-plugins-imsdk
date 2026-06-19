@@ -108,8 +108,8 @@ class BYTETracker {
       float box1_x2, float box1_y2, float box2_x1, float box2_y1,
       float box2_x2, float box2_y2);
 
-  double lapjv(const vector<vector<float> > &cost, vector<uint32_t> &rowsol,
-      vector<uint32_t> &colsol, bool extend_cost = false,
+  double lapjv(const vector<vector<float> > &cost, vector<int32_t> &rowsol,
+      vector<int32_t> &colsol, bool extend_cost = false,
       float cost_limit = LONG_MAX, bool return_cost = true);
 
   void print_statistics();

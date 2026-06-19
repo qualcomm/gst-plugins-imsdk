@@ -32,7 +32,7 @@
 
 #include <gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILENAME "/etc/media/video.mp4"
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/camera_mutistream_out.mp4"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 #define DEFAULT_NUM_OF_STREAM 2
@@ -43,7 +43,7 @@
   "encoded stream. \n " \
   "\nCommand:\n" \
   "For Two Stream \n" \
-  "  gst-multi-stream-example -w 1920 -h 1080 -n 2 -o /etc/media/video.mp4 \n" \
+  "  gst-multi-stream-example -w 1920 -h 1080 -n 2 -o /etc/media/camera_mutistream_out.mp4 \n" \
   "\nOutput:\n" \
   "  Upon execution, application will generates output as preview and " \
   "encoded mp4 file."
@@ -324,7 +324,7 @@ main (gint argc, gchar *argv[])
       &appctx->stream_count, "num_of_streams", "Stream count for single camera" },
     { "output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
       "Output Filename",
-      "-o /etc/media/video.mp4" },
+      "-o /etc/media/video_mutistream_out.mp4" },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 
