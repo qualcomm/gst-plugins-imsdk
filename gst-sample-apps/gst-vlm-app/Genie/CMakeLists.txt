@@ -8,10 +8,6 @@ project(genie-vlm
 
 set(TARGET_NAME genie-vlm)
 
-set(TARGET_HEADERS
-  GenieVLM.h
-)
-
 # Include directories
 include_directories(${SYSROOT_INCDIR})
 
@@ -27,7 +23,6 @@ add_library(${TARGET_NAME} SHARED
 )
 
 set_target_properties(${TARGET_NAME} PROPERTIES
-  PUBLIC_HEADER "${TARGET_HEADERS}"
   VERSION ${PROJECT_VERSION}
   SOVERSION ${PROJECT_VERSION_MAJOR}
 )
