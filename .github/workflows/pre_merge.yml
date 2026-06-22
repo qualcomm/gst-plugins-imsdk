@@ -20,7 +20,8 @@ jobs:
 
       - name: Run build
         env:
-          SDK_URL: ${{ secrets.SDK_URL }}
+		  S3_WEBAPP_TOKEN: ${{ secrets.S3_WEBAPP_TOKEN }}
+		  SDK_OBJECT_URL: ${{ secrets.SDK_OBJECT_URL }}
         run: |
           chmod +x ci/build.sh
           ./ci/build.sh

@@ -5,7 +5,7 @@ echo "Checking disk space"
 df -h .
 
 echo "Downloading SDK"
-wget -O sdk.sh "$SDK_URL"
+wget --header="Authorization:${S3_WEBAPP_TOKEN}" -O sdk.sh "${SDK_OBJECT_URL}"
 
 echo "Installing SDK"
 chmod +x sdk.sh
