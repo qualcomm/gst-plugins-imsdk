@@ -15,3 +15,10 @@ usr/lib/${DEB_HOST_MULTIARCH}/libgstqtiutilsbase.so
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqtigfxbase.so
 usr/lib/${DEB_HOST_MULTIARCH}/libgstqticamerabase.so
 usr/lib/${DEB_HOST_MULTIARCH}/pkgconfig
+usr/share/gir-1.0/GstQtiVideo-1.0.gir
+usr/share/gir-1.0/GstQtiGfx-1.0.gir
+usr/share/gir-1.0/GstQtiMemory-1.0.gir
+usr/share/gir-1.0/GstQtiCv-1.0.gir
+usr/share/gir-1.0/GstQtiAllocators-1.0.gir
+usr/share/gir-1.0/GstQtiCommon-1.0.gir
+usr/share/gir-1.0/GstQtiML-1.0.gir

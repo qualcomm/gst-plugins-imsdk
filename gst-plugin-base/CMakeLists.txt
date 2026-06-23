@@ -6,8 +6,8 @@ project(gstreamer-qcom-oss-base-1.0
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-find_program(GIR_SCANNER "g-ir-scanner-wrapper")
-find_program(GIR_COMPILER "g-ir-compiler-wrapper")
+find_program(GIR_SCANNER NAMES "g-ir-scanner-wrapper" "g-ir-scanner")
+find_program(GIR_COMPILER NAMES "g-ir-compiler-wrapper" "g-ir-compiler")
 
 find_package(PkgConfig)
 find_package(Python3 3.12 COMPONENTS Interpreter Development)

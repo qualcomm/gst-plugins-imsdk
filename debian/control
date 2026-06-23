@@ -29,6 +29,9 @@ Build-Depends:
  libsnpe-dev,
  libqnn-dev,
  libqmmf-dev,
+ gobject-introspection,
+ python3-dev,
+ python-gi-dev,
 Standards-Version: 4.6.2
 
 Package: gstreamer1.0-plugins-qcom
