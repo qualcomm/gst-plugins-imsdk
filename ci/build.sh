@@ -25,3 +25,10 @@ cmake -B build -S . \
   -DENABLE_GST_CAMERA_PLUGINS=1
 
 cmake --build build
+
+echo "Creating install artifacts"
+mkdir -p artifacts
+DESTDIR="$(realpath artifacts)" cmake --install build --prefix /usr
+
+echo "Creating zip"
+zip -r artifacts.zip artifacts
