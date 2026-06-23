@@ -13,15 +13,18 @@ jobs:
   build:
     runs-on:
       group: GHA-Framework-Stg-SelfHosted-RG
-      labels: [self-hosted, framework-stg-u2404-x64-od-ephem]
+      labels:
+        - self-hosted
+        - framework-stg-u2404-x64-od-ephem
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Run build
         env:
-		  S3_WEBAPP_TOKEN: ${{ secrets.S3_WEBAPP_TOKEN }}
-		  SDK_OBJECT_URL: ${{ secrets.SDK_OBJECT_URL }}
+          S3_WEBAPP_TOKEN: ${{ secrets.S3_WEBAPP_TOKEN }}
+          SDK_OBJECT_URL: ${{ secrets.SDK_OBJECT_URL }}
         run: |
           chmod +x ci/build.sh
           ./ci/build.sh
