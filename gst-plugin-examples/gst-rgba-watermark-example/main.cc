@@ -509,7 +509,7 @@ main (gint argc, gchar *argv[])
       "Watermark entry (repeatable). "
       "Format: path=<file>,resolution=<w>x<h>,destination=<x>,<y>,<w>,<h>",
       "ENTRY" },
-    { "help-h", 'h', G_OPTION_FLAG_HIDDEN | G_OPTION_FLAG_NO_ARG,
+    { "help-h", 'h', G_OPTION_FLAG_HIDDEN,
       G_OPTION_ARG_NONE, &opt_show_help, NULL, NULL },
     { NULL }
   };
@@ -531,6 +531,16 @@ main (gint argc, gchar *argv[])
   if (!g_option_context_parse (ctx, &argc, &argv, &parse_error)) {
     g_printerr ("ERROR: %s\n", parse_error->message);
     g_error_free (parse_error);
+    g_option_context_free (ctx);
+    return 1;
+  }
+
+  // Reject unexpected positional arguments.
+  if (argc > 1) {
+    g_printerr ("ERROR: Unexpected argument: %s\n", argv[1]);
+    help_text = g_option_context_get_help (ctx, TRUE, NULL);
+    g_printerr ("%s", help_text);
+    g_free (help_text);
     g_option_context_free (ctx);
     return 1;
   }
