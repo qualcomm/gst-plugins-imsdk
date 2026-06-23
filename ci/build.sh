@@ -30,5 +30,5 @@ echo "Creating install artifacts"
 mkdir -p artifacts
 DESTDIR="$(realpath artifacts)" cmake --install build --prefix /usr
 
-echo "Creating zip"
-zip -r artifacts.zip artifacts
+echo "Creating archive"
+tar -czf artifacts.tar.gz artifacts
