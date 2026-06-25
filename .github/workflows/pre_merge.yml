@@ -28,3 +28,10 @@ jobs:
         run: |
           chmod +x ci/build.sh
           ./ci/build.sh
+      
+      - name: Upload artifacts to S3 bucket
+        uses: qualcomm-linux/upload-private-artifact-action@aws-v4
+        with:
+          path: ./artifacts.tar.gz
+          destination: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/
+          s3_bucket: qli-stg-framework-gh-artifacts
