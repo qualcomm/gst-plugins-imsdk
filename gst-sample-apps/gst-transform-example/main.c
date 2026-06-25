@@ -460,11 +460,13 @@ main (gint argc, gchar ** argv)
 
   GOptionEntry camera_entries[2] = {};
 
+  // Initialize GST library.
+  gst_init (&argc, &argv);
+
   GstElementFactory *libcamera_factory = gst_element_factory_find ("libcamerasrc");
   gboolean camera_is_available = is_camera_available () || (libcamera_factory != NULL);
   if (libcamera_factory)
       gst_object_unref (libcamera_factory);
-
   if (camera_is_available) {
     GOptionEntry temp_camera_entries[] = {
       {"input_width", 'W', 0, G_OPTION_ARG_INT, &app_ctx->input_width, "Width",
@@ -543,9 +545,6 @@ main (gint argc, gchar ** argv)
       return ret;
     }
   }
-
-  // Initialize GST library.
-  gst_init (&argc, &argv);
 
   // Create the pipeline
   app_ctx->pipeline = gst_pipeline_new ("gst-transform-example");
