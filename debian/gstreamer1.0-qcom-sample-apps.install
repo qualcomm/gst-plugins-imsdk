@@ -45,6 +45,7 @@ usr/bin/gst-video-playback-example
 usr/bin/gst-video-transcode-example
 usr/bin/gst-videocodec-concurrent-playback
 usr/bin/gst-weston-composition-example
+usr/bin/gst-webrtc-sendrecv-example
 usr/bin/GstD-camera-single-stream-example
 usr/bin/gst-ai-video-classification
 usr/bin/gst-ai-video-daisychain-pose-estimation

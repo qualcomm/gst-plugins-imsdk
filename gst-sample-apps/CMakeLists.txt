@@ -39,10 +39,6 @@ if (ENABLE_GST_SAMPLE_APPS)
       continue()
     endif()
 
-    if (dir MATCHES "gst-webrtc-sendrecv-example")
-      continue()
-    endif()
-
     add_subdirectory(${dir})
 
   endforeach()
