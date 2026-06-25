@@ -35,7 +35,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-
+#error "testing purpose"
 #include "videotransform.h"
 
 #include <gst/allocators/gstqtiallocator.h>
