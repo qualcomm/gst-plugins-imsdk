@@ -372,20 +372,20 @@ struct _GstC2TileLayout {
 
 struct _GstC2QuantInit {
   gboolean i_frames_enable;
-  guint32  i_frames;
+  gint32   i_frames;
   gboolean p_frames_enable;
-  guint32  p_frames;
+  gint32   p_frames;
   gboolean b_frames_enable;
-  guint32  b_frames;
+  gint32   b_frames;
 };
 
 struct _GstC2QuantRanges {
-  guint32 min_i_qp;
-  guint32 max_i_qp;
-  guint32 min_p_qp;
-  guint32 max_p_qp;
-  guint32 min_b_qp;
-  guint32 max_b_qp;
+  gint32 min_i_qp;
+  gint32 max_i_qp;
+  gint32 min_p_qp;
+  gint32 max_p_qp;
+  gint32 min_b_qp;
+  gint32 max_b_qp;
 };
 
 struct _GstC2QuantRectangle {
