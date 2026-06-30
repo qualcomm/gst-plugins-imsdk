@@ -1,4 +1,5 @@
-name: IMSDK UAT Compilation
+name: IMSDK_UAT_Compilation
+run-name: ${{ github.event_name == 'pull_request' && format('IMSDK UAT Compilation: #{0}', github.event.pull_request.number) || '' }}
 
 on:
   workflow_dispatch:

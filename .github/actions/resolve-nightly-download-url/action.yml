@@ -1,4 +1,4 @@
-name: Resolve wrynose nightly SDK URL
+name: Resolve wrynose nightly build URL
 description: >
   Finds the most recent wrynose nightly build where compile_sdk succeeded
   and outputs the download URL for the qcom-distro SDK toolchain installer.
