@@ -46,5 +46,8 @@ target_include_directories(c2engine_interface INTERFACE
 add_subdirectory(c2-engine)
 add_subdirectory(c2venc)
 add_subdirectory(c2vdec)
-add_subdirectory(c2aenc)
-add_subdirectory(c2adec)
+
+if (GST_ENABLE_AUDIO_PLUGINS)
+  add_subdirectory(c2aenc)
+  add_subdirectory(c2adec)
+endif () #GST_ENABLE_AUDIO_PLUGINS
