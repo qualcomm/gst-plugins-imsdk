@@ -1,12 +1,15 @@
 name: Resolve wrynose nightly build URL
 description: >
-  Finds the most recent wrynose nightly build where compile_sdk succeeded
-  and outputs the SDK toolchain URL plus a JSON map of image URLs for the
-  four target machines (qcom-distro, both multimedia and proprietary images).
+  Finds the most recent wrynose nightly build and resolves SDK/image artifact URLs
+  by checking latest run attempt first, then falling back attempt-by-attempt until
+  each artifact URL returns HTTP 200.
 
 inputs:
   token:
     description: GitHub token with read access to qualcomm-linux/meta-qcom
+    required: true
+  artifact-token:
+    description: Authorization token for Qualcomm artifact downloads
     required: true
 
 outputs:
@@ -16,10 +19,6 @@ outputs:
   image-urls:
     description: >
       JSON object mapping "<target>/<image-type>" to its download URL.
-      Keys: iq-9075-evk/multimedia, iq-9075-evk/proprietary,
-            iq-8275-evk/multimedia, iq-8275-evk/proprietary,
-            iq-615-evk/multimedia,  iq-615-evk/proprietary,
-            rb3gen2-core-kit/multimedia, rb3gen2-core-kit/proprietary
     value: ${{ steps.resolve.outputs.image-urls }}
 
 runs:
@@ -30,54 +29,124 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
+        ARTIFACT_TOKEN: ${{ inputs.artifact-token }}
       run: |
+        set -euo pipefail
+
         SDK_FILE="qcom-distro-x86_64-qcom-multimedia-proprietary-image-armv8a-qcom-armv8a-toolchain-2.0.sh"
         FILESERVER="https://qli-prod-artifacts.qualcomm.com/qcom-prd-gh-artifacts"
         WORKFLOW_ID="140524224"
-        TARGETS=("iq-9075-evk" "iq-8275-evk" "iq-615-evk" "rb3gen2-core-kit")
 
-        PAGE=1
+        TARGETS=(
+          "iq-9075-evk"
+          "iq-8275-evk"
+          "iq-615-evk"
+          "rb3gen2-core-kit"
+        )
+
+        url_exists() {
+          local URL="$1"
+          local STATUS=""
+
+          STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" \
+            -H "Authorization: ${ARTIFACT_TOKEN}" \
+            "$URL" || true)
+
+          [ "$STATUS" = "200" ]
+        }
+
+        resolve_artifact_url() {
+          local RUN_ID="$1"
+          local LATEST_ATTEMPT="$2"
+          local REL_PATH="$3"
+          local LABEL="$4"
+
+          local ATTEMPT="$LATEST_ATTEMPT"
+
+          while [ "$ATTEMPT" -ge 1 ]; do
+            local URL="${FILESERVER}/qualcomm-linux/meta-qcom/${RUN_ID}-${ATTEMPT}/${REL_PATH}"
+
+            echo "Checking ${LABEL} at attempt ${RUN_ID}-${ATTEMPT}" >&2
+            echo "Candidate URL: ${URL}" >&2
+
+            if url_exists "$URL"; then
+              echo "Found ${LABEL} at attempt ${RUN_ID}-${ATTEMPT}" >&2
+              echo "$URL"
+              return 0
+            fi
+
+            ATTEMPT=$((ATTEMPT - 1))
+          done
+
+          echo "::error::Unable to find ${LABEL} from attempt ${LATEST_ATTEMPT} down to 1 for run ${RUN_ID}" >&2
+          return 1
+        }
+
         RUN_ID=""
-        RUN_ATTEMPT=""
+        LATEST_ATTEMPT=""
+        PAGE=1
+
         while [ -z "$RUN_ID" ]; do
+          echo "Checking workflow runs page: ${PAGE}"
+
           RUNS=$(gh api \
             "repos/qualcomm-linux/meta-qcom/actions/workflows/${WORKFLOW_ID}/runs?per_page=20&page=${PAGE}" \
-            --jq '.workflow_runs[] | select(.head_branch=="wrynose") | [.id, .run_attempt, .conclusion] | @tsv')
+            --jq '.workflow_runs[]
+              | select(.head_branch=="wrynose")
+              | [.id, .run_attempt, .conclusion]
+              | @tsv')
+
           if [ -z "$RUNS" ]; then
-            echo "::error::No more wrynose nightly runs to check — compile_sdk never succeeded."
+            echo "::error::No more wrynose nightly runs found."
             exit 1
           fi
-          while IFS=$'\t' read -r _ID _ATTEMPT _CONCLUSION; do
-            if [ "$_CONCLUSION" = "null" ] || [ "$_CONCLUSION" = "cancelled" ]; then
+
+          while IFS=$'\t' read -r _RUN_ID _RUN_ATTEMPT _CONCLUSION; do
+            if [ -z "$_RUN_ID" ]; then
               continue
             fi
-            SDK_JOB_CONCLUSION=$(gh api \
-              "repos/qualcomm-linux/meta-qcom/actions/runs/${_ID}/jobs?per_page=100" \
-              --jq '.jobs[] | select(.name | contains("compile_sdk")) | .conclusion' 2>/dev/null || true)
-            if [ "$SDK_JOB_CONCLUSION" = "success" ]; then
-              RUN_ID="$_ID"
-              RUN_ATTEMPT="$_ATTEMPT"
-              echo "Using nightly run ${RUN_ID}-${RUN_ATTEMPT}"
-              break
+
+            if [ "$_CONCLUSION" = "null" ] || [ "$_CONCLUSION" = "cancelled" ]; then
+              echo "Skipping run ${_RUN_ID}, conclusion=${_CONCLUSION}"
+              continue
             fi
+
+            SDK_JOB_CONCLUSION=$(gh api \
+              "repos/qualcomm-linux/meta-qcom/actions/runs/${_RUN_ID}/jobs?per_page=100" \
+              --jq '.jobs[] | select(.name | contains("compile_sdk")) | .conclusion' 2>/dev/null || true)
+
+            if [ "$SDK_JOB_CONCLUSION" != "success" ]; then
+              echo "Skipping run ${_RUN_ID}, compile_sdk conclusion=${SDK_JOB_CONCLUSION}"
+              continue
+            fi
+
+            RUN_ID="$_RUN_ID"
+            LATEST_ATTEMPT="$_RUN_ATTEMPT"
+            echo "Using nightly run ${RUN_ID}-${LATEST_ATTEMPT}"
+            break
           done <<< "$RUNS"
-          [ -n "$RUN_ID" ] && break
+
+          if [ -n "$RUN_ID" ]; then
+            break
+          fi
+
           PAGE=$((PAGE + 1))
+
           if [ "$PAGE" -gt 10 ]; then
             echo "::error::Exhausted 10 pages of wrynose nightly runs without finding a successful compile_sdk."
             exit 1
           fi
         done
 
-        BASE="${FILESERVER}/qualcomm-linux/meta-qcom/${RUN_ID}-${RUN_ATTEMPT}"
-
+        BASE="${FILESERVER}/qualcomm-linux/meta-qcom/${RUN_ID}-${LATEST_ATTEMPT}"
         SDK_URL="${BASE}/qcom-distro-sdk/qcom-armv8a/${SDK_FILE}"
+
         echo "sdk-url=${SDK_URL}" >> "$GITHUB_OUTPUT"
         echo "SDK URL: ${SDK_URL}"
 
-        # Build JSON map of image URLs
         JSON="{"
         SEP=""
+
         for TARGET in "${TARGETS[@]}"; do
           for TYPE in multimedia proprietary; do
             if [ "$TYPE" = "proprietary" ]; then
@@ -85,12 +154,19 @@ runs:
             else
               FILENAME="qcom-multimedia-image-${TARGET}.rootfs.qcomflash.tar.gz"
             fi
-            URL="${BASE}/qcom-distro/${TARGET}/${FILENAME}"
-            JSON="${JSON}${SEP}\"${TARGET}/${TYPE}\":\"${URL}\""
+
+            REL_PATH="qcom-distro/${TARGET}/${FILENAME}"
+            LABEL="${TARGET}/${TYPE}"
+
+            IMAGE_URL=$(resolve_artifact_url "$RUN_ID" "$LATEST_ATTEMPT" "$REL_PATH" "$LABEL")
+
+            echo "Image URL [${LABEL}]: ${IMAGE_URL}"
+
+            JSON="${JSON}${SEP}\"${LABEL}\":\"${IMAGE_URL}\""
             SEP=","
-            echo "Image URL [${TARGET}/${TYPE}]: ${URL}"
           done
         done
+
         JSON="${JSON}}"
 
         echo "image-urls=${JSON}" >> "$GITHUB_OUTPUT"

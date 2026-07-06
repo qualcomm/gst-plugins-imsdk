@@ -26,6 +26,7 @@ jobs:
         uses: ./.github/actions/resolve-nightly-download-url
         with:
           token: ${{ secrets.QUALCOMM_LINUX_PAT }}
+          artifact-token: ${{ secrets.S3_WEBAPP_TOKEN }}
   build:
     needs: init
     runs-on:
