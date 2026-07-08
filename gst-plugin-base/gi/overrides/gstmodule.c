@@ -21,6 +21,7 @@ _gst_ml_frame_get_memory_view (PyObject * self, PyObject * args)
   GstMLFrame *mlframe = NULL;
   GstMapInfo *mapinfo = NULL;
   gint index = 0, flags = 0;
+  gsize size = 0;
 
   // Look up GstQtiML.Frame and Gst.MapInfo index parameters
   gst_ml_frame_type = pygobject_lookup_class (gst_ml_frame_get_type ());
@@ -40,8 +41,16 @@ _gst_ml_frame_get_memory_view (PyObject * self, PyObject * args)
   // Since Python does only support r/o or r/w it has to be changed to either.
   flags = (mapinfo->flags & GST_MAP_WRITE) ? PyBUF_WRITE : PyBUF_READ;
 
+  // Take memoryview with size without the additional padding.
+  size = gst_ml_info_tensor_size (&mlframe->info, index);
+
+  if (size > mapinfo->size) {
+    PyErr_SetString (PyExc_TypeError, "size mismatch!");
+    return NULL;
+  }
+
   py_mview =
-      PyMemoryView_FromMemory ((char *) mapinfo->data, mapinfo->size, flags);
+      PyMemoryView_FromMemory ((char *) mapinfo->data, size, flags);
 
   return py_mview;
 }
@@ -77,8 +86,7 @@ _gst_ml_keypoint_set_name (PyObject * self, PyObject * args)
 
   // Look up GstQtiML.Keypoint and str parameters
   py_keypoint_type = pygobject_lookup_class (gst_ml_keypoint_get_type ());
-  if (!PyArg_ParseTuple (args, "O!O", py_keypoint_type, &py_keypoint,
-          &py_str)) {
+  if (!PyArg_ParseTuple (args, "O!O", py_keypoint_type, &py_keypoint, &py_str)) {
     PyErr_BadArgument ();
     return NULL;
   }
