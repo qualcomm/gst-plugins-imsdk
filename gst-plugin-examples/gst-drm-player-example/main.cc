@@ -112,7 +112,8 @@ gst_app_context_free (GstAppContext * ctx)
 }
 
 static DrmContext*
-drm_ctx_new (DrmLicense license, gchar * header)
+drm_ctx_new (DrmLicense license, gchar * header,
+    const gchar * prov_url, const gchar * lic_url)
 {
   DrmContext *drmctx = NULL;
 
@@ -140,10 +141,10 @@ drm_ctx_new (DrmLicense license, gchar * header)
 
     case LICENSE_WIDEVINE:
 #ifdef ENABLE_WIDEVINE
-      drmctx = new WidevineContext (header);
+      drmctx = new WidevineContext (header, prov_url, lic_url);
 #else
       g_print ("Widevine CDM libs not present, can't proceed!\n");
-#endif
+#endif // ENABLE_WIDEVINE
       break;
 
     default:
@@ -1018,6 +1019,7 @@ main (gint argc, gchar *argv[])
   GError *err = NULL;
   gchar **args = NULL;
   gchar *mp4_pro_header = NULL, *header = NULL, *manifest_url = NULL;
+  gchar *cdm_prov_url = NULL, *cdm_lic_url = NULL;
   DrmLicense license = LICENSE_INVALID;
   guint bus_watch_id = 0, intrpt_watch_id = 0, stdin_watch_id = 0;
   gint status = -1;
@@ -1028,6 +1030,10 @@ main (gint argc, gchar *argv[])
   GOptionEntry options[] = {
       {"pro-header", 'p', 0, G_OPTION_ARG_STRING, &mp4_pro_header,
           "MP4 content PlayReady header", NULL},
+      {"cdm-prov", 0, 0, G_OPTION_ARG_STRING, &cdm_prov_url,
+          "Widevine CDM provisioning URL", NULL},
+      {"cdm-lic", 0, 0, G_OPTION_ARG_STRING, &cdm_lic_url,
+          "Widevine CDM license URL", NULL},
       {G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &args, NULL},
       {NULL}
   };
@@ -1094,7 +1100,9 @@ main (gint argc, gchar *argv[])
   }
 
   // If content is encrypted, create DrmContext context.
-  if (license != LICENSE_NONE && ((appctx->drmctx = drm_ctx_new (license, header)) == NULL)) {
+  if (license != LICENSE_NONE &&
+      ((appctx->drmctx = drm_ctx_new (license, header,
+          cdm_prov_url, cdm_lic_url)) == NULL)) {
     g_printerr ("ERROR: Couldn't create DRM context!\n");
     g_free (header);
     goto exit;
@@ -1153,6 +1161,8 @@ main (gint argc, gchar *argv[])
 exit:
   gst_app_context_free (appctx);
   g_free (mp4_pro_header);
+  g_free (cdm_prov_url);
+  g_free (cdm_lic_url);
   g_free (manifest_url);
 
   gst_deinit ();

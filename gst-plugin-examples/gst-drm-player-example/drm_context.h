@@ -62,6 +62,11 @@ class PlayreadyContext : public DrmContext {
 };
 
 #ifdef ENABLE_WIDEVINE
+// To be obtained and specified post Widevine license agreement.
+// These can be overridden at runtime via --cdm-prov and --cdm-lic options.
+#define CDM_PROV_URL           ""
+#define CDM_LIC_URL            ""
+
 class WidevineContext : public DrmContext, public widevine::Cdm::IEventListener {
   private:
     class WVStorageImpl : public widevine::Cdm::IStorage {
@@ -150,9 +155,15 @@ class WidevineContext : public DrmContext, public widevine::Cdm::IEventListener 
 
     widevine::Cdm                  *cdm_;
     std::promise<std::string>      on_message_;
+    std::string                    prov_url_;
+    std::string                    lic_url_;
 
   public:
-    WidevineContext(gchar * header) : DrmContext (header), cdm_ (nullptr) {
+    WidevineContext(gchar * header, const gchar * prov_url,
+        const gchar * lic_url) :
+        DrmContext (header), cdm_ (nullptr),
+        prov_url_ ((prov_url && *prov_url) ? prov_url : CDM_PROV_URL),
+        lic_url_ ((lic_url && *lic_url) ? lic_url : CDM_LIC_URL) {
       storage_impl = new WVStorageImpl();
       clock_impl = new WVClockImpl();
       timer_impl = new WVTimerImpl();

@@ -21,10 +21,6 @@
 #define LA_URL                 "https://test.playready.microsoft.com/service/" \
     "rightsmanager.asmx?cfg=(securestop:false,persist:false,sl:150)"
 
-// To be obtained and specified post Widevine license agreement.
-#define CDM_PROV_URL           ""
-#define CDM_LIC_URL            ""
-
 // To store license request and response data
 struct soapbuf {
   gchar   *pdata;
@@ -328,7 +324,7 @@ WidevineContext::FetchProvisioningResponse (std::string request)
   req_buf_size = request.length();
   req_buf = g_strndup (request.c_str(), req_buf_size);
 
-  url = g_strconcat ((const gchar *) CDM_PROV_URL, req_buf, NULL);
+  url = g_strconcat (prov_url_.c_str(), req_buf, NULL);
 
   http_header = curl_slist_append (http_header, "Host: www.googleapis.com");
   http_header = curl_slist_append (http_header, "Connection: close");
@@ -440,7 +436,7 @@ gint
 WidevineContext::FetchLicense ()
 {
   struct curl_slist *http_header = NULL;
-  gchar *url = (gchar *) CDM_LIC_URL;
+  gchar *url = (gchar *) lic_url_.c_str();
   gchar *req_buf = NULL;
   size_t req_buf_size;
 
