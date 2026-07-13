@@ -585,6 +585,16 @@ gst_venc_bin_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
     }
     break;
 
+  case GST_EVENT_EOS:
+    GST_VENC_BIN_LOCK (vencbin);
+    vencbin->eos = TRUE;
+    g_cond_signal (&vencbin->wakeup);
+    GST_VENC_BIN_UNLOCK (vencbin);
+    // Do NOT forward EOS downstream here. The worker task will forward
+    // it to the encoder after draining all queued frames.
+    gst_event_unref (event);
+    return TRUE;
+
   default:
     break;
   }
@@ -648,6 +658,39 @@ gst_venc_bin_sinkctrl_pad_event (GstPad * pad, GstObject * parent,
     }
     break;
 
+  case GST_EVENT_EOS:
+    // EOS on sink_ctrl must not be forwarded to the encoder.
+    // The encoder's EOS is managed solely by the worker task
+    // after draining main_frames via the sink pad EOS.
+    GST_INFO_OBJECT (vencbin, "Dropping EOS on sink_ctrl pad");
+    gst_event_unref (event);
+    return TRUE;
+
+  default:
+    break;
+  }
+
+  return gst_pad_event_default (pad, parent, event);
+}
+
+static gboolean
+gst_venc_bin_sinkml_pad_event (GstPad * pad, GstObject * parent,
+    GstEvent * event)
+{
+  GstVideoEncBin *vencbin = GST_VENC_BIN (parent);
+
+  GST_INFO_OBJECT (vencbin, "Received %s event: %p",
+      GST_EVENT_TYPE_NAME (event), event);
+
+  switch (GST_EVENT_TYPE (event)) {
+  case GST_EVENT_EOS:
+    // EOS on sink_ml must not be forwarded to the encoder.
+    // The encoder's EOS is managed solely by the worker task
+    // after draining main_frames via the sink pad EOS.
+    GST_INFO_OBJECT (vencbin, "Dropping EOS on sink_ml pad");
+    gst_event_unref (event);
+    return TRUE;
+
   default:
     break;
   }
@@ -701,7 +744,8 @@ gst_venc_bin_worker_task (gpointer user_data)
   GST_VENC_BIN_LOCK (vencbin);
 
   gst_data_queue_get_level (vencbin->main_frames, &queuelevel);
-  if (queuelevel.visible >= vencbin->min_buffers) {
+  guint threshold = vencbin->eos ? 1 : vencbin->min_buffers;
+  if (queuelevel.visible >= threshold) {
     if (!gst_data_queue_pop (vencbin->main_frames, &item)) {
       GST_INFO_OBJECT (vencbin, "buffers_queue flushing");
       GST_VENC_BIN_UNLOCK (vencbin);
@@ -809,8 +853,21 @@ gst_venc_bin_worker_task (gpointer user_data)
     }
 
     gst_object_unref (encoder_sink);
+  } else if (vencbin->eos) {
+    // Queue is empty and EOS was received — drain is complete.
+    // Forward EOS to the encoder now so it flushes its internal buffers.
+    GST_INFO_OBJECT (vencbin, "Queue drained on EOS, forwarding EOS to encoder");
+    encoder_sink = gst_element_get_static_pad (vencbin->encoder, "sink");
+    if (encoder_sink) {
+      GST_VENC_BIN_UNLOCK (vencbin);
+      gst_pad_send_event (encoder_sink, gst_event_new_eos ());
+      gst_object_unref (encoder_sink);
+      GST_VENC_BIN_LOCK (vencbin);
+    }
+    // Stop the task loop — nothing left to do.
+    gst_task_stop (vencbin->worktask);
   } else {
-    if (vencbin->active)
+    if (vencbin->active && !vencbin->eos)
       g_cond_wait (&vencbin->wakeup, GST_VENC_BIN_GET_LOCK (vencbin));
   }
 
@@ -904,6 +961,7 @@ gst_venc_bin_change_state (GstElement * element, GstStateChange transition)
       gst_venc_bin_stop_worker_task (vencbin);
       gst_data_queue_set_flushing (vencbin->ctrl_frames, TRUE);
       gst_data_queue_flush (vencbin->ctrl_frames);
+      vencbin->eos = FALSE;
       break;
     default:
       break;
@@ -1248,6 +1306,7 @@ gst_venc_bin_init (GstVideoEncBin * vencbin)
   vencbin->engine = NULL;
   vencbin->worktask = NULL;
   vencbin->active = FALSE;
+  vencbin->eos = FALSE;
   vencbin->syncframe_timestamps = NULL;
   vencbin->output_caps_processed = FALSE;
 
@@ -1302,6 +1361,8 @@ gst_venc_bin_init (GstVideoEncBin * vencbin)
   template = gst_static_pad_template_get (&gst_venc_bin_ml_sink_template);
   vencbin->sinkmlpad = gst_pad_new_from_template (template, "sink_ml");
   gst_object_unref (template);
+  gst_pad_set_event_function (vencbin->sinkmlpad,
+      GST_DEBUG_FUNCPTR (gst_venc_bin_sinkml_pad_event));
   gst_pad_set_chain_function (vencbin->sinkmlpad,
       GST_DEBUG_FUNCPTR (gst_venc_bin_ml_pad_chain));
 

@@ -104,6 +104,8 @@ struct _GstVideoEncBin
   /// GOP len to be invoked at specified HD stream PTS
   guint64           pending_gop_pts;
   guint             pending_gop_len;
+  // Indicates whether EOS has been received on the main sink pad.
+  gboolean          eos;
 };
 
 struct _GstVideoEncBinClass
