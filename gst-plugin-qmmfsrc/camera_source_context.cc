@@ -58,6 +58,7 @@ namespace camera = qmmf;
   g_mutex_unlock(GST_QMMF_CONTEXT_GET_LOCK(obj))
 
 #define GST_QMMF_CONTEXT_HFR_FPS_THRESHOLD 60
+#define GST_QMMF_CONTEXT_MAX_PHYSICAL_CAMERAS 16
 
 #define GST_CAT_DEFAULT qmmf_context_debug_category()
 static GstDebugCategory *
@@ -76,7 +77,7 @@ qmmf_context_debug_category (void)
 struct _GstQmmfLogicalCamInfo {
   gboolean        is_logical_cam;
   gint            phy_cam_num;
-  gchar*          phy_cam_name_list[16];
+  gchar*          phy_cam_name_list[GST_QMMF_CONTEXT_MAX_PHYSICAL_CAMERAS];
 };
 
 struct _GstQmmfCameraSwitchInfo {
@@ -1749,6 +1750,20 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
   return context;
 }
 
+static void
+gst_qmmf_context_clear_logical_cam_info (GstQmmfLogicalCamInfo *pinfo)
+{
+  if (pinfo->is_logical_cam == TRUE) {
+    for (int i = 0; i < pinfo->phy_cam_num; i++) {
+      g_free (pinfo->phy_cam_name_list[i]);
+      pinfo->phy_cam_name_list[i] = NULL;
+    }
+  }
+
+  pinfo->is_logical_cam = FALSE;
+  pinfo->phy_cam_num = 0;
+}
+
 void
 gst_qmmf_context_free (GstQmmfContext * context)
 {
@@ -1763,10 +1778,7 @@ gst_qmmf_context_free (GstQmmfContext * context)
   gst_structure_free (context->nrtuning);
   gst_structure_free (context->mwbsettings);
 
-  if (context->logical_cam_info.is_logical_cam == TRUE) {
-    for (int i = 0; i < context->logical_cam_info.phy_cam_num; i++)
-      g_free (context->logical_cam_info.phy_cam_name_list[i]);
-  }
+  gst_qmmf_context_clear_logical_cam_info (&context->logical_cam_info);
 
   g_mutex_lock (&context->metadata_lock);
 
@@ -1813,6 +1825,8 @@ gst_qmmf_context_parse_logical_cam_info (GstQmmfContext *context,
   camera_metadata_entry entry;
   GstQmmfLogicalCamInfo *pinfo = &context->logical_cam_info;
 
+  gst_qmmf_context_clear_logical_cam_info (pinfo);
+
   entry = meta.find (ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
 
   if (entry.count != 0) {
@@ -1842,6 +1856,13 @@ gst_qmmf_context_parse_logical_cam_info (GstQmmfContext *context,
         // data format example:
         // '0''\0''1''\0''2''\0'
         if (pids[i] == '\0') {
+          if (pinfo->phy_cam_num >= GST_QMMF_CONTEXT_MAX_PHYSICAL_CAMERAS) {
+            GST_WARNING ("Too many physical cameras in logical camera %d, "
+                "max supported is %d", context->camera_id,
+                GST_QMMF_CONTEXT_MAX_PHYSICAL_CAMERAS);
+            break;
+          }
+
           pinfo->phy_cam_name_list[pinfo->phy_cam_num] = g_strdup (pname);
           pinfo->phy_cam_num++;
           pname = (gchar *)&pids[i+1];
@@ -2072,6 +2093,8 @@ gst_qmmf_context_close (GstQmmfContext * context)
   status = recorder->StopCamera (context->camera_id);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder StopCamera Failed!");
+
+  gst_qmmf_context_clear_logical_cam_info (&context->logical_cam_info);
 
   context->state = GST_STATE_NULL;
 
