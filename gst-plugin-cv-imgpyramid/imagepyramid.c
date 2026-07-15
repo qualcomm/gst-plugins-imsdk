@@ -45,15 +45,6 @@ static GType gst_cv_request_get_type (void);
 #define GST_TYPE_CV_REQUEST  (gst_cv_request_get_type())
 #define GST_CV_REQUEST(obj) ((GstCvRequest *) obj)
 
-#if defined(HAVE_CVP_IMGPYRAMID_H)
-#define IMGPYRAMID_HW_UTILIZATION "CVP"
-#elif defined(HAVE_EVA_IMGPYRAMID_H)
-#define IMGPYRAMID_HW_UTILIZATION "EVA"
-#else
-#define IMGPYRAMID_HW_UTILIZATION "N/A"
-#endif
-
-
 /* Properties */
 enum
 {
@@ -92,9 +83,6 @@ struct _GstCvRequest
   GstBufferList *outbuffers;
   // Number of output frames.
   guint         n_outputs;
-
-  // Time it took for this request to be processed.
-  GstClockTime  time;
 };
 
 GST_DEFINE_MINI_OBJECT_TYPE (GstCvRequest, gst_cv_request);
@@ -252,8 +240,9 @@ gst_cv_imgpyramid_worker_task (gpointer userdata)
 
   if (gst_data_queue_peek (sinkpad->requests, &item)) {
     GstCvRequest *request = GST_CV_REQUEST (item->object);
+    GstClockTime time;
 
-    request->time = gst_util_get_timestamp ();
+    time = gst_util_get_timestamp ();
     success = gst_imgpyramid_engine_execute (imgpyramid->engine,
         request->inframe, request->outbuffers);
 
@@ -266,13 +255,11 @@ gst_cv_imgpyramid_worker_task (gpointer userdata)
       return;
     }
 
-    request->time = GST_CLOCK_DIFF (request->time, gst_util_get_timestamp ());
+    time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
     GST_LOG_OBJECT (imgpyramid, "Performance time %" G_GINT64_FORMAT ".%03"
-        G_GINT64_FORMAT " ms, HW utilization: %s",
-        GST_TIME_AS_MSECONDS (request->time),
-        (GST_TIME_AS_USECONDS (request->time) % 1000),
-        IMGPYRAMID_HW_UTILIZATION);
+        G_GINT64_FORMAT " ms, HW utilization: %s", GST_TIME_AS_MSECONDS (time),
+        (GST_TIME_AS_USECONDS (time) % 1000), HW_UTILIZATION);
 
     g_hash_table_foreach (imgpyramid->srcpads,
         (GHFunc) gst_cv_imgpyramid_push_output_buffer, request);

@@ -134,6 +134,9 @@ struct _GstMLVideoConverter {
   GstVideoConvEngine   *converter;
   GstVideoComposition  composition;
 
+  /// The type of hardware being utilized.
+  gchar                hw_util[10];
+
   /// Properties.
   GstConversionMode    mode;
   GstVideoConvBackend  backend;
@@ -141,8 +144,6 @@ struct _GstMLVideoConverter {
   GstVideoPixelLayout  pixlayout;
   GArray               *mean;
   GArray               *sigma;
-
-  gchar hw_util[10];
 };
 
 struct _GstMLVideoConverterClass {

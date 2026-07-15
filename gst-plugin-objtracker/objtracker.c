@@ -184,7 +184,7 @@ gst_objtracker_transform (GstBaseTransform *base, GstBuffer *inbuffer,
   success = gst_objtracker_algo_execute_text (objtracker->algo, input_text,
       &output_text);
 
-  g_free (input_text);
+  g_clear_pointer (&input_text, g_free);
 
   if (!success) {
     GST_ERROR_OBJECT (objtracker, "Failed to serialize output data!");

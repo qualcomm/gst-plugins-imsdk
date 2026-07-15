@@ -1038,11 +1038,11 @@ gst_video_composer_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_ENGINE_BACKEND:
       vcomposer->backend = g_value_get_enum (value);
-      if (vcomposer->backend == GST_VCE_BACKEND_GLES) {
-        g_strlcpy(vcomposer->hw_util, "GPU", sizeof(vcomposer->hw_util));
-      } else {
-        g_strlcpy(vcomposer->hw_util, "CPU", sizeof(vcomposer->hw_util));
-      }
+
+      if (vcomposer->backend == GST_VCE_BACKEND_GLES)
+        g_strlcpy (vcomposer->hw_util, "GPU", sizeof(vcomposer->hw_util));
+      else
+        g_strlcpy (vcomposer->hw_util, "CPU", sizeof(vcomposer->hw_util));
       break;
     case PROP_BACKGROUND:
       vcomposer->background = g_value_get_uint (value);
@@ -1168,11 +1168,10 @@ gst_video_composer_init (GstVideoComposer * vcomposer)
   vcomposer->backend = DEFAULT_PROP_ENGINE_BACKEND;
   vcomposer->background = DEFAULT_PROP_BACKGROUND;
 
-  if (vcomposer->backend == GST_VCE_BACKEND_GLES) {
-    g_strlcpy(vcomposer->hw_util, "GPU", sizeof(vcomposer->hw_util));
-  } else {
-    g_strlcpy(vcomposer->hw_util, "CPU", sizeof(vcomposer->hw_util));
-  }
+  if (vcomposer->backend == GST_VCE_BACKEND_GLES)
+    g_strlcpy (vcomposer->hw_util, "GPU", sizeof(vcomposer->hw_util));
+  else
+    g_strlcpy (vcomposer->hw_util, "CPU", sizeof(vcomposer->hw_util));
 
   GST_AGGREGATOR_PAD (GST_AGGREGATOR (vcomposer)->srcpad)->segment.position =
       GST_CLOCK_TIME_NONE;

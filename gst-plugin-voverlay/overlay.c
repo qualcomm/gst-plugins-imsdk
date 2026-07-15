@@ -2060,8 +2060,7 @@ gst_overlay_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
 
   GST_LOG_OBJECT (overlay, "Performance time %" G_GINT64_FORMAT ".%03"
       G_GINT64_FORMAT " ms, HW utilization: CPU, GPU",
-      GST_TIME_AS_MSECONDS (time),
-      (GST_TIME_AS_USECONDS (time) % 1000));
+      GST_TIME_AS_MSECONDS (time), (GST_TIME_AS_USECONDS (time) % 1000));
 
   GST_OBJECT_LOCK (overlay);
   overlay->latency = (time > overlay->latency) ? time : overlay->latency;

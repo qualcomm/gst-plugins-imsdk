@@ -67,13 +67,14 @@ struct _GstMLSnpe {
   /// Machine learning engine.
   GstMLSnpeEngine   *engine;
 
+  /// The type of hardware being utilized.
+  gchar             hw_util[10];
+
   GstMLInfo         *ininfo;
   GstMLInfo         *outinfo;
 
   /// Properties.
   GstMLSnpeSettings settings;
-
-  gchar hw_util[10];
 };
 
 struct _GstMLSnpeClass {

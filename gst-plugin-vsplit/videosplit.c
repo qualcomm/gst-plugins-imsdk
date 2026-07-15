@@ -1320,11 +1320,11 @@ gst_video_split_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_ENGINE_BACKEND:
       vsplit->backend = g_value_get_enum (value);
-        if (vsplit->backend == GST_VCE_BACKEND_GLES) {
-          g_strlcpy(vsplit->hw_util, "GPU", sizeof(vsplit->hw_util));
-        } else {
-          g_strlcpy(vsplit->hw_util, "CPU", sizeof(vsplit->hw_util));
-        }
+
+      if (vsplit->backend == GST_VCE_BACKEND_GLES)
+        g_strlcpy (vsplit->hw_util, "GPU", sizeof(vsplit->hw_util));
+      else
+        g_strlcpy (vsplit->hw_util, "CPU", sizeof(vsplit->hw_util));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1414,11 +1414,10 @@ gst_video_split_init (GstVideoSplit * vsplit)
 
   vsplit->backend = DEFAULT_PROP_ENGINE_BACKEND;
 
-  if (vsplit->backend == GST_VCE_BACKEND_GLES) {
-    g_strlcpy(vsplit->hw_util, "GPU", sizeof(vsplit->hw_util));
-  } else {
-    g_strlcpy(vsplit->hw_util, "CPU", sizeof(vsplit->hw_util));
-  }
+  if (vsplit->backend == GST_VCE_BACKEND_GLES)
+    g_strlcpy (vsplit->hw_util, "GPU", sizeof(vsplit->hw_util));
+  else
+    g_strlcpy (vsplit->hw_util, "CPU", sizeof(vsplit->hw_util));
 
   template = gst_video_split_sink_template ();
   vsplit->sinkpad = g_object_new (GST_TYPE_VIDEO_SPLIT_SINKPAD, "name", "sink",

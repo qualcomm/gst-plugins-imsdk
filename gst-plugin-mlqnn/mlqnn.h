@@ -44,14 +44,15 @@ struct _GstMLQnn {
 
   GstMLQnnEngine    *engine;
 
+  /// The type of hardware being utilized.
+  gchar             hw_util[10];
+
   /// Properties.
   gchar             *model;
   gchar             *backend;
   gchar             *syslib;
   guint             backend_device_id;
   GList             *outputs;
-
-  gchar hw_util[10];
 };
 
 struct _GstMLQnnClass {

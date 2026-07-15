@@ -2512,8 +2512,7 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
 
   GST_LOG_OBJECT (mlconverter, "Performance time %" G_GINT64_FORMAT ".%03"
       G_GINT64_FORMAT " ms, HW utilization: %s", GST_TIME_AS_MSECONDS (time),
-      (GST_TIME_AS_USECONDS (time) % 1000),
-      mlconverter->hw_util);
+      (GST_TIME_AS_USECONDS (time) % 1000), mlconverter->hw_util);
 
   return GST_FLOW_OK;
 }
@@ -2530,11 +2529,11 @@ gst_ml_video_converter_set_property (GObject * object, guint prop_id,
       break;
     case PROP_ENGINE_BACKEND:
       mlconverter->backend = g_value_get_enum (value);
-      if (mlconverter->backend == GST_VCE_BACKEND_GLES) {
-        g_strlcpy(mlconverter->hw_util, "GPU", sizeof(mlconverter->hw_util));
-      } else {
-        g_strlcpy(mlconverter->hw_util, "CPU", sizeof(mlconverter->hw_util));
-      }
+
+      if (mlconverter->backend == GST_VCE_BACKEND_GLES)
+        g_strlcpy (mlconverter->hw_util, "GPU", sizeof(mlconverter->hw_util));
+      else
+        g_strlcpy (mlconverter->hw_util, "CPU", sizeof(mlconverter->hw_util));
       break;
     case PROP_IMAGE_DISPOSITION:
       mlconverter->disposition = g_value_get_enum (value);
@@ -2775,11 +2774,10 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
   mlconverter->mean = g_array_new (FALSE, FALSE, sizeof (gdouble));
   mlconverter->sigma = g_array_new (FALSE, FALSE, sizeof (gdouble));
 
-  if (mlconverter->backend == GST_VCE_BACKEND_GLES) {
-    g_strlcpy(mlconverter->hw_util, "GPU", sizeof(mlconverter->hw_util));
-  } else {
-    g_strlcpy(mlconverter->hw_util, "CPU", sizeof(mlconverter->hw_util));
-  }
+  if (mlconverter->backend == GST_VCE_BACKEND_GLES)
+    g_strlcpy (mlconverter->hw_util, "GPU", sizeof(mlconverter->hw_util));
+  else
+    g_strlcpy (mlconverter->hw_util, "CPU", sizeof(mlconverter->hw_util));
 
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (mlconverter), TRUE);

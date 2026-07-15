@@ -180,7 +180,7 @@ gst_drm_decryptor_sinkpad_chain (GstPad *pad, GstObject *parent, GstBuffer *in_b
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
   GST_LOG_OBJECT (decryptor, "Performance time %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms, HW utilization: CPU", GST_TIME_AS_MSECONDS (time),
+      G_GINT64_FORMAT " ms, HW utilization: DSP", GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
 
   return gst_pad_push (decryptor->srcpad, out_buffer);

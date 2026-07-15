@@ -525,10 +525,8 @@ gst_ml_qnn_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
   GST_LOG_OBJECT (mlqnn, "Performance time %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms, HW utilization: %s",
-      GST_TIME_AS_MSECONDS (time),
-      (GST_TIME_AS_USECONDS (time) % 1000),
-      mlqnn->hw_util);
+      G_GINT64_FORMAT " ms, HW utilization: %s", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000), mlqnn->hw_util);
 
   return GST_FLOW_OK;
 }
@@ -543,13 +541,19 @@ gst_ml_qnn_set_property (GObject * object, guint property_id,
     case PROP_QNN_BACKEND:
       g_free (mlqnn->backend);
       mlqnn->backend = g_strdup (g_value_get_string (value));
-      if (g_strrstr (mlqnn->backend, "Cpu")) {
+
+      if (g_strrstr (mlqnn->backend, "Cpu"))
         g_strlcpy (mlqnn->hw_util, "CPU", sizeof (mlqnn->hw_util));
-      } else if (g_strrstr (mlqnn->backend, "Gpu")) {
+      else if (g_strrstr (mlqnn->backend, "Gpu"))
         g_strlcpy (mlqnn->hw_util, "GPU", sizeof (mlqnn->hw_util));
-      } else {
+      else if (g_strrstr (mlqnn->backend, "Dsp"))
+        g_strlcpy (mlqnn->hw_util, "DSP", sizeof (mlqnn->hw_util));
+      else if (g_strrstr (mlqnn->backend, "Htp"))
         g_strlcpy (mlqnn->hw_util, "NPU", sizeof (mlqnn->hw_util));
-      }
+      else if (g_strrstr (mlqnn->backend, "Hta"))
+        g_strlcpy (mlqnn->hw_util, "NPU", sizeof (mlqnn->hw_util));
+      else
+        g_strlcpy (mlqnn->hw_util, "N/A", sizeof (mlqnn->hw_util));
       break;
     case PROP_QNN_MODEL:
       g_free (mlqnn->model);

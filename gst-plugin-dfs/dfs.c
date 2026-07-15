@@ -551,8 +551,6 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
   GstMapInfo out_info0;
   GstClockTime time = GST_CLOCK_TIME_NONE;
 
-  time = gst_util_get_timestamp ();
-
   vmeta = gst_buffer_get_video_meta (inbuffer);
 
   //Check if Engine has been init already
@@ -578,6 +576,8 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
       return GST_FLOW_ERROR;
     }
   }
+
+  time = gst_util_get_timestamp ();
 
   if (!gst_video_frame_map (&inframe, dfs->ininfo, inbuffer,
           (GstMapFlags) (GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {

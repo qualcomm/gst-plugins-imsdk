@@ -67,6 +67,9 @@ struct _GstMLTFLite {
   /// Machine learning engine.
   GstMLTFLiteEngine   *engine;
 
+  /// The type of hardware being utilized.
+  gchar               hw_util[10];
+
   GstMLInfo           *ininfo;
   GstMLInfo           *outinfo;
 
@@ -79,8 +82,6 @@ struct _GstMLTFLite {
   GstMLTFLiteDelegate delegate;
   GstMLTFLitePriority priority;
   guint               n_threads;
-
-  gchar hw_util[10];
 };
 
 struct _GstMLTFLiteClass {

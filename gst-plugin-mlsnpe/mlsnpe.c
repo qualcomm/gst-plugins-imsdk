@@ -533,8 +533,7 @@ gst_ml_snpe_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   GST_LOG_OBJECT (snpe, "Performance time %" G_GINT64_FORMAT ".%03"
       G_GINT64_FORMAT " ms, HW utilization: %s", GST_TIME_AS_MSECONDS (time),
-      (GST_TIME_AS_USECONDS (time) % 1000),
-      snpe->hw_util);
+      (GST_TIME_AS_USECONDS (time) % 1000), snpe->hw_util);
 
   return GST_FLOW_OK;
 }
@@ -552,15 +551,17 @@ gst_ml_snpe_set_property (GObject * object, guint prop_id,
       break;
     case PROP_DELEGATE:
       snpe->settings.delegate = g_value_get_enum (value);
-      if (snpe->settings.delegate == GST_ML_SNPE_DELEGATE_NONE) {
-        g_strlcpy(snpe->hw_util, "CPU", sizeof(snpe->hw_util));
-      } else if (snpe->settings.delegate == GST_ML_SNPE_DELEGATE_GPU) {
-        g_strlcpy(snpe->hw_util, "GPU", sizeof(snpe->hw_util));
-      } else if (snpe->settings.delegate == GST_ML_SNPE_DELEGATE_DSP) {
-        g_strlcpy(snpe->hw_util, "DSP", sizeof(snpe->hw_util));
-      } else if (snpe->settings.delegate == GST_ML_SNPE_DELEGATE_AIP) {
-        g_strlcpy(snpe->hw_util, "AIP", sizeof(snpe->hw_util));
-      }
+
+      if (snpe->settings.delegate == GST_ML_SNPE_DELEGATE_NONE)
+        g_strlcpy (snpe->hw_util, "CPU", sizeof(snpe->hw_util));
+      else if (snpe->settings.delegate == GST_ML_SNPE_DELEGATE_GPU)
+        g_strlcpy (snpe->hw_util, "GPU", sizeof(snpe->hw_util));
+      else if (snpe->settings.delegate == GST_ML_SNPE_DELEGATE_DSP)
+        g_strlcpy (snpe->hw_util, "DSP", sizeof(snpe->hw_util));
+      else if (snpe->settings.delegate == GST_ML_SNPE_DELEGATE_AIP)
+        g_strlcpy (snpe->hw_util, "AIP", sizeof(snpe->hw_util));
+      else
+        g_strlcpy (snpe->hw_util, "N/A", sizeof(snpe->hw_util));
       break;
     case PROP_PERF_PROFILE:
       snpe->settings.perf_profile = g_value_get_enum (value);

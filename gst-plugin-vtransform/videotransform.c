@@ -1748,11 +1748,11 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_ENGINE_BACKEND:
       vtrans->backend = g_value_get_enum (value);
-      if (vtrans->backend == GST_VCE_BACKEND_GLES) {
-        g_strlcpy(vtrans->hw_util, "GPU", sizeof(vtrans->hw_util));
-      } else {
-        g_strlcpy(vtrans->hw_util, "CPU", sizeof(vtrans->hw_util));
-      }
+
+      if (vtrans->backend == GST_VCE_BACKEND_GLES)
+        g_strlcpy (vtrans->hw_util, "GPU", sizeof(vtrans->hw_util));
+      else
+        g_strlcpy (vtrans->hw_util, "CPU", sizeof(vtrans->hw_util));
       break;
     case PROP_BACKEND_PARAM:
     {
@@ -2054,11 +2054,10 @@ gst_video_transform_init (GstVideoTransform * vtrans)
   vtrans->destination.w = DEFAULT_PROP_DESTINATION_WIDTH;
   vtrans->destination.h = DEFAULT_PROP_DESTINATION_HEIGHT;
 
-  if (vtrans->backend == GST_VCE_BACKEND_GLES) {
-    g_strlcpy(vtrans->hw_util, "GPU", sizeof(vtrans->hw_util));
-  } else {
-    g_strlcpy(vtrans->hw_util, "CPU", sizeof(vtrans->hw_util));
-  }
+  if (vtrans->backend == GST_VCE_BACKEND_GLES)
+    g_strlcpy (vtrans->hw_util, "GPU", sizeof(vtrans->hw_util));
+  else
+    g_strlcpy (vtrans->hw_util, "CPU", sizeof(vtrans->hw_util));
 
   vtrans->ininfo = NULL;
   vtrans->outinfo = NULL;
