@@ -86,7 +86,16 @@ gst_gbm_qcom_backend_is_supported (void)
     }
 
     if (success) {
-      fd = open ("/dev/dri/renderD128", O_RDONLY | O_CLOEXEC);
+      fd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
+
+      // Fallback to /dev/dma_heap/system
+      if (fd < 0)
+        fd = open ("/dev/dma_heap/system", O_RDONLY | O_CLOEXEC);
+
+      // Fallback to ION
+      if (fd < 0)
+        fd = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
+
       success = (fd >= 0) ? TRUE : FALSE;
     }
 
