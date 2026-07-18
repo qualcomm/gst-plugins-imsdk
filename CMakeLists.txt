@@ -55,6 +55,7 @@ option(ENABLE_GST_PLUGIN_OBJTRACKER "Enable gst-plugin-objtracker" ${ENABLE_GST_
 option(ENABLE_GST_PLUGIN_RESTRICTED_ZONE "Enable gst-plugin-restricted-zone" ${ENABLE_GST_ML_PLUGINS})
 
 # QAIRT Plugins
+option(ENABLE_GST_PLUGIN_MLQAIRT "Enable gst-plugin-mlqairt" ${ENABLE_GST_QAIRT_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLQNN "Enable gst-plugin-mlqnn" ${ENABLE_GST_QAIRT_PLUGINS})
 option(ENABLE_GST_PLUGIN_MLSNPE "Enable gst-plugin-mlsnpe" ${ENABLE_GST_QAIRT_PLUGINS})
 
@@ -160,6 +161,7 @@ add_plugin_if(ENABLE_GST_PLUGIN_MLDEMUX         gst-plugin-mldemux)
 add_plugin_if(ENABLE_GST_PLUGIN_MLMETAEXTRACTOR gst-plugin-mlmetaextractor)
 add_plugin_if(ENABLE_GST_PLUGIN_MLMETAPARSER    gst-plugin-mlmetaparser)
 add_plugin_if(ENABLE_GST_PLUGIN_MLPOSTPROCESS   gst-plugin-mlpostprocess)
+add_plugin_if(ENABLE_GST_PLUGIN_MLQAIRT         gst-plugin-mlqairt)
 add_plugin_if(ENABLE_GST_PLUGIN_MLQNN           gst-plugin-mlqnn)
 add_plugin_if(ENABLE_GST_PLUGIN_MLSNPE          gst-plugin-mlsnpe)
 add_plugin_if(ENABLE_GST_PLUGIN_MLTFLITE        gst-plugin-mltflite)
