@@ -85,6 +85,7 @@ add_library(${GST_CAMSRC_PLUGIN} SHARED
   camera_source_image_pad.c
   camera_source_utils.cc
   camera_source_context.cc
+  camera_source_device.cc
 )
 
 # Add target specific precompiler defintions.

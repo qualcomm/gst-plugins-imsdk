@@ -49,6 +49,7 @@
 #include "camera_source_image_pad.h"
 #include "camera_source_video_pad.h"
 #include "camera_source_context.h"
+#include "camera_source_device.h"
 
 // Declare static GstDebugCategory variable for qmmfsrc.
 GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
@@ -2366,10 +2367,37 @@ gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data)
   iface->get_children_count = gst_qmmsrc_child_proxy_get_children_count;
 }
 
+// GStreamer's gst_value_compare() emits a "unable to compare values of type
+// gpointer" critical when no GstValueCompareFunc is registered for a value
+// type. The metadata properties (video/image/static/session-metadata) are
+// G_TYPE_POINTER, and gst-device-monitor / gst-inspect compare them while
+// building the launch hint. Register a compare function for G_TYPE_POINTER
+// (pointer equality) so the comparison succeeds cleanly.
+static gint
+gst_qmmf_pointer_compare (const GValue * value1, const GValue * value2)
+{
+  gpointer p1 = g_value_get_pointer (value1);
+  gpointer p2 = g_value_get_pointer (value2);
+  return (p1 == p2) ? GST_VALUE_EQUAL : GST_VALUE_UNORDERED;
+}
+
+// GstValue compare table for G_TYPE_POINTER. Registered in plugin_init() so
+// gst_value_compare() can compare the pointer metadata properties without
+// Critical log.
+static const
+GstValueTable qmmf_pointer_value_table = {
+  G_TYPE_POINTER,
+  gst_qmmf_pointer_compare,
+  NULL,
+  NULL,
+};
+
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
   gboolean ret = TRUE;
+
+  gst_value_register (&qmmf_pointer_value_table);
 
   // Primary element name: qticamsrc
   ret &= gst_element_register (plugin, "qticamsrc", GST_RANK_PRIMARY,
@@ -2378,6 +2406,11 @@ plugin_init (GstPlugin * plugin)
   // Backward-compatible alias: qtiqmmfsrc (rank NONE so it is not auto-selected)
   ret &= gst_element_register (plugin, "qtiqmmfsrc", GST_RANK_NONE,
       GST_TYPE_QMMFSRC);
+
+  // Register the device provider so gst-device-monitor-1.0 can enumerate
+  // the cameras.
+  ret &= gst_device_provider_register (plugin, "qticamsrcdeviceprovider",
+      GST_RANK_PRIMARY, GST_TYPE_QMMFSRC_DEVICE_PROVIDER);
 
   return ret;
 }
