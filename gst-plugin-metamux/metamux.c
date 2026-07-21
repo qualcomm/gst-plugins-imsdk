@@ -1524,20 +1524,17 @@ gst_metamux_data_sink_pad_event (GstPad * pad, GstObject * parent,
       return TRUE;
     }
     case GST_EVENT_FLUSH_START:
+    case GST_EVENT_EOS:
     {
       GstMetaMux *muxer = GST_METAMUX (parent);
 
       GST_METAMUX_LOCK (muxer);
-      // Flushing flag has been already set, just notify the worker task.
       g_cond_signal (&(muxer)->wakeup);
       GST_METAMUX_UNLOCK (muxer);
 
       gst_event_unref (event);
       return TRUE;
     }
-    case GST_EVENT_EOS:
-      gst_event_unref (event);
-      return TRUE;
     case GST_EVENT_FLUSH_STOP:
     case GST_EVENT_SEGMENT:
     case GST_EVENT_GAP:
