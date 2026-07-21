@@ -123,7 +123,7 @@ gst_appsrc_need_data (GstElement *appsrc, guint size, gpointer userdata)
   item->destroy (item);
 
   if (GST_BUFFER_TIMESTAMP_IS_VALID (buffer)) {
-    if (sinkpad->last_timestamp != 0) {
+    if (sinkpad->last_timestamp != GST_CLOCK_TIME_NONE) {
       duration = GST_BUFFER_PTS (buffer) - sinkpad->last_timestamp;
     }
     sinkpad->last_timestamp = GST_BUFFER_PTS (buffer);
@@ -187,7 +187,7 @@ gst_rtsp_factory_media_configure (GstRTSPMediaFactory * factory,
 
     // Reset timestamps
     sinkpad->current_timestamp = 0;
-    sinkpad->last_timestamp = 0;
+    sinkpad->last_timestamp = GST_CLOCK_TIME_NONE;
 
     idx++;
 
