@@ -1,9 +1,12 @@
+cmake_minimum_required(VERSION 3.16)
 pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 
-set(GST_QTI_META_MODULE meta-transform-roi-label-moving-average)
+add_subdirectory(auto-framing-stabilization)
+
+set(GST_QTI_META_MODULE meta-transform-roi-person-merge)
 
 add_library(${GST_QTI_META_MODULE} SHARED
-  meta-transform-roi-label-moving-average.c
+  meta-transform-roi-person-merge.c
 )
 
 target_include_directories(${GST_QTI_META_MODULE} PUBLIC
@@ -27,10 +30,10 @@ install(
               WORLD_EXECUTE WORLD_READ
 )
 
-set(GST_QTI_META_MODULE meta-transform-roi-person-merge)
+set(GST_QTI_META_MODULE meta-transform-roi-label-moving-average)
 
 add_library(${GST_QTI_META_MODULE} SHARED
-  meta-transform-roi-person-merge.c
+  meta-transform-roi-label-moving-average.c
 )
 
 target_include_directories(${GST_QTI_META_MODULE} PUBLIC
@@ -69,6 +72,34 @@ target_link_libraries(${GST_QTI_META_MODULE} PRIVATE
   ${GST_VIDEO_LIBRARIES}
   gstqtiutilsbase
   gstqtivideobase
+)
+
+install(
+  TARGETS ${GST_QTI_META_MODULE}
+  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/imsdk/qtimetatransform/modules
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
+)
+
+set(GST_QTI_META_MODULE meta-transform-roi-auto-framing)
+
+add_library(${GST_QTI_META_MODULE} SHARED
+  meta-transform-roi-auto-framing.c
+)
+
+target_include_directories(${GST_QTI_META_MODULE} PUBLIC
+  ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
+  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
+)
+
+target_link_libraries(${GST_QTI_META_MODULE} PRIVATE
+  ${GST_LIBRARIES}
+  ${GST_VIDEO_LIBRARIES}
+  ${GST_QCOM_UTILS_LIBRARIES}
+  ${GST_QCOM_VIDEO_LIBRARIES}
+  qtiafralgo
 )
 
 install(
