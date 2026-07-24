@@ -238,7 +238,8 @@ receive_socket_message (gint sock, GstPayloadInfo * pl_info, int msg_flags)
     gpointer iterator = io_buf + offset;
     gint size = get_payload_size (iterator);
 
-    if (size == -1) {
+    // Ensure the full payload lies within the received buffer
+    if (size == -1 || offset + size > recv_len) {
       break;
     }
 
@@ -288,11 +289,19 @@ receive_socket_message (gint sock, GstPayloadInfo * pl_info, int msg_flags)
 
   if ((pl_info->fds != NULL) && (pl_info->fd_count != NULL) &&
       (GST_PL_INFO_GET_N_FDS (pl_info) > 0)) {
-    struct cmsghdr *cmsg = CMSG_FIRSTHDR (&msg);
+    gint n_fds = GST_PL_INFO_GET_N_FDS (pl_info);
 
+    // Invalid fd count, drop message
+    if (n_fds > GST_MAX_MEM_BLOCKS) {
+      GST_ERROR ("Invalid fd count %d in received message, dropping message",
+          n_fds);
+      return -1;
+    }
+
+    struct cmsghdr *cmsg = CMSG_FIRSTHDR (&msg);
     if (cmsg) {
       memmove (pl_info->fds, CMSG_DATA (cmsg),
-          ((sizeof (gint)) * (GST_PL_INFO_GET_N_FDS (pl_info))));
+          ((sizeof (gint)) * n_fds));
     }
   }
 
