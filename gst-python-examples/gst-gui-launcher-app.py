@@ -15,12 +15,34 @@ import signal
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gio, Gdk, GdkPixbuf, GLib
 
+# Define the base directory for all qdemo artifacts under $HOME/qdemo
+QDEMO_HOME = os.path.join(os.path.expanduser("~"), "qdemo")
+QDEMO_MODELS_DIR = os.path.join(QDEMO_HOME, "models")
+QDEMO_LABELS_DIR = os.path.join(QDEMO_HOME, "labels")
+QDEMO_MEDIA_DIR = os.path.join(QDEMO_HOME, "media")
+
+# Maximum number of /dev/videoN nodes to probe when searching for a USB camera.
+MAX_VIDEO_DEVICES = 32
+
+def setup_qdemo_dirs():
+    """Create the qdemo directory structure under $HOME if it doesn't exist."""
+    os.makedirs(QDEMO_MODELS_DIR, exist_ok=True)
+    os.makedirs(QDEMO_LABELS_DIR, exist_ok=True)
+    os.makedirs(QDEMO_MEDIA_DIR, exist_ok=True)
+
 class DemoWindow(Gtk.Window):
     def __init__(self):
         """Create Demo window"""
         super().__init__()
 
+        self.process = None
+
+        # Ensure qdemo directories exist
+        setup_qdemo_dirs()
+
         # Initialize attributes
+        self.popup = None
+        self.wifi_popup = None
         self.check_download = None
         self.download_artifacts = False
         self.ssid = None
@@ -133,6 +155,30 @@ class DemoWindow(Gtk.Window):
         # Set the default active application
         self.application_select.set_active(3)
 
+        # Application descriptions dictionary
+        self.app_descriptions = {
+            "Record live video": "Records camera feed and saves video to local storage.",
+            "DashCamera": "Simultaneous streaming from two camera sensors.",
+            "VideoWall": "Multichannel video decoding and composition. Creates four instances of a video. Requires 'Record live video' to be executed first.",
+            "ObjectDetection": "Object detection on input streams from a camera using YOLOX model.",
+            "Parallel-AI-Fusion": "Parallel AI inferences (Detection, Classification, Pose estimation and Segmentation) from a camera.",
+            "Face Detection": "Face detection on input streams from a camera.",
+            "Daisychain Pose": "Daisychain of detection and pose estimation from a camera.",
+            "Multistream": "Multistream inference from a camera and 3 file streams.",
+            "VideoTestSrc": "Displays a test video pattern (no camera required)."
+        }
+
+        # Create a description label that updates when the user selects an application
+        self.desc_label = Gtk.Label(label="Description:")
+        self.desc_value = Gtk.Label()
+        self.desc_value.set_line_wrap(True)
+        self.desc_value.set_max_width_chars(40)
+        self.desc_value.set_xalign(0)
+        self.desc_value.set_text(self.app_descriptions.get("ObjectDetection", ""))
+
+        # Connect application selection change to update description
+        self.application_select.connect("changed", self.on_application_changed)
+
         # Create a "Start" button
         self.start = Gtk.Button.new_with_label("Start")
         self.start.connect("clicked", self.on_start_button_clicked)
@@ -151,27 +197,39 @@ class DemoWindow(Gtk.Window):
         grid.attach(self.src_select, 1, 3, 1, 1)
         grid.attach(self.application_select, 1, 4, 1, 1)
 
+        # Attach the description label and value to the grid
+        grid.attach(self.desc_label, 0, 5, 1, 1)
+        grid.attach(self.desc_value, 1, 5, 1, 1)
+
         # Attach the "Start" button to the grid
-        grid.attach(self.start, 1, 5, 1, 1)
+        grid.attach(self.start, 1, 6, 1, 1)
 
         # Attach the "Exit" button to the grid
-        grid.attach(self.exit_app, 1, 6, 1, 1)
+        grid.attach(self.exit_app, 1, 7, 1, 1)
 
         # Add an empty label to create a gap
-        grid.attach(Gtk.Label(), 1, 7, 1, 1)
+        grid.attach(Gtk.Label(), 1, 8, 1, 1)
 
         # Add the grid to the window
         self.add(grid)
 
-    def update_ip_address(self):
-        # Run the nmcli command to get the IP address of the wlan0 interface
-        result = subprocess.run(['nmcli', '-t', '-f', 'IP4.ADDRESS', 'device', 'show', 'wlan0'], capture_output=True, text=True)
+    def update_ip_address(self, device):
+        result = subprocess.run(
+            ['nmcli', '-t', '-f', 'IP4.ADDRESS', 'device', 'show', device],
+            capture_output=True, text=True
+        )
 
-        # Extract the IP address from the command output
-        ip_address = result.stdout.strip().split('IP4.ADDRESS[1]:')[-1].split('/')[0]
+        ip_address = None
 
-        # Set the extracted IP address to the ip_value attribute
-        self.ip_value.set_text(ip_address)
+        for line in result.stdout.splitlines():
+            if 'IP4.ADDRESS[1]:' in line:
+                ip_address = line.split(':')[1].split('/')[0].strip()
+                break
+
+        if ip_address:
+            self.ip_value.set_text(ip_address)
+        else:
+            self.ip_value.set_text("Not connected")
 
     def establish_connection(self, widget):
         # Create a dialog window for connecting to Wi-Fi
@@ -208,26 +266,25 @@ class DemoWindow(Gtk.Window):
         dialog.destroy()
 
     def connect_to_wifi(self, password):
-        print(f"Connecting to Wi-Fi SSID: {self.ssid} with password: {password}")
+        print(f"Connecting to Wi-Fi SSID: {self.ssid}")
         try:
             # Run the nmcli command to connect to the specified Wi-Fi network with the provided password
-            subprocess.run(['nmcli', 'dev', 'wifi', 'connect', self.ssid, 'password', password], capture_output=True, text=True, check=True)
+            subprocess.run((['nmcli'] if os.geteuid() == 0 else ['sudo', 'nmcli']) + ['dev', 'wifi', 'connect', self.ssid, 'password', password], capture_output=True, text=True, check=True)
             print(f"Connected to Wi-Fi SSID: {self.ssid}")
             self.status.set_text("Wi-Fi is connected")
             # Set text color to green
             self.status.override_color(Gtk.StateFlags.NORMAL, Gdk.RGBA(0, 1, 0, 1))
             self.ssid_value.set_text(self.ssid)
         except subprocess.CalledProcessError as e:
-            print(f"Failed to connect to Wi-Fi SSID: {self.ssid}")
-            print(e.output)
-            self.status.set_text("Failed to connect to Wi-Fi")
+            print(f"Failed to connect to Wi-Fi SSID: {self.ssid} with password: {password}")
+            print(f"STDERR: {e.stderr}")
             # Set text color to red
             self.status.override_color(Gtk.StateFlags.NORMAL, Gdk.RGBA(1, 0, 0, 1))
 
     def disconnect_from_wifi(self, ssid):
         try:
             # Run the nmcli command to disconnect from the specified Wi-Fi network
-            subprocess.run(['nmcli', 'connection', 'down', self.ssid_value.get_text()], capture_output=True, text=True, check=True)
+            subprocess.run((['nmcli'] if os.geteuid() == 0 else ['sudo', 'nmcli']) + ['connection', 'down', self.ssid_value.get_text()], capture_output=True, text=True, check=True)
             print(f"Disconnected from Wi-Fi SSID: {self.ssid_value.get_text()}")
             self.status.set_text("Wi-Fi is disconnected")
             # Set text color to red
@@ -240,6 +297,7 @@ class DemoWindow(Gtk.Window):
         # Run the nmcli command to get the status of all network devices
         result = subprocess.run(['nmcli', '-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device'], capture_output=True, text=True)
         wifi_connected = False
+        wifi_device = None
 
         # Parse the command output line by line
         for line in result.stdout.splitlines():
@@ -247,15 +305,15 @@ class DemoWindow(Gtk.Window):
             # Check if the line has the expected format and if the device is a connected Wi-Fi
             if len(parts) == 4 and parts[1] == 'wifi' and parts[2] == 'connected':
                 wifi_connected = True
+                wifi_device = parts[0]
                 self.ssid = parts[3]
                 break
 
         if wifi_connected:
             self.status.set_text("Online")
-            # Set text color to green
             self.status.override_color(Gtk.StateFlags.NORMAL, Gdk.RGBA(0, 1, 0, 1))
             self.ssid_value.set_text(self.ssid)
-            self.update_ip_address()
+            self.update_ip_address(wifi_device)
         else:
             self.status.set_text("Offline")
             # Set text color to red
@@ -289,6 +347,20 @@ class DemoWindow(Gtk.Window):
         dialog.run()
         dialog.destroy()
 
+    def on_application_changed(self, widget):
+        """Update the description label when the user selects a different application."""
+        selected_app = widget.get_active_text()
+        if selected_app and selected_app in self.app_descriptions:
+            self.desc_value.set_text(self.app_descriptions[selected_app])
+        else:
+            self.desc_value.set_text("")
+
+    def _destroy_popup(self):
+        """Safely destroy the download popup if it exists."""
+        if getattr(self, "popup", None) is not None:
+            self.popup.destroy()
+            self.popup = None
+
     def download_assets(self):
         """
         Downloads necessary assets if they do not already exist.
@@ -296,19 +368,19 @@ class DemoWindow(Gtk.Window):
         Checks for the existence of specific files and downloads them if they are missing.
         """
 
-        file_path = "/tmp/download_artifacts.sh"
-        DEFAULT_TFLITE_OBJECT_DETECTION_MODEL = "/etc/models/yolox_quantized.tflite"
-        DEFAULT_TFLITE_CLASSIFICATION_MODEL = "/etc/models/inception_v3_quantized.tflite"
-        DEFAULT_TFLITE_POSE_DETECTION_MODEL = "/etc/models/hrnet_pose_quantized.tflite"
-        DEFAULT_TFLITE_SEGMENTATION_MODEL = "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
-        DEFAULT_TFLITE_FACE_DETECTION_MODEL = "/etc/models/face_det_lite_quantized.tflite"
-        DEFAULT_OBJECT_DETECTION_LABELS = "/etc/labels/yolox.json"
-        DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.json"
-        DEFAULT_POSE_DETECTION_LABELS = "/etc/labels/hrnet_pose.json"
-        DEFAULT_SEGMENTATION_LABELS = "/etc/labels/deeplabv3_resnet50.json"
-        DEFAULT_FACE_DETECTION_LABELS = "/etc/labels/face_detection.json"
-        DEFAULT_POSE_SETTINGS = "/etc/labels/hrnet_pose_settings.json"
-        DEFAULT_INPUT_VIDEO = "/etc/media/video.mp4"
+        file_path = os.path.join(QDEMO_HOME, "download_artifacts_2.x.sh")
+        DEFAULT_TFLITE_OBJECT_DETECTION_MODEL = os.path.join(QDEMO_MODELS_DIR, "yolox_quantized.tflite")
+        DEFAULT_TFLITE_CLASSIFICATION_MODEL = os.path.join(QDEMO_MODELS_DIR, "inception_v3_quantized.tflite")
+        DEFAULT_TFLITE_POSE_DETECTION_MODEL = os.path.join(QDEMO_MODELS_DIR, "hrnet_pose_quantized.tflite")
+        DEFAULT_TFLITE_SEGMENTATION_MODEL = os.path.join(QDEMO_MODELS_DIR, "deeplabv3_plus_mobilenet_quantized.tflite")
+        DEFAULT_TFLITE_FACE_DETECTION_MODEL = os.path.join(QDEMO_MODELS_DIR, "face_det_lite_quantized.tflite")
+        DEFAULT_OBJECT_DETECTION_LABELS = os.path.join(QDEMO_LABELS_DIR, "yolox.json")
+        DEFAULT_CLASSIFICATION_LABELS = os.path.join(QDEMO_LABELS_DIR, "classification.json")
+        DEFAULT_POSE_DETECTION_LABELS = os.path.join(QDEMO_LABELS_DIR, "hrnet_pose.json")
+        DEFAULT_SEGMENTATION_LABELS = os.path.join(QDEMO_LABELS_DIR, "deeplabv3_resnet50.json")
+        DEFAULT_FACE_DETECTION_LABELS = os.path.join(QDEMO_LABELS_DIR, "face_detection.json")
+        DEFAULT_POSE_SETTINGS = os.path.join(QDEMO_LABELS_DIR, "hrnet_pose_settings.json")
+        DEFAULT_INPUT_VIDEO = os.path.join(QDEMO_MEDIA_DIR, "video.mp4")
 
         # Check if all required files and models exist
         if os.path.exists(file_path) \
@@ -326,15 +398,15 @@ class DemoWindow(Gtk.Window):
                 and os.path.exists(DEFAULT_INPUT_VIDEO):
             print("Artifacts already exist.")
             # Close the popup window
-            self.popup.destroy()
+            GLib.idle_add(self._destroy_popup)
 
             # Set the flag to indicate that artifacts are already downloaded
             self.download_artifacts = True
         else:
-            print("Aritifacts does not exist.")
+            print("Artifacts do not exist.")
             if self.ssid is None:
                 # Close the current popup window
-                self.popup.destroy()
+                GLib.idle_add(self._destroy_popup)
 
                 # Create a new popup window for WiFi connection
                 self.wifi_popup = Gtk.Window(type=Gtk.WindowType.POPUP)
@@ -369,13 +441,10 @@ class DemoWindow(Gtk.Window):
                     self.popup.show_all()
 
                     # URL of the file to be downloaded
-                    url = "https://raw.githubusercontent.com/qualcomm/sample-apps-for-qualcomm-linux/main/qualcomm-linux/scripts/download_artifacts.sh"
+                    url = "https://raw.githubusercontent.com/qualcomm/sample-apps-for-qualcomm-linux/refs/heads/main/qualcomm-linux/scripts/download_artifacts_2.x.sh"
 
-                    if not os.path.exists("/etc/media"):
-                        os.makedirs("/etc/media", exist_ok=True)
-
-                    if not os.path.exists("/tmp"):
-                        os.makedirs("/tmp", exist_ok=True)
+                    # Ensure qdemo directories exist
+                    setup_qdemo_dirs()
 
                     # Download the file from the URL to the specified file path
                     urllib.request.urlretrieve(url, file_path)
@@ -385,24 +454,31 @@ class DemoWindow(Gtk.Window):
                     os.chmod(file_path, 0o755)
 
                     # Start a subprocess to execute the downloaded file with specified arguments
-                    self.process = subprocess.Popen([file_path], preexec_fn=os.setsid, shell=True)
+                    # Set QDEMO_HOME environment variable so the script knows where to place artifacts
+                    env = os.environ.copy()
+                    env["QDEMO_HOME"] = QDEMO_HOME
+
+                    self.process = subprocess.Popen(
+                        [file_path, "--qdemo"],
+                        start_new_session=True,
+                        env=env,
+                    )
 
                     # Wait for the subprocess to complete
                     self.process.wait()
+                    self.process = None
 
                     # Set the flag to indicate that artifacts are downloaded
                     self.download_artifacts = True
 
                 except Exception as e:
-                    # If an exception occurs, set the flag to indicate that artifacts are not downloaded
+                    print(f"Error during artifact download: {e}")
                     self.download_artifacts = False
-
-                    # Call the method to handle the cancel button click
-                    self.on_cancel_button_clicked()
-
+                    self.check_download = None
+                    self.process = None
                 finally:
                     # Close the popup window
-                    self.popup.destroy()
+                    GLib.idle_add(self.popup.destroy)
 
     def close_popup(self):
         self.wifi_popup.destroy()
@@ -410,7 +486,7 @@ class DemoWindow(Gtk.Window):
         return False
 
     def check_usb_driver(self):
-        for i in range(11):
+        for i in range(MAX_VIDEO_DEVICES):
             device = f'/dev/video{i}'
             try:
                 # Run the udevadm command and capture the output
@@ -460,18 +536,29 @@ class DemoWindow(Gtk.Window):
             external-delegate-options='QNNExternalDelegate,backend_type=htp,\
             htp_device_id=(string)0,htp_performance_mode=(string)2'"
 
+        # Artifact paths
+        models_dir = QDEMO_MODELS_DIR
+        labels_dir = QDEMO_LABELS_DIR
+        media_dir = QDEMO_MEDIA_DIR
+
+        video_out = os.path.join(media_dir, "video_out.mp4")
+        video_in = os.path.join(media_dir, "video.mp4")
+
         if src == "USB-Camera":
             found_device = self.check_usb_driver()
             if found_device == None:
                 return None
-            in_src = f"v4l2src io-mode=dmabuf-import device={found_device} ! video/x-raw,width=640,height=480,framerate=30/1 ! queue ! qtivtransform ! video/x-raw,format=NV12_Q08C"
+            in_src = f"v4l2src io-mode=dmabuf-import device={found_device} ! video/x-raw,width=640,height=360,framerate=30/1 ! queue ! qtivtransform ! video/x-raw,format=NV12"
         elif src == "On-Device-Camera":
             in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1"
 
         if application == "Record live video":
-           pipeline = "gst-launch-1.0 " + in_src + " ! queue ! tee name=split ! queue ! qtivcomposer ! queue ! \
+            if not os.path.exists(media_dir):
+                os.makedirs(media_dir, exist_ok=True)
+
+            pipeline = "gst-launch-1.0 " + in_src + " ! queue ! tee name=split ! queue ! qtivcomposer ! queue ! \
                 gtksink split. ! queue ! v4l2h264enc capture-io-mode=4 output-io-mode=5 ! \
-                h264parse ! mp4mux reserved-moov-update-period=1000000000 reserved-bytes-per-sec=10000 reserved-max-duration=600000000000 ! filesink location=/etc/media/video_out.mp4"
+                h264parse ! mp4mux reserved-moov-update-period=1000000000 reserved-bytes-per-sec=10000 reserved-max-duration=600000000000 ! filesink location=" + video_out
 
         elif application == "DashCamera" and src == "On-Device-Camera":
             pipeline = "gst-launch-1.0 -e qtivcomposer name=mix sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
@@ -487,7 +574,7 @@ class DemoWindow(Gtk.Window):
                 split. ! queue ! mix. "
 
         elif application == "VideoWall":
-            if not os.path.exists("/etc/media/video_out.mp4"):
+            if not os.path.exists(video_out):
                 # Create a new popup window
                 popup = Gtk.Window(type=Gtk.WindowType.POPUP)
 
@@ -513,23 +600,23 @@ class DemoWindow(Gtk.Window):
                 # Closes after 3 seconds
                 GLib.timeout_add_seconds(2, popup.destroy)
             else:
-                pipeline = "gst-launch-1.0 -e qtivcomposer name=mix \
+                pipeline = f"gst-launch-1.0 -e qtivcomposer name=mix \
                     sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
                     sink_1::position='<640, 0>' sink_1::dimensions='<640, 360>' \
                     sink_2::position='<0, 360>' sink_2::dimensions='<640, 360>' \
                     sink_3::position='<640, 360>' sink_3::dimensions='<640, 360>' \
                     mix. ! queue ! gtksink \
-                    filesrc location=/etc/media/video_out.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
-                    filesrc location=/etc/media/video_out.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
-                    filesrc location=/etc/media/video_out.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
-                    filesrc location=/etc/media/video_out.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix."
+                    filesrc location={video_out} ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
+                    filesrc location={video_out} ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
+                    filesrc location={video_out} ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
+                    filesrc location={video_out} ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix."
 
         elif application == "VideoTestSrc":
             pipeline = "gst-launch-1.0 " + "videotestsrc" + " ! " + "video/x-raw,width=640" + ",height=480" + " ! " + "gtksink"
 
         if self.download_artifacts is True:
             if application == "Parallel-AI-Fusion" :
-                pipeline = "gst-launch-1.0 \
+                pipeline = f"gst-launch-1.0 \
                     qtivcomposer name=mixer \
                     sink_0::position='<0, 0>' sink_0::dimensions='<960, 540>' \
                     sink_1::position='<0, 0>' sink_1::dimensions='<960, 540>' \
@@ -541,37 +628,39 @@ class DemoWindow(Gtk.Window):
                     sink_7::position='<960, 540>' sink_7::dimensions='<960, 540>' sink_7::alpha=0.5 \
                     mixer. ! queue ! fpsdisplaysink signal-fps-measurements=true text-overlay=true video-sink='gtksink' " + in_src + f"! queue ! tee name=split \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model={models_dir}/yolox_quantized.tflite ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels={labels_dir}/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model=/etc/models/inception_v3_quantized.tflite ! queue ! qtimlpostprocess settings='{{\"confidence\": 40.0}}' results=2 module=mobilenet-softmax labels=/etc/labels/classification.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model={models_dir}/inception_v3_quantized.tflite ! queue ! qtimlpostprocess settings='{{\"confidence\": 40.0}}' results=2 module=mobilenet-softmax labels={labels_dir}/classification.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model=/etc/models/hrnet_pose_quantized.tflite ! queue ! qtimlpostprocess settings=/etc/labels/hrnet_pose_settings.json results=2 module=hrnet labels=/etc/labels/hrnet_pose.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model={models_dir}/hrnet_pose_quantized.tflite ! queue ! qtimlpostprocess settings={labels_dir}/hrnet_pose_settings.json results=2 module=hrnet labels={labels_dir}/hrnet_pose.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model=/etc/models/deeplabv3_plus_mobilenet_quantized.tflite ! queue ! qtimlpostprocess module=deeplab-argmax labels=/etc/labels/deeplabv3_resnet50.json ! video/x-raw,format=BGRA,width=256,height=144 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model={models_dir}/deeplabv3_plus_mobilenet_quantized.tflite ! queue ! qtimlpostprocess module=deeplab-argmax labels={labels_dir}/deeplabv3_resnet50.json ! video/x-raw,format=BGRA,width=256,height=144 ! queue ! mixer. \
                     "
             elif application == "ObjectDetection":
                 pipeline = "gst-launch-1.0 " + in_src + f"! queue ! tee name=split \
                     split. ! queue ! qtivcomposer name=mixer ! queue ! gtksink \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model='/etc/models/yolox_quantized.tflite' ! queue ! \
-                    qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels='/etc/labels/yolox.json' ! \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model='{models_dir}/yolox_quantized.tflite' ! queue ! \
+                    qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels='{labels_dir}/yolox.json' ! \
                     video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer."
             elif application == "Face Detection":
                 if src == "On-Device-Camera":
                     in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=640,height=480,framerate=30/1"
+                else:
+                    in_src = f"v4l2src io-mode=dmabuf-import device={found_device} ! video/x-raw,width=640,height=480,framerate=30/1 ! queue ! qtivtransform ! video/x-raw,format=NV12"
                 pipeline = f"gst-launch-1.0 -e \
                     qtimlvconverter name=stage_01_preproc mode=image-batch-non-cumulative \
-                    qtimltflite name=stage_01_inference model=/etc/models/face_det_lite_quantized.tflite {TFLITE_DELEGATE} \
-                    qtimlpostprocess name=stage_01_postproc settings='{{\"confidence\": 51.0}}' results=6 module=qfd labels=/etc/labels/face_detection.json \
+                    qtimltflite name=stage_01_inference model={models_dir}/face_det_lite_quantized.tflite {TFLITE_DELEGATE} \
+                    qtimlpostprocess name=stage_01_postproc settings='{{\"confidence\": 51.0}}' results=6 module=qfd labels={labels_dir}/face_detection.json \
                     " + in_src + " ! queue ! tee name=split ! queue ! qtivcomposer name=mixer ! queue ! gtksink \
                     split. ! queue ! stage_01_preproc. stage_01_preproc. ! queue ! stage_01_inference. stage_01_inference. ! queue ! stage_01_postproc. stage_01_postproc. ! video/x-raw ! queue ! mixer."
             elif application == "Daisychain Pose":
                 pipeline = f"gst-launch-1.0 -e \
                     qtimlvconverter name=stage_01_preproc mode=image-batch-non-cumulative \
-                    qtimltflite name=stage_01_inference {TFLITE_DELEGATE} model='/etc/models/yolox_quantized.tflite' \
-                    qtimlpostprocess name=stage_01_postproc settings='{{\"confidence\": 51.0}}' results=4 module=yolov8 labels=/etc/labels/yolox.json \
+                    qtimltflite name=stage_01_inference {TFLITE_DELEGATE} model='{models_dir}/yolox_quantized.tflite' \
+                    qtimlpostprocess name=stage_01_postproc settings='{{\"confidence\": 51.0}}' results=4 module=yolov8 labels={labels_dir}/yolox.json \
                     qtimlvconverter name=stage_02_preproc mode=roi-batch-cumulative image-disposition=centre  \
-                    qtimltflite name=stage_02_inference {TFLITE_DELEGATE} model=/etc/models/hrnet_pose_quantized.tflite \
-                    qtimlpostprocess name=stage_02_postproc settings=/etc/labels/hrnet_pose_settings.json results=1 module=hrnet labels=/etc/labels/hrnet_pose.json \
+                    qtimltflite name=stage_02_inference {TFLITE_DELEGATE} model={models_dir}/hrnet_pose_quantized.tflite \
+                    qtimlpostprocess name=stage_02_postproc settings={labels_dir}/hrnet_pose_settings.json results=1 module=hrnet labels={labels_dir}/hrnet_pose.json \
                     " + in_src + " ! queue ! tee name=t_split_1 \
                     t_split_1. ! queue ! metamux_1. \
                     t_split_1. ! queue ! stage_01_preproc. stage_01_preproc. ! queue ! stage_01_inference. stage_01_inference. ! queue ! stage_01_postproc. stage_01_postproc. ! text/x-raw ! queue ! metamux_1. \
@@ -599,18 +688,18 @@ class DemoWindow(Gtk.Window):
                     sink_6::position='<0, 540>' sink_6::dimensions='<960, 540>' \
                     sink_7::position='<960, 540>' sink_7::dimensions='<960, 540>' \
                     mixer. ! queue ! gtksink \
-                    split_1. ! qtimlvconverter ! qtimltflite name=stage_01_inference {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite \
-                    split_2. ! qtimlvconverter ! qtimltflite name=stage_02_inference {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite \
-                    split_3. ! qtimlvconverter ! qtimltflite name=stage_03_inference {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite \
-                    split_4. ! qtimlvconverter ! qtimltflite name=stage_04_inference {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite \
+                    split_1. ! qtimlvconverter ! qtimltflite name=stage_01_inference {TFLITE_DELEGATE} model={models_dir}/yolox_quantized.tflite \
+                    split_2. ! qtimlvconverter ! qtimltflite name=stage_02_inference {TFLITE_DELEGATE} model={models_dir}/yolox_quantized.tflite \
+                    split_3. ! qtimlvconverter ! qtimltflite name=stage_03_inference {TFLITE_DELEGATE} model={models_dir}/yolox_quantized.tflite \
+                    split_4. ! qtimlvconverter ! qtimltflite name=stage_04_inference {TFLITE_DELEGATE} model={models_dir}/yolox_quantized.tflite \
                     " + in_src + f" ! tee name=split_1 ! queue ! mixer. \
-                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_2 ! queue ! mixer. \
-                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_3 ! queue ! mixer. \
-                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_4 ! queue ! mixer. \
-                    stage_01_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_02_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_03_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_04_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. "
+                    filesrc location={video_in} ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_2 ! queue ! mixer. \
+                    filesrc location={video_in} ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_3 ! queue ! mixer. \
+                    filesrc location={video_in} ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_4 ! queue ! mixer. \
+                    stage_01_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels={labels_dir}/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_02_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels={labels_dir}/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_03_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels={labels_dir}/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_04_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels={labels_dir}/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. "
         if pipeline is not None:
             pipeline_thread = threading.Thread(target=self.execute, args=(pipeline,))
             pipeline_thread.start()
@@ -680,14 +769,14 @@ class DemoWindow(Gtk.Window):
             self.check_download = threading.Thread(target=self.download_assets)
             self.check_download.start()
         else:
-            self.popup.destroy()
+            self._destroy_popup()
 
         # Start the application pipeline in a separate thread
-        threading.Thread(target=self.create_pipeline, args=(application,src,)).start()
+        threading.Thread(target=self.create_pipeline, args=(application, src,)).start()
 
-    def on_cancel_button_clicked(self, widget):
+    def on_cancel_button_clicked(self, widget=None):
         # Close the popup window
-        self.popup.destroy()
+        self._destroy_popup()
 
         # Set the flag to indicate that artifacts are not downloaded
         self.download_artifacts = False
@@ -695,11 +784,17 @@ class DemoWindow(Gtk.Window):
         # Reset the check_download attribute
         self.check_download = None
 
-        # Terminate the process group associated with the process
-        os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
+        if self.process is not None:
+            try:
+                # Terminate the process group associated with the process
+                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
 
-        # Wait for the process to terminate
-        self.process.wait()
+                # Wait for the process to terminate
+                self.process.wait()
+            except (ProcessLookupError, OSError):
+                pass
+            finally:
+                self.process = None
 
     def execute(self, pipeline):
         """
@@ -720,8 +815,12 @@ class DemoWindow(Gtk.Window):
         Gtk.main_quit()
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGINT, lambda s, f: Gtk.main_quit())
+    GLib.timeout_add(500, lambda: True)
+
     # Create an instance of the DemoWindow class
     demo = DemoWindow()
+    demo.connect("destroy", Gtk.main_quit)
 
     # Show all widgets in the demo window
     demo.show_all()
