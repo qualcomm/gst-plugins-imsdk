@@ -49,7 +49,7 @@
 #include <gst/video/gstimagepool.h>
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
-#include <gst/ml/gstmlsample.h>
+#include <gst/ml/gstmlbundle.h>
 #include <gst/ml/ml-module-utils.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
@@ -2584,18 +2584,18 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
     success = gst_video_converter_engine_compose (mlconverter->converter,
         &(mlconverter->composition), 1, NULL);
   } else if (gst_ml_video_converter_is_signal_process (mlconverter)) {
-    GstMLSample *sample = NULL;
+    GstMLBundle *bundle = NULL;
 
-    sample = gst_ml_sample_new (mlconverter->composition.buffer,
+    bundle = gst_ml_bundle_new (mlconverter->composition.buffer,
         mlconverter->mlinfo);
     gst_buffer_unref (mlconverter->composition.buffer);
 
     // Call connected external signal for processing the blits and output frame.
     g_signal_emit (mlconverter, signals[SIGNAL_PROCESS], 0,
-        mlconverter->composition.blits, sample, &success);
+        mlconverter->composition.blits, bundle, &success);
 
     gst_buffer_ref (mlconverter->composition.buffer);
-    gst_ml_sample_unref (sample);
+    gst_ml_bundle_unref (bundle);
   } else {
     // Neither engine nor signal are set, apply only normalization.
     success = gst_ml_video_converter_normalize (mlconverter);
@@ -2815,7 +2815,7 @@ gst_ml_video_converter_class_init (GstMLVideoConverterClass * klass)
       g_signal_new ("process", G_TYPE_FROM_CLASS (klass),
           G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
           0, NULL, NULL, NULL, G_TYPE_BOOLEAN, 2, GST_TYPE_VIDEO_BLITS,
-          GST_TYPE_ML_SAMPLE);
+          GST_TYPE_ML_BUNDLE);
 
   gst_element_class_set_static_metadata (element,
       "Machine Learning Video Converter", "Filter/Video/Scaler",

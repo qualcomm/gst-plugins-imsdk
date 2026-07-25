@@ -13,7 +13,7 @@ add_library(${TARGET_NAME} SHARED
   gstmlmeta.c
   gstmlmodule.c
   gstmlpool.c
-  gstmlsample.c
+  gstmlbundle.c
   ml-module-utils.c
   ml-module-classification.c
   ml-module-detection.c
@@ -36,7 +36,7 @@ set(TARGET_HEADERS
   gstmlmeta.h
   gstmlmodule.h
   gstmlpool.h
-  gstmlsample.h
+  gstmlbundle.h
   ml-module-utils.h
   ml-module-classification.h
   ml-module-detection.h
@@ -137,8 +137,8 @@ if(GIR_SCANNER AND GIR_COMPILER AND NOT HAVE_GBM_PRIV_H)
     ${CMAKE_CURRENT_SOURCE_DIR}/gstmlmeta.c
     ${CMAKE_CURRENT_SOURCE_DIR}/gstmlpool.h
     ${CMAKE_CURRENT_SOURCE_DIR}/gstmlpool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/gstmlsample.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/gstmlsample.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstmlbundle.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gstmlbundle.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-classification.h
     ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-classification.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ml-post-process-keypoint.h
