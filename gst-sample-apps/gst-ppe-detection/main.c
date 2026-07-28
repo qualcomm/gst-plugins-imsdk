@@ -2303,6 +2303,7 @@ main (int argc, char * argv[])
   GError *error = NULL;
   GstAppContext appctx = { 0 };
   guint interrupt_watch_id = 0;
+  guint terminate_watch_id = 0;
   gboolean success = FALSE;
   gint result = 0;
 
@@ -2395,12 +2396,16 @@ main (int argc, char * argv[])
   }
 
   /*
-   * Register Ctrl+C handling through the GLib main context. This keeps signal
-   * handling in the same event loop as the GStreamer bus callbacks and allows
-   * the app to send EOS instead of terminating abruptly.
-   */
+  * Register SIGINT (Ctrl+C) and SIGTERM handling through the GLib main
+  * context. This keeps signal handling in the same event loop as the
+  * GStreamer bus callbacks and allows the app to shut down gracefully instead
+  * of terminating abruptly.
+  */
   interrupt_watch_id =
       g_unix_signal_add (SIGINT, gst_app_handle_interrupt_signal, &appctx);
+
+  terminate_watch_id =
+      g_unix_signal_add (SIGTERM, gst_app_handle_interrupt_signal, &appctx);
 
   g_print ("Setting pipeline to PLAYING ...\n");
   GstStateChangeReturn ret =
@@ -2423,6 +2428,9 @@ main (int argc, char * argv[])
 cleanup:
   if (interrupt_watch_id != 0)
     g_source_remove (interrupt_watch_id);
+
+  if (terminate_watch_id != 0)
+    g_source_remove (terminate_watch_id);
 
   if (appctx.pipeline != NULL) {
     g_print ("Setting pipeline to NULL ...\n");

@@ -2096,11 +2096,12 @@ gst_app_request_shutdown (GstAppContext * appctx, const gchar * reason,
 }
 
 /*
- * Handle Ctrl+C.
+ * Handle SIGINT and SIGTERM.
  *
- * For regular outputs, Ctrl+C requests EOS so muxers/sinks can finalize. For
- * WebRTC output, gst_app_request_shutdown() detects the live WebRTC transport
- * and stops directly instead of waiting for an EOS that may never arrive.
+ * For regular outputs, the signal requests EOS so muxers/sinks can finalize.
+ * For WebRTC output, gst_app_request_shutdown() detects the live WebRTC
+ * transport and stops directly instead of waiting for an EOS that may never
+ * arrive.
  */
 static gboolean
 gst_app_handle_interrupt_signal (gpointer userdata)
@@ -2243,6 +2244,7 @@ main (int argc, char * argv[])
   GError *error = NULL;
   GstAppContext appctx = { 0 };
   guint interrupt_watch_id = 0;
+  guint terminate_watch_id = 0;
   gboolean success = FALSE;
   gint result = 0;
 
@@ -2342,6 +2344,9 @@ main (int argc, char * argv[])
   interrupt_watch_id =
       g_unix_signal_add (SIGINT, gst_app_handle_interrupt_signal, &appctx);
 
+  terminate_watch_id =
+      g_unix_signal_add (SIGTERM, gst_app_handle_interrupt_signal, &appctx);
+
   g_print ("Setting pipeline to PLAYING ...\n");
   GstStateChangeReturn ret =
       gst_element_set_state(appctx.pipeline, GST_STATE_PLAYING);
@@ -2363,6 +2368,9 @@ main (int argc, char * argv[])
 cleanup:
   if (interrupt_watch_id != 0)
     g_source_remove (interrupt_watch_id);
+
+  if (terminate_watch_id != 0)
+    g_source_remove (terminate_watch_id);
 
   if (appctx.pipeline != NULL) {
     g_print ("Setting pipeline to NULL ...\n");
