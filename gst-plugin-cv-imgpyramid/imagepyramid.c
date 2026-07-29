@@ -121,7 +121,6 @@ gst_cv_request_new ()
   request->inframe = NULL;
   request->outbuffers = NULL;
   request->n_outputs = 0;
-  request->time = GST_CLOCK_TIME_NONE;
 
   return request;
 }
@@ -240,9 +239,8 @@ gst_cv_imgpyramid_worker_task (gpointer userdata)
 
   if (gst_data_queue_peek (sinkpad->requests, &item)) {
     GstCvRequest *request = GST_CV_REQUEST (item->object);
-    GstClockTime time;
+    GstClockTime time = gst_util_get_timestamp ();
 
-    time = gst_util_get_timestamp ();
     success = gst_imgpyramid_engine_execute (imgpyramid->engine,
         request->inframe, request->outbuffers);
 
