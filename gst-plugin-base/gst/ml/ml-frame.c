@@ -155,8 +155,17 @@ gst_ml_frame_get_tensor (GstMLFrame * frame, guint index)
   GstMLTensor tensor = { 0, };
   guint num = 0;
 
-  tensor.data = frame->mapinfo[index].data;
-  tensor.size = frame->mapinfo[index].size;
+  if (gst_buffer_n_memory (frame->buffer) == 1) {
+    tensor.data = frame->mapinfo[0].data;
+    tensor.size = gst_ml_info_tensor_size (&frame->info, index);
+
+    // Offset the data pointer with the size of previous tensors in the block.
+    for (num = 0; num < index; num++)
+      tensor.data += gst_ml_info_tensor_size (&frame->info, num);
+  } else {
+    tensor.data = frame->mapinfo[index].data;
+    tensor.size = frame->mapinfo[index].size;
+  }
 
   tensor.type = frame->info.type;
   tensor.n_dimensions = frame->info.n_dimensions[index];
