@@ -207,6 +207,10 @@ gst_socket_deinitialize_for_buffers (GstFdSocketSink * sink)
   }
 
   g_list_free (keys_list);
+
+  // Reset with bufmap: these buffers are never returned
+  sink->bufcount = 0;
+
   g_mutex_unlock (&sink->bufmaplock);
 }
 
