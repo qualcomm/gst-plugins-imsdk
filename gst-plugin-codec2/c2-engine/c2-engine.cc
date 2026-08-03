@@ -474,7 +474,7 @@ gst_c2_engine_drain (GstC2Engine * engine, gboolean eos)
   std::shared_ptr<C2Buffer> c2buffer;
   std::list<std::unique_ptr<C2Param>> settings;
 
-  uint64_t index = 0;
+  uint64_t index = 0xFFFFFFFDULL;
   uint64_t timestamp = 0;
   uint32_t flags = C2FrameData::FLAG_END_OF_STREAM;
 
