@@ -30,10 +30,10 @@ jobs:
   build:
     needs: init
     runs-on:
-      group: GHA-Framework-Stg-SelfHosted-RG
+      group: GHA-Framework-SelfHosted-RG
       labels:
         - self-hosted
-        - framework-stg-u2404-x64-od-ephem
+        - framework-prd-u2404-x64-od-ephem
 
     steps:
       - name: Checkout code
@@ -75,4 +75,4 @@ jobs:
         with:
           path: ${{github.workspace}}/upload_dir
           destination: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/
-          s3_bucket: qli-stg-framework-gh-artifacts
+          s3_bucket: qli-prd-framework-gh-artifacts
