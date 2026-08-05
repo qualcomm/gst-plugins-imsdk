@@ -1,5 +1,7 @@
 project(qtiafralgo
+  VERSION 1.0.0
   LANGUAGES CXX
+  DESCRIPTION "Auto Framing algo library"
 )
 
 set(AUTO_FRAMING_LIBRARY qtiafralgo)
@@ -13,6 +15,8 @@ add_library(${AUTO_FRAMING_LIBRARY} SHARED
 
 set_target_properties(${AUTO_FRAMING_LIBRARY} PROPERTIES PUBLIC_HEADER
   "include/auto-framing-alg.h"
+   VERSION ${PROJECT_VERSION}
+   SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
 target_include_directories(${AUTO_FRAMING_LIBRARY} PUBLIC
