@@ -17,7 +17,7 @@ pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_PBUTILS REQUIRED gstreamer-pbutils-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(QCOM_VIDEO_CTRL REQUIRED qcom-video-ctrl)
+pkg_check_modules(QCOM_VIDEO_CTRL REQUIRED qimsdk-smartvenc)
 pkg_check_modules(GST_QCOM_VIDEO REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
 
 # Generate configuration header file with plugin describing definitions
