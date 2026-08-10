@@ -155,10 +155,12 @@ gst_buffer_get_image_region_meta (GstBuffer * buffer)
 
   while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
               GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE)) != NULL) {
-    roimeta = GST_VIDEO_ROI_META_CAST (meta);
+    GstVideoRegionOfInterestMeta *candidate = GST_VIDEO_ROI_META_CAST (meta);
 
-    if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
+    if (candidate->roi_type == g_quark_from_static_string ("ImageRegion")) {
+      roimeta = candidate;
       break;
+    }
   }
 
   return roimeta;
