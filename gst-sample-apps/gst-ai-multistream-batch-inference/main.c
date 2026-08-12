@@ -790,7 +790,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
     g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
     g_object_set (G_OBJECT (waylandsink), "sync", TRUE, NULL);
 
-    g_object_set (G_OBJECT (fpsdisplaysink), "sync", FALSE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
     g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE,
         NULL);
     g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
