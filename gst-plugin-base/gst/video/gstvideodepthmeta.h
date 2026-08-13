@@ -114,9 +114,10 @@ gst_buffer_get_video_depth_meta_id (GstBuffer * buffer, guint id);
  *
  * Buffers can contain multiple #GstVideoDepthMeta metadata items.
  *
- * Returns: (transfer full) (element-type GstVideoDepthMeta) (nullable):
+ * Returns: (transfer container) (element-type GstVideoDepthMeta) (nullable):
  *          list of #GstVideoDepthMeta with @parent_id or %NULL when there
- *          is no such metadata on @buffer.
+ *          is no such metadata on @buffer. Free the list with g_list_free();
+ *          the metadata items it holds remain owned by @buffer.
  */
 GST_VIDEO_API GList *
 gst_buffer_get_video_depth_metas_parent_id (GstBuffer * buffer,

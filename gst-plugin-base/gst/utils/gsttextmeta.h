@@ -100,9 +100,10 @@ gst_buffer_get_text_meta_id (GstBuffer * buffer, guint id);
  *
  * Buffers can contain multiple #GstTextMeta metadata items.
  *
- * Returns: (transfer full) (element-type GstTextMeta) (nullable):
+ * Returns: (transfer container) (element-type GstTextMeta) (nullable):
  *          list of #GstTextMeta with @parent_id or %NULL when there
- *          is no such metadata on @buffer.
+ *          is no such metadata on @buffer. Free the list with g_list_free();
+ *          the metadata items it holds remain owned by @buffer.
  */
 GST_API GList *
 gst_buffer_get_text_metas_parent_id (GstBuffer * buffer, const gint parent_id);

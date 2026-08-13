@@ -225,9 +225,10 @@ gst_query_parse_video_alignment (GstQuery * query, GstVideoAlignment * align);
  *
  * Buffers can contain multiple #GstVideoRegionOfInterestMeta metadata items.
  *
- * Returns: (transfer full) (element-type GstVideoRegionOfInterestMeta) (nullable):
+ * Returns: (transfer container) (element-type GstVideoRegionOfInterestMeta) (nullable):
  *          list of #GstVideoRegionOfInterestMeta with @parent_id or %NULL when
- *          there is no such metadata on @buffer.
+ *          there is no such metadata on @buffer. Free the list with
+ *          g_list_free(); the metadata items it holds remain owned by @buffer.
  */
 GST_VIDEO_API GList *
 gst_buffer_get_video_region_of_interest_metas_parent_id (GstBuffer * buffer,

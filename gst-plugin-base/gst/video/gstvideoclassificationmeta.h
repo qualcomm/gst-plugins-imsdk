@@ -96,9 +96,10 @@ gst_buffer_get_video_classification_meta_id (GstBuffer * buffer, guint id);
  *
  * Buffers can contain multiple #GstVideoClassificationMeta metadata items.
  *
- * Returns: (transfer full) (element-type GstVideoClassificationMeta) (nullable):
- *          list of #GstVideoRegionOfInterestMeta with @parent_id or %NULL when
- *          there is no such metadata on @buffer.
+ * Returns: (transfer container) (element-type GstVideoClassificationMeta) (nullable):
+ *          list of #GstVideoClassificationMeta with @parent_id or %NULL when
+ *          there is no such metadata on @buffer. Free the list with
+ *          g_list_free(); the metadata items it holds remain owned by @buffer.
  */
 GST_VIDEO_API GList *
 gst_buffer_get_video_classification_metas_parent_id (GstBuffer * buffer,
