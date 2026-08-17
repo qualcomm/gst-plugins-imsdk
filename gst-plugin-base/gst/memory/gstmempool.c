@@ -46,6 +46,9 @@
 #include <linux/msm_ion.h>
 #endif // HAVE_LINUX_DMA_HEAP_H
 
+#ifdef HAVE_LINUX_MEM_BUF_H
+#include <linux/mem-buf.h>
+#endif //HAVE_LINUX_MEM_BUF_H
 
 GST_DEBUG_CATEGORY_STATIC (gst_mem_pool_debug);
 #define GST_CAT_DEFAULT gst_mem_pool_debug
@@ -74,6 +77,11 @@ struct _GstMemBufferPoolPrivate
   // Map of data FDs and ION handles on case ION memory is used OR
   GHashTable          *datamap;
 #endif // TARGET_ION_ABI_VERSION
+
+#if defined(HAVE_LINUX_MEM_BUF_H) && defined(MEM_BUF_IOC_LEND)
+  gint                mem_buf_fd;
+  gint                vmid_fd;
+#endif // HAVE_LINUX_MEM_BUF_H && MEM_BUF_IOC_LEND
 };
 
 #define gst_mem_buffer_pool_parent_class parent_class
@@ -86,17 +94,45 @@ open_dma_device (GstMemBufferPool * mempool, gboolean secure)
   GstMemBufferPoolPrivate *priv = mempool->priv;
 
   if (secure) {
+#if defined(HAVE_LINUX_MEM_BUF_H) && defined(MEM_BUF_IOC_LEND)
+    GST_INFO_OBJECT (mempool, "Open /dev/membuf");
+    priv->mem_buf_fd = open("/dev/membuf", O_RDONLY | O_CLOEXEC);
+
+    if (priv->mem_buf_fd < 0) {
+      GST_ERROR_OBJECT (mempool, "Failed to open /dev/membuf, "
+          "error: %s!", g_strerror (errno));
+      return FALSE;
+    }
+
+    GST_INFO_OBJECT (mempool, "Open /dev/mem_buf_vm/qcom,cp_bitstream");
+    priv->vmid_fd = open("/dev/mem_buf_vm/qcom,cp_bitstream", O_RDONLY | O_CLOEXEC);
+
+    if (priv->vmid_fd < 0) {
+      GST_ERROR_OBJECT (mempool, "Failed to open /dev/mem_buf_vm/qcom,cp_bitstream, "
+          "error: %s!", g_strerror (errno));
+      return FALSE;
+    }
+#else
     GST_INFO_OBJECT (mempool, "Open /dev/dma_heap/system-secure");
     priv->devfd = open ("/dev/dma_heap/system-secure", O_RDONLY | O_CLOEXEC);
-  } else {
-    GST_INFO_OBJECT (mempool, "Open /dev/dma_heap/qcom,system");
-    priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
 
     if (priv->devfd < 0) {
-      GST_WARNING_OBJECT (mempool, "Failed to open /dev/dma_heap/qcom,system, "
-          "error: %s! Falling back to /dev/dma_heap/system", g_strerror (errno));
-      priv->devfd = open ("/dev/dma_heap/system", O_RDONLY | O_CLOEXEC);
+      GST_ERROR_OBJECT (mempool, "Failed to open /dev/dma_heap/system-secure, "
+          "error: %s!", g_strerror (errno));
+      return FALSE;
     }
+#endif // HAVE_LINUX_MEM_BUF_H && MEM_BUF_IOC_LEND
+  }
+
+  if (priv->devfd < 0) {
+    GST_INFO_OBJECT (mempool, "Open /dev/dma_heap/qcom,system");
+    priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
+  }
+
+  if (priv->devfd < 0) {
+    GST_WARNING_OBJECT (mempool, "Failed to open /dev/dma_heap/qcom,system, "
+        "error: %s! Falling back to /dev/dma_heap/system", g_strerror (errno));
+    priv->devfd = open ("/dev/dma_heap/system", O_RDONLY | O_CLOEXEC);
   }
 
   if (priv->devfd < 0) {
@@ -126,6 +162,18 @@ close_dma_device (GstMemBufferPool * mempool)
     GST_INFO_OBJECT (mempool, "Closing DMA/ION device FD %d", priv->devfd);
     close (priv->devfd);
   }
+
+#if defined(HAVE_LINUX_MEM_BUF_H) && defined(MEM_BUF_IOC_LEND)
+    if (priv->mem_buf_fd >= 0) {
+      GST_INFO_OBJECT (mempool, "Closing mem_buf FD %d", priv->mem_buf_fd);
+      close (priv->mem_buf_fd);
+    }
+
+    if (priv->vmid_fd >= 0) {
+      GST_INFO_OBJECT (mempool, "Closing vmid FD %d", priv->vmid_fd);
+      close (priv->vmid_fd);
+    }
+#endif // HAVE_LINUX_MEM_BUF_H && MEM_BUF_IOC_LEND
 
 #if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
   g_hash_table_destroy (priv->datamap);
@@ -191,6 +239,26 @@ dma_device_alloc (GstMemBufferPool * mempool, gint size)
 #else
   fd = alloc_data.fd;
 #endif
+
+#if defined(HAVE_LINUX_MEM_BUF_H) && defined(MEM_BUF_IOC_LEND)
+  if (GST_IS_SECURE_MEMORY_TYPE (priv->memtype)) {
+    struct mem_buf_lend_ioctl_arg buflend = {};
+    struct acl_entry acl[1] = {};
+
+    acl[0].vmid = priv->vmid_fd;
+    acl[0].perms = MEM_BUF_PERM_FLAG_READ | MEM_BUF_PERM_FLAG_WRITE;
+
+    buflend.dma_buf_fd = fd;
+    buflend.nr_acl_entries = 1;
+    buflend.acl_list = (__u64)&acl;
+
+    result = ioctl (priv->mem_buf_fd, MEM_BUF_IOC_LEND, &buflend);
+    if (result != 0) {
+      GST_ERROR_OBJECT (mempool, "Failed to lend memory!");
+      return NULL;
+    }
+  }
+#endif // HAVE_LINUX_MEM_BUF_H && MEM_BUF_IOC_LEND
 
   GST_DEBUG_OBJECT (mempool, "Allocated DMA/ION memory FD %d", fd);
 
@@ -412,6 +480,10 @@ gst_mem_buffer_pool_init (GstMemBufferPool * mempool)
 {
   mempool->priv = gst_mem_buffer_pool_get_instance_private (mempool);
   mempool->priv->devfd = -1;
+#if defined(HAVE_LINUX_MEM_BUF_H) && defined(MEM_BUF_IOC_LEND)
+  mempool->priv->mem_buf_fd = -1;
+  mempool->priv->vmid_fd = -1;
+#endif // HAVE_LINUX_MEM_BUF_H && MEM_BUF_IOC_LEND
   mempool->priv->memsizes = NULL;
 }
 

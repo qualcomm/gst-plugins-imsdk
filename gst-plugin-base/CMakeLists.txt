@@ -44,6 +44,10 @@ check_include_file("fastcv/fastcv.h" HAVE_FASTCV_H)
 # Check whether GBM header is present.
 check_include_file("gbm_priv.h" HAVE_GBM_PRIV_H)
 
+# Check whether mem-buf header is present.
+set(CMAKE_REQUIRED_INCLUDES "${KERNEL_MSM_INCDIR}")
+check_include_file("linux/mem-buf.h" HAVE_LINUX_MEM_BUF_H)
+
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
