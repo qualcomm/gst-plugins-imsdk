@@ -20,7 +20,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_ml_qairt_debug);
 G_DEFINE_TYPE (GstMLQairt, gst_ml_qairt, GST_TYPE_BASE_TRANSFORM);
 
 #define DEFAULT_PROP_MODEL           NULL
-#define DEFAULT_PROP_DELEGATE        GST_ML_QAIRT_DELEGATE_CPU
+#define DEFAULT_PROP_BACKEND         "libQairtCpu.so"
 #define DEFAULT_PROP_EXEC_PRIORITY   GST_ML_QAIRT_EXEC_PRIORITY_NORMAL
 #define DEFAULT_PROP_OUTPUTS         NULL
 
@@ -39,7 +39,7 @@ enum
 {
   PROP_0,
   PROP_MODEL,
-  PROP_DELEGATE,
+  PROP_BACKEND,
   PROP_EXEC_PRIORITY,
   PROP_LAYERS,
   PROP_TENSORS,
@@ -514,8 +514,9 @@ gst_ml_qairt_set_property (GObject * object, guint prop_id,
       g_free (qairt->settings.modelfile);
       qairt->settings.modelfile = g_strdup (g_value_get_string (value));
       break;
-    case PROP_DELEGATE:
-      qairt->settings.delegate = g_value_get_enum (value);
+    case PROP_BACKEND:
+      g_free (qairt->settings.backend);
+      qairt->settings.backend = g_strdup (g_value_get_string (value));
       break;
     case PROP_EXEC_PRIORITY:
       qairt->settings.priority = g_value_get_enum (value);
@@ -552,8 +553,8 @@ gst_ml_qairt_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_MODEL:
       g_value_set_string (value, qairt->settings.modelfile);
       break;
-    case PROP_DELEGATE:
-      g_value_set_enum (value, qairt->settings.delegate);
+    case PROP_BACKEND:
+      g_value_set_string (value, qairt->settings.backend);
       break;
     case PROP_EXEC_PRIORITY:
       g_value_set_enum (value, qairt->settings.priority);
@@ -598,6 +599,7 @@ gst_ml_qairt_finalize (GObject * object)
   gst_ml_qairt_engine_free (qairt->engine);
 
   g_free (qairt->settings.modelfile);
+  g_free (qairt->settings.backend);
 
   g_list_free_full (qairt->settings.outputs, (GDestroyNotify) g_free);
 
@@ -620,11 +622,11 @@ gst_ml_qairt_class_init (GstMLQairtClass * klass)
           "Model file name. Either a QAIRT/SNPE '.dlc' container or a cached "
           "context '.bin' binary.", DEFAULT_PROP_MODEL,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject, PROP_DELEGATE,
-      g_param_spec_enum ("delegate", "Delegate",
-          "Hardware backend used to execute the network.",
-          GST_TYPE_ML_QAIRT_DELEGATE, DEFAULT_PROP_DELEGATE,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_BACKEND,
+      g_param_spec_string ("backend", "Backend",
+          "Backend lib name (e.g. libQairtHtp.so).",
+          DEFAULT_PROP_BACKEND,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_EXEC_PRIORITY,
       g_param_spec_enum ("priority", "Execution Priority",
           "Sets a preference for execution priority. This allows the caller to "
@@ -680,7 +682,7 @@ gst_ml_qairt_init (GstMLQairt * qairt)
   qairt->engine = NULL;
 
   qairt->settings.modelfile = DEFAULT_PROP_MODEL;
-  qairt->settings.delegate = DEFAULT_PROP_DELEGATE;
+  qairt->settings.backend = NULL;
   qairt->settings.priority = DEFAULT_PROP_EXEC_PRIORITY;
   qairt->settings.outputs = DEFAULT_PROP_OUTPUTS;
 

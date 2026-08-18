@@ -101,29 +101,6 @@ gst_ml_qairt_engine_debug_category (void)
 }
 
 GType
-gst_ml_qairt_delegate_get_type (void)
-{
-  static GType gtype = 0;
-  static const GEnumValue variants[] = {
-    { GST_ML_QAIRT_DELEGATE_CPU,
-        "Run the processing on the CPU", "cpu"
-    },
-    { GST_ML_QAIRT_DELEGATE_GPU,
-        "Run the processing on the GPU", "gpu"
-    },
-    { GST_ML_QAIRT_DELEGATE_HTP,
-        "Run the processing on the Hexagon Tensor Processor", "htp"
-    },
-    {0, NULL, NULL},
-  };
-
-  if (!gtype)
-    gtype = g_enum_register_static ("GstMLQairtDelegate", variants);
-
-  return gtype;
-}
-
-GType
 gst_ml_qairt_exec_priority_get_type (void)
 {
   static GType gtype = 0;
@@ -189,22 +166,6 @@ qairt_to_ml_type (qairt::DataType type)
   }
 
   return GST_ML_TYPE_UNKNOWN;
-}
-
-// Map the delegate enum to the QAIRT backend shared library name. QAIRT selects
-// the backend by which library the Api loads (there is no runtime enum).
-static const gchar *
-delegate_to_backend_lib (GstMLQairtDelegate delegate)
-{
-  switch (delegate) {
-    case GST_ML_QAIRT_DELEGATE_GPU:
-      return "libQairtGpu.so";
-    case GST_ML_QAIRT_DELEGATE_HTP:
-      return "libQairtHtp.so";
-    case GST_ML_QAIRT_DELEGATE_CPU:
-    default:
-      return "libQairtCpu.so";
-  }
 }
 
 static qairt::Priority
@@ -405,6 +366,8 @@ gst_ml_qairt_engine_new (GstMLQairtSettings * settings)
   g_return_val_if_fail (settings != NULL, NULL);
   GST_ML_RETURN_VAL_IF_FAIL (settings->modelfile != NULL, NULL,
       "No model file name!");
+  GST_ML_RETURN_VAL_IF_FAIL (settings->backend != NULL, NULL,
+      "No backend library path!");
 
   engine = new GstMLQairtEngine;
   g_return_val_if_fail (engine != NULL, NULL);
@@ -413,15 +376,13 @@ gst_ml_qairt_engine_new (GstMLQairtSettings * settings)
   engine->outinfo = gst_ml_info_new ();
 
   try {
-    const gchar *backendlib = delegate_to_backend_lib (settings->delegate);
-
     // Load the backend and system libraries.
-    GST_DEBUG ("Loading QAIRT backend '%s'", backendlib);
-    engine->api = std::make_shared<qairt::Api> (backendlib);
+    GST_DEBUG ("Loading QAIRT backend '%s'", settings->backend);
+    engine->api = std::make_shared<qairt::Api> (settings->backend);
     engine->sysapi =
         std::make_shared<qairt::SystemApi> (GST_ML_QAIRT_SYSTEM_LIB);
 
-    GST_DEBUG ("Loaded QAIRT backend '%s'!", backendlib);
+    GST_DEBUG ("Loaded QAIRT backend '%s'!", settings->backend);
 
     // Set up logging routed to the GStreamer debug system category.
     engine->log = engine->api->makeShared<qairt::Log> (
