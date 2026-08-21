@@ -6,6 +6,21 @@ set(GST_VERSION_REQUIRED "1.16")
 # based on the target architecture set by the toolchain.
 include(GNUInstallDirs)
 
+# The NV12_Q08C and NV12_Q10LE32C UBWC formats are not part of upstream
+# GStreamer, they come from the Qualcomm patch set for gst-plugins-base.
+# Turn this option off to build the generic parts of the tree against an
+# unpatched gst-plugins-base.
+option(ENABLE_GST_UBWC_VIDEO_FORMATS
+    "Enable the Qualcomm UBWC video formats (NV12_Q08C, NV12_Q10LE32C)" ON)
+
+if(GST_ENABLE_UBWC_VIDEO_FORMATS)
+  add_compile_definitions(HAVE_GST_VIDEO_FORMAT_NV12_Q08C)
+  add_compile_definitions(HAVE_GST_VIDEO_FORMAT_NV12_Q10LE32C)
+else()
+  message(STATUS "UBWC video formats disabled, "
+                 "8 bit and 10 bit UBWC support will not be built")
+endif()
+
 # Common point for setting version of all libs of gst-plugins-qcom package
 set(GST_PLUGINS_QTI_OSS_VERSION "1.0")
 
