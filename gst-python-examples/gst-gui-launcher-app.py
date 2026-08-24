@@ -269,7 +269,7 @@ class DemoWindow(Gtk.Window):
         print(f"Connecting to Wi-Fi SSID: {self.ssid}")
         try:
             # Run the nmcli command to connect to the specified Wi-Fi network with the provided password
-            subprocess.run((['nmcli'] if os.geteuid() == 0 else ['sudo', 'nmcli']) + ['dev', 'wifi', 'connect', self.ssid, 'password', password], capture_output=True, text=True, check=True)
+            subprocess.run(['nmcli', 'dev', 'wifi', 'connect', self.ssid, 'password', password], capture_output=True, text=True, check=True)
             print(f"Connected to Wi-Fi SSID: {self.ssid}")
             self.status.set_text("Wi-Fi is connected")
             # Set text color to green
@@ -284,7 +284,7 @@ class DemoWindow(Gtk.Window):
     def disconnect_from_wifi(self, ssid):
         try:
             # Run the nmcli command to disconnect from the specified Wi-Fi network
-            subprocess.run((['nmcli'] if os.geteuid() == 0 else ['sudo', 'nmcli']) + ['connection', 'down', self.ssid_value.get_text()], capture_output=True, text=True, check=True)
+            subprocess.run(['nmcli', 'connection', 'down', self.ssid_value.get_text()], capture_output=True, text=True, check=True)
             print(f"Disconnected from Wi-Fi SSID: {self.ssid_value.get_text()}")
             self.status.set_text("Wi-Fi is disconnected")
             # Set text color to red
