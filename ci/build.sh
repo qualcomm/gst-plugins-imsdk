@@ -13,6 +13,17 @@ chmod +x sdk.sh
 
 echo "Sourcing toolchain"
 source ./sdk_install/environment-setup-armv8a-qcom-linux
+
+echo "Building gst-plugin-base"
+cmake -B build-base -S . \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DENABLE_GST_PLUGIN_BASE=1
+
+cmake --build build-base
+
+echo "Installing gst-plugin-base into sysroot"
+DESTDIR="${SDKTARGETSYSROOT}" cmake --install build-base --prefix /usr
+
 echo "Running cmake"
 cmake -B build -S . \
   -DCMAKE_INSTALL_PREFIX=/usr \
