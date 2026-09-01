@@ -19,6 +19,11 @@ pkg_check_modules(GST_QCOM_UTILS REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
 pkg_check_modules(GST_QCOM_VIDEO REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
 pkg_check_modules(QMMF_CAMERA_METADATA qmmf_camera_metadata)
 
+find_library(URM_CLIENT_LIBRARY NAMES UrmClient)
+if(NOT URM_CLIENT_LIBRARY)
+  message(FATAL_ERROR "UrmClient library is required by gstqticamsrc but was not found in the target sysroot")
+endif()
+
 # Generate configuration header file with plugin describing definitions
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
@@ -111,6 +116,7 @@ target_link_libraries(${GST_CAMSRC_PLUGIN} PRIVATE
   ${GST_QCOM_UTILS_LIBRARIES}
   ${GST_QCOM_VIDEO_LIBRARIES}
   gstqticamerabase
+  ${URM_CLIENT_LIBRARY}
 )
 
 install(
