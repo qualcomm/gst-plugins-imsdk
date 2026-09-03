@@ -57,7 +57,7 @@ jobs:
             });
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.pr.outputs.sha }}
           allow-unsafe-pr-checkout: true
@@ -103,7 +103,7 @@ jobs:
     needs: [init, build, report-status]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.init.outputs.pr-sha }}
           allow-unsafe-pr-checkout: true
