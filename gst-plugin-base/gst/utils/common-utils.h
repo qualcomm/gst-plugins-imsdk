@@ -62,7 +62,7 @@ G_BEGIN_DECLS
 
 // Macro to extract stage from meta ID.
 #define GST_META_ID_GET_STAGE(id) ((id >> GST_META_STAGE_ID_OFFSET) & 0xFF)
-// Macro to extract stage from meta ID.
+// Macro to extract entry from meta ID.
 #define GST_META_ID_GET_ENTRY(id) (id & 0xFF)
 
 typedef struct _GstClassLabel GstClassLabel;
@@ -99,7 +99,7 @@ gst_class_label_reset (GstClassLabel * label);
  * Return the string representation of the stream index for use as name of the
  * #GstProtectionMeta attached when buffers are created from muxed streams.
  *
- * This is convinient in order to avoid the constant allocation of a string
+ * This is convenient in order to avoid the constant allocation of a string
  * when corresponding to the batch number when there is a need for it.
  *
  * Returns: Pointer to string in "mux-stream-%2d" format or NULL on failure
@@ -121,7 +121,7 @@ gst_mux_buffer_get_memory_stream_id (GstBuffer * buffer, gint mem_idx);
 /**
  * gst_caps_has_feature:
  * @caps: The #GstCaps for verification.
- * @feature: The feature for witch to check.
+ * @feature: The feature for which to check.
  *
  * Check if given caps have a feature.
  *
@@ -168,7 +168,7 @@ gst_structure_from_json_string (const gchar * string);
 
 /**
  * gst_structure_to_json_string:
- * @structure: The #GStStructure which will be converted.
+ * @structure: The #GstStructure which will be converted.
  *
  * Converts structure to a human-readable JSON string representation.
  *
