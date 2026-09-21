@@ -33,7 +33,7 @@ runs:
       run: |
         set -euo pipefail
 
-        SDK_FILE="qcom-distro-x86_64-qcom-multimedia-proprietary-image-armv8a-qcom-armv8a-toolchain-2.0.sh"
+        SDK_FILE_PREFIX="qcom-distro-x86_64-qcom-multimedia-proprietary-image-armv8a-qcom-armv8a-toolchain-"
         FILESERVER="https://qli-prod-artifacts.qualcomm.com/qcom-prd-gh-artifacts"
         WORKFLOW_ID="140524224"
 
@@ -53,6 +53,44 @@ runs:
             "$URL" || true)
 
           [ "$STATUS" = "200" ]
+        }
+
+        find_sdk_filename() {
+          local DIR_URL="$1"
+          curl -s -L \
+            -H "Authorization: ${ARTIFACT_TOKEN}" \
+            "${DIR_URL}/" \
+            | grep -oE "${SDK_FILE_PREFIX}[0-9]+\.[0-9]+\.sh" \
+            | head -1
+        }
+
+        resolve_sdk_url() {
+          local RUN_ID="$1"
+          local LATEST_ATTEMPT="$2"
+          local ATTEMPT="$LATEST_ATTEMPT"
+
+          while [ "$ATTEMPT" -ge 1 ]; do
+            local DIR_URL="${FILESERVER}/qualcomm-linux/meta-qcom/${RUN_ID}-${ATTEMPT}/qcom-distro-sdk/qcom-armv8a"
+            local SDK_FILE
+            SDK_FILE=$(find_sdk_filename "$DIR_URL")
+
+            if [ -n "$SDK_FILE" ]; then
+              local URL="${DIR_URL}/${SDK_FILE}"
+              echo "Checking SDK toolchain at attempt ${RUN_ID}-${ATTEMPT}: ${SDK_FILE}" >&2
+              if url_exists "$URL"; then
+                echo "Found SDK toolchain at attempt ${RUN_ID}-${ATTEMPT}" >&2
+                echo "$URL"
+                return 0
+              fi
+            else
+              echo "No SDK toolchain file matching pattern at attempt ${RUN_ID}-${ATTEMPT}" >&2
+            fi
+
+            ATTEMPT=$((ATTEMPT - 1))
+          done
+
+          echo "::error::Unable to find SDK toolchain for run ${RUN_ID}" >&2
+          return 1
         }
 
         resolve_artifact_url() {
@@ -138,8 +176,7 @@ runs:
           fi
         done
 
-        SDK_REL_PATH="qcom-distro-sdk/qcom-armv8a/${SDK_FILE}"
-        SDK_URL=$(resolve_artifact_url "$RUN_ID" "$LATEST_ATTEMPT" "$SDK_REL_PATH" "SDK toolchain")
+        SDK_URL=$(resolve_sdk_url "$RUN_ID" "$LATEST_ATTEMPT")
 
         echo "sdk-url=${SDK_URL}" >> "$GITHUB_OUTPUT"
         echo "SDK URL: ${SDK_URL}"
