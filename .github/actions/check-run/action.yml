@@ -24,13 +24,15 @@ runs:
   steps:
     - name: Post check run
       shell: bash
+      env:
+        HEAD_SHA: ${{ inputs.sha }}
+        ACCESS_TOKEN: ${{ inputs.github_token }}
+        S3_LOCATION: ${{ inputs.s3_location }}
+        REPO: ${{ inputs.repo }}
+        WORKFLOW_NAME: ${{ inputs.workflow_name }}
       run: |
         set -e
-        HEAD_SHA="${{ inputs.sha }}"
-        ACCESS_TOKEN="${{ inputs.github_token }}"
-        s3_location="${{ inputs.s3_location }}"
-        REPO="${{ inputs.repo }}"
-        post_name="Artifacts${{ inputs.workflow_name }} uploaded to S3"
+        post_name="Artifacts${WORKFLOW_NAME} uploaded to S3"
 
         echo "Creating check run for commit: $HEAD_SHA"
         CHECK_RUN_ID=$(curl -s -L -X POST \
@@ -45,7 +47,7 @@ runs:
             "output": {
               "title": "Check S3 Location",
               "summary": "",
-              "text": "'"$s3_location"'"
+              "text": "'"$S3_LOCATION"'"
             }
           }' | jq -r '.id')
 
@@ -70,7 +72,7 @@ runs:
             "output": {
               "title": "Check S3 Location",
               "summary": "",
-              "text": "'"$s3_location"'"
+              "text": "'"$S3_LOCATION"'"
             }
           }'
 
