@@ -55,13 +55,21 @@ runs:
           [ "$STATUS" = "200" ]
         }
 
-        find_sdk_filename() {
-          local DIR_URL="$1"
-          curl -s -L \
-            -H "Authorization: ${ARTIFACT_TOKEN}" \
-            "${DIR_URL}/" \
-            | grep -oE "${SDK_FILE_PREFIX}[0-9]+\.[0-9]+\.sh" \
-            | head -1
+        find_sdk_filename_by_probe() {
+          local BASE_URL="$1"
+          for major in 3 2 1; do
+            for minor in 9 8 7 6 5 4 3 2 1 0; do
+              local candidate="${SDK_FILE_PREFIX}${major}.${minor}.sh"
+              local STATUS
+              STATUS=$(curl -s -L --max-time 10 -o /dev/null -w "%{http_code}" \
+                -H "Authorization: ${ARTIFACT_TOKEN}" "${BASE_URL}/${candidate}" || true)
+              if [ "$STATUS" = "200" ]; then
+                echo "$candidate"
+                return 0
+              fi
+            done
+          done
+          return 1
         }
 
         resolve_sdk_url() {
@@ -70,20 +78,16 @@ runs:
           local ATTEMPT="$LATEST_ATTEMPT"
 
           while [ "$ATTEMPT" -ge 1 ]; do
-            local DIR_URL="${FILESERVER}/qualcomm-linux/meta-qcom/${RUN_ID}-${ATTEMPT}/qcom-distro-sdk/qcom-armv8a"
+            local BASE_URL="${FILESERVER}/qualcomm-linux/meta-qcom/${RUN_ID}-${ATTEMPT}/qcom-distro-sdk/qcom-armv8a"
             local SDK_FILE
-            SDK_FILE=$(find_sdk_filename "$DIR_URL")
+            SDK_FILE=$(find_sdk_filename_by_probe "$BASE_URL")
 
             if [ -n "$SDK_FILE" ]; then
-              local URL="${DIR_URL}/${SDK_FILE}"
-              echo "Checking SDK toolchain at attempt ${RUN_ID}-${ATTEMPT}: ${SDK_FILE}" >&2
-              if url_exists "$URL"; then
-                echo "Found SDK toolchain at attempt ${RUN_ID}-${ATTEMPT}" >&2
-                echo "$URL"
-                return 0
-              fi
+              echo "Found SDK toolchain at attempt ${RUN_ID}-${ATTEMPT}: ${SDK_FILE}" >&2
+              echo "${BASE_URL}/${SDK_FILE}"
+              return 0
             else
-              echo "No SDK toolchain file matching pattern at attempt ${RUN_ID}-${ATTEMPT}" >&2
+              echo "No SDK toolchain found at attempt ${RUN_ID}-${ATTEMPT}" >&2
             fi
 
             ATTEMPT=$((ATTEMPT - 1))
