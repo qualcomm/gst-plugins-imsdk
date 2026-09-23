@@ -111,6 +111,7 @@ jobs:
 
   build:
     needs: init
+    if: always() && needs.init.result == 'success'
     uses: ./.github/workflows/imsdk-build.yml
     with:
       ref: ${{ needs.init.outputs.pr-sha }}
@@ -146,6 +147,7 @@ jobs:
   check-run:
     runs-on: ubuntu-latest
     needs: [init, build, report-status]
+    if: always() && needs.build.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -155,7 +157,6 @@ jobs:
 
       - name: Post check run
         id: post-check-run
-        if: needs.build.result == 'success'
         uses: ./.github/actions/check-run
         with:
           sha: ${{ needs.init.outputs.pr-sha }}
