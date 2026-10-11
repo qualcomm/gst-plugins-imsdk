@@ -128,7 +128,7 @@ struct _GstOverlayClass {
 
 /* GstOverlayUser - common parameters for all user overlays
  * user_id: overlay user instance id
- * item_id: overlay HW instacne id
+ * item_id: overlay HW instance id
  * is_applied: flag indicating if new configuration is applied
  * user_data: user pointer which is used in release handler
  */
@@ -192,7 +192,7 @@ struct _GstOverlayUsrSImg {
 /* GstOverlayUsrBBox - parameters for user bounding box overlay
  * base: common parameters for all user overlays
  * label: bounding box label
- * boundind_box: boundind box rectangle
+ * boundind_box: bounding box rectangle
  * color: overlay color
  */
 struct _GstOverlayUsrBBox {

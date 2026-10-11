@@ -123,7 +123,7 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   g_return_val_if_fail (settings != NULL, FALSE);
 
   if (!(success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CAPS))) {
-    GST_ERROR ("Settings stucture does not contain configuration caps!");
+    GST_ERROR ("Settings structure does not contain configuration caps!");
     goto cleanup;
   }
 
@@ -142,25 +142,25 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   }
 
   if (!(success = gst_ml_info_from_caps (&(submodule->mlinfo), caps))) {
-    GST_ERROR ("Failed to get ML info from confguration caps!");
+    GST_ERROR ("Failed to get ML info from configuration caps!");
     goto cleanup;
   }
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
 
-  // Parse funtion will print error message if it fails, simply goto cleanup.
+  // Parse function will print error message if it fails, simply goto cleanup.
   if (!(success = gst_ml_parse_labels (input, &list)))
     goto cleanup;
 
   submodule->labels = gst_ml_load_labels (&list);
 
-  // Labels funtion will print error message if it fails, simply goto cleanup.
+  // Labels function will print error message if it fails, simply goto cleanup.
   if (!(success = (submodule->labels != NULL)))
     goto cleanup;
 
   success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_THRESHOLD);
   if (!success) {
-    GST_ERROR ("Settings stucture does not contain threshold value!");
+    GST_ERROR ("Settings structure does not contain threshold value!");
     goto cleanup;
   }
 
