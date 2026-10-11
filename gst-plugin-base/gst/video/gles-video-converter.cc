@@ -87,8 +87,10 @@ gst_video_format_to_ib2c_format (GstVideoFormat format, GstVideoDataType datatyp
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
       return ::ib2c::ColorFormat::kNV12;
+#ifdef HAVE_GST_VIDEO_FORMAT_NV12_Q08C
     case GST_VIDEO_FORMAT_NV12_Q08C:
       return ::ib2c::ColorFormat::kNV12 | ::ib2c::ColorMode::kUBWC;
+#endif // HAVE_GST_VIDEO_FORMAT_NV12_Q08C
     case GST_VIDEO_FORMAT_P010_10LE:
       return ::ib2c::ColorFormat::kP010;
     case GST_VIDEO_FORMAT_NV21:
